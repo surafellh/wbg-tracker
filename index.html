@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>WBG Strategy Office Weekly Activity Tracking</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23f5c518'/%3E%3Cpath d='M8 17l5 5 11-12' fill='none' stroke='%232a2208' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=IBM+Plex+Mono:wght@500;600&family=Public+Sans:wght@400;500;600;700&display=swap">
+</head>
+<body>
+<header class="hero">
+  <div class="wrap">
+    <div class="hero-row">
+      <div>
+        <div class="eyebrow">Wagwago Business Group · Group Strategy Office</div>
+        <h1 id="heroTitle">Weekly Activity Tracking</h1>
+        <p class="hero-sub" id="heroSub">Each function and business unit enters and updates its plan for the week.</p>
+      </div>
+      <div class="weeknav" aria-label="Choose week">
+        <button id="prevWeek" aria-label="Previous week">‹</button>
+        <div class="label"><b id="weekLabel">—</b><span id="weekSub">Week starting Monday</span></div>
+        <button id="nextWeek" aria-label="Next week">›</button>
+        <button id="thisWeek" class="today-btn">This week</button>
+      </div>
+    </div>
+    <div class="chip-row"><span id="heroChips" style="display:contents"></span><button class="hero-chip who-btn" id="whoBtn" type="button" aria-label="Change who is updating"></button></div>
+    <nav class="tabs" role="tablist">
+      <button role="tab" data-tab="overview" aria-selected="true">Overview</button>
+      <button role="tab" data-tab="update" aria-selected="false">This week's update</button>
+      <button role="tab" data-tab="plan" aria-selected="false">Next week's plan</button>
+      <button role="tab" data-tab="follow" aria-selected="false">Follow-up</button>
+      <button role="tab" data-tab="tasks" aria-selected="false">All tasks</button>
+      <button role="tab" data-tab="monthly" aria-selected="false">Monthly report</button>
+      <button role="tab" data-tab="activity" aria-selected="false">Activity</button>
+      <button role="tab" data-tab="units" aria-selected="false" id="unitsTabBtn" hidden>Units</button>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap" id="main">
+  <div class="empty"><b>Loading weekly plans…</b>Connecting to the shared plan store.</div>
+</main>
+<div id="modalRoot"></div>
+<div id="whoRoot"></div>
+<div class="toast" id="toast" hidden></div>
+
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
