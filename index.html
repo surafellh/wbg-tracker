@@ -10,40 +10,60 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=IBM+Plex+Mono:wght@500;600&family=Public+Sans:wght@400;500;600;700&display=swap">
 </head>
 <body>
-<header class="hero">
-  <div class="wrap">
-    <div class="hero-row">
-      <div>
-        <div class="eyebrow">Wagwago Business Group · Group Strategy Office</div>
-        <h1 id="heroTitle">Weekly Activity Tracking</h1>
-        <p class="hero-sub" id="heroSub">Each function and business unit enters and updates its plan for the week.</p>
-      </div>
+<header class="hero topbar">
+  <div class="wrap topin">
+    <div class="brand"><span class="mark" aria-hidden="true">W</span><b>WBG Tracker</b><span class="hero-chip" id="modeChip" hidden title="No Supabase keys in .env: data is kept in this browser only">Test mode</span></div>
+    <nav class="mainnav" id="mainNav" aria-label="Main">
+      <button data-group="dashboard">Dashboards</button>
+      <button data-group="plans">Plans</button>
+      <button data-group="delivery">Delivery</button>
+      <button data-group="reports">Reports</button>
+    </nav>
+    <div class="bar-right">
       <div class="weeknav" aria-label="Choose week">
-        <button id="prevWeek" aria-label="Previous week">‹</button>
-        <div class="label"><b id="weekLabel">—</b><span id="weekSub">Week starting Monday</span></div>
-        <button id="nextWeek" aria-label="Next week">›</button>
+        <button id="prevWeek" aria-label="Previous week">&lsaquo;</button>
+        <button class="label" id="weekBtn" type="button" aria-haspopup="dialog" aria-label="Pick a week from the calendar"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg><span><b id="weekLabel">—</b><span id="weekSub" hidden></span></span></button>
+        <button id="nextWeek" aria-label="Next week">&rsaquo;</button>
         <button id="thisWeek" class="today-btn">This week</button>
       </div>
+      <button class="bell" id="srchBtn" type="button" aria-label="Search tasks" title="Search tasks"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg></button>
+      <button class="bell" id="actBtn" type="button" aria-label="Activity log" title="Activity log"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></svg></button>
+      <button class="bell" id="bellBtn" type="button" aria-label="Notifications" title="Notifications"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><span class="badge" id="apprCount" hidden></span></button>
+      <button class="avatar" id="whoBtn" type="button" aria-haspopup="menu" aria-label="Your account">?</button>
     </div>
-    <div class="chip-row"><span id="heroChips" style="display:contents"></span><button class="hero-chip who-btn" id="whoBtn" type="button" aria-label="Change who is updating"></button></div>
-    <nav class="tabs" role="tablist">
-      <button role="tab" data-tab="overview" aria-selected="true">Overview</button>
-      <button role="tab" data-tab="update" aria-selected="false">This week's update</button>
-      <button role="tab" data-tab="plan" aria-selected="false">Next week's plan</button>
-      <button role="tab" data-tab="follow" aria-selected="false">Follow-up</button>
-      <button role="tab" data-tab="tasks" aria-selected="false">All tasks</button>
-      <button role="tab" data-tab="monthly" aria-selected="false">Monthly report</button>
-      <button role="tab" data-tab="activity" aria-selected="false">Activity</button>
-      <button role="tab" data-tab="units" aria-selected="false" id="unitsTabBtn" hidden>Units</button>
-    </nav>
   </div>
 </header>
+<div class="wrap pagehead">
+  <div class="pagehead-row"><div><h1 id="heroTitle">Weekly Activity Tracking</h1><p class="hero-sub" id="heroSub"></p></div></div>
+  <div class="subnav" id="subNav" role="tablist"></div>
+  <div class="chip-row"><span id="heroChips" style="display:contents"></span></div>
+  <div class="hero-prog" id="heroProg" hidden></div>
+</div>
+<nav class="tabs" role="tablist" hidden>
+  <button role="tab" data-tab="dashboard" aria-selected="true">Dashboard</button>
+  <button role="tab" data-tab="update" aria-selected="false">This week's update</button>
+  <button role="tab" data-tab="plan" aria-selected="false">Next week's plan</button>
+  <button role="tab" data-tab="mplan" aria-selected="false">Monthly plan</button>
+  <button role="tab" data-tab="follow" aria-selected="false">Follow-up</button>
+  <button role="tab" data-tab="tasks" aria-selected="false">All tasks</button>
+  <button role="tab" data-tab="monthly" aria-selected="false">Monthly report</button>
+  <button role="tab" data-tab="approvals" aria-selected="false" id="apprTabBtn">Approvals</button>
+  <button role="tab" data-tab="support" aria-selected="false">Business support</button>
+  <button role="tab" data-tab="fb" aria-selected="false">Feedback <span class="badge" id="fbCount" hidden></span></button>
+  <button role="tab" data-tab="activity" aria-selected="false">Activity</button>
+  <button role="tab" data-tab="units" aria-selected="false" id="unitsTabBtn" hidden>Units</button>
+  <button role="tab" data-tab="people" aria-selected="false" id="peopleTabBtn" hidden>People</button>
+</nav>
 
 <main class="wrap" id="main">
   <div class="empty"><b>Loading weekly plans…</b>Connecting to the shared plan store.</div>
 </main>
 <div id="modalRoot"></div>
 <div id="whoRoot"></div>
+<div id="panelRoot"></div>
+<div id="xModalRoot"></div>
+<div id="viewRoot"></div>
+<div id="gateRoot" hidden></div>
 <div class="toast" id="toast" hidden></div>
 
 <script type="module" src="/src/main.js"></script>
