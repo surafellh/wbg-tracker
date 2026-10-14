@@ -2655,7 +2655,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   document.addEventListener("keydown", e => { if (e.key === "Enter" && e.target.matches && e.target.matches("[data-dd-new]")) { e.preventDefault(); ddAddDept(e.target.closest(".dd")); } });
   document.addEventListener("click", e => { document.querySelectorAll("details.dd[open]").forEach(d => { if (!d.contains(e.target)) d.open = false; }); });
 
-  const REQ_ROLES = ["staff", "manager", "planning", "leader"];
+  const REQ_ROLES = ROLES.filter(r => !["super_admin", "executive"].includes(r));
   const seenRR = () => { try { return JSON.parse(store.get("wp-rr-seen") || "[]"); } catch (e) { return []; } };
   const markSeenRR = ids => { const s = new Set([...seenRR(), ...ids]); store.set("wp-rr-seen", JSON.stringify([...s].slice(-60))); };
   const unseenDecided = () => (state.myRR || []).filter(x => (x.status === "approved" || x.status === "rejected") && !seenRR().includes(x.id) && Date.now() - Date.parse(x.decidedAt || 0) < 14 * 864e5);
@@ -2692,12 +2692,12 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
       const pend = reqs.find(x => x.status === "pending"), hist = reqs.filter(x => x.status !== "pending").slice(0, 3), mu = me.unit || "";
       const lab = (id, t, inner, hint) => `<div class="pf-f"><label for="${id}">${t}</label>${inner}${hint ? `<div class="small muted">${hint}</div>` : ""}</div>`;
       const reqBox = me.role === "super_admin" ? `<div class="small muted">You are Group Strategy. You decide role requests from the People page, so there is nothing to request here.</div>`
-        : pend ? `<div class="pf-pend"><span class="pill ${ST_PILL.pending}">${ST_TXT.pending}</span><div style="margin:6px 0"><b>${detail(pend.role, pend.unit, pend.departments)}</b></div>${pend.reason ? `<div class="small muted">“${esc(pend.reason)}”</div>` : ""}<div class="small muted">Sent ${esc(fmt((pend.createdAt || "").slice(0, 10)))} · ${pend.kind === "signup" ? "at sign-up" : "role upgrade"}. You will see the answer on the bell.</div><div style="margin-top:8px"><button class="btn small" type="button" data-pf="rr-wd" data-id="${esc(pend.id)}">Withdraw request</button></div>
+        : pend ? `<div class="pf-pend"><span class="pill ${ST_PILL.pending}">${ST_TXT.pending}</span><div style="margin:6px 0"><b>${detail(pend.role, pend.unit, pend.departments)}</b></div>${pend.reason && !/^(Asked for at sign-up|Requested from profile)$/.test(pend.reason) ? `<div class="small muted">“${esc(pend.reason)}”</div>` : ""}<div class="small muted">Sent ${esc(fmt((pend.createdAt || "").slice(0, 10)))} · ${pend.kind === "signup" ? "at sign-up" : "role upgrade"}. You will see the answer on the bell.</div><div style="margin-top:8px"><button class="btn small" type="button" data-pf="rr-wd" data-id="${esc(pend.id)}">Withdraw request</button></div>
           <div class="pf-code"><label for="pfCode">Have an approval code?</label><div class="toolbar"><input id="pfCode" type="password" autocomplete="off" placeholder="Approval code"><button class="btn" type="button" data-pf="rr-code" data-id="${esc(pend.id)}">Approve with code</button></div><div class="small muted">If Group Strategy is with you, they type their code here and your request is approved right away.</div></div></div>`
         : `<div class="pf-grid">${lab("pfRole", "Role you need", `<select id="pfRole">${REQ_ROLES.map(r => `<option value="${r}" ${r === me.role ? "selected" : ""}>${esc(ROLE_LABEL[r] || r)}</option>`).join("")}</select>`, `<span id="pfRoleHelp">${esc(ROLE_HELP[me.role] || "")}</span>`)}
           ${lab("pfUnit", "Unit", `<select id="pfUnit">${UNIT_OPTS(mu).replace("No unit", "Choose a unit")}</select>`)}
           <div class="pf-f" id="pfDeptWrap" ${["leader", "planning"].includes(me.role) ? "hidden" : ""}><label>Departments</label>${ddHtml("pf-dept", mu, me.departments || [], "Choose departments")}</div>
-          <div class="pf-f pf-wide"><label for="pfWhy">Why do you need it?</label><textarea id="pfWhy" rows="2" maxlength="500" placeholder="For example: I now lead the planning team of this unit"></textarea></div></div>
+          </div>
           <div class="toolbar" style="margin-top:8px"><button class="btn primary" type="button" data-pf="rr-send">Send request to Group Strategy</button></div>`;
       const histH = hist.length ? `<div class="pf-hist">${hist.map(x => `<div><span class="pill ${ST_PILL[x.status]}">${ST_TXT[x.status]}</span> <span class="small">${detail(x.role, x.unit, x.departments)}</span>${x.note ? `<div class="small muted">“${esc(x.note)}”</div>` : ""}</div>`).join("")}</div>` : "";
       root.innerHTML = `<div class="overlay"><div class="modal prof" role="dialog" aria-modal="true" aria-labelledby="whoTitle">
@@ -2746,7 +2746,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
           await api.signOutEverywhere(); location.reload();
         } else if (k === "rr-send") {
           const role = $$("#pfRole").value, unit = $$("#pfUnit").value, deps = ddValues(root, "pf-dept");
-          const r = await api.requestRole({ role, unit, departments: ["leader", "planning"].includes(role) ? [] : deps, reason: $$("#pfWhy").value, kind: "upgrade" });
+          const r = await api.requestRole({ role, unit, departments: ["leader", "planning"].includes(role) ? [] : deps, reason: "Requested from profile", kind: "upgrade" });
           if (r.error) { toast(errText(r)); return; }
           toast("Request sent to Group Strategy"); await load(); draw(); refreshRR();
         } else if (k === "rr-code") {
@@ -2804,7 +2804,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     const cards = rr.map(r => `<div class="pp-card" data-rrc="${esc(r.id)}">
       <div class="pp-card-h">${avatar(r.name || r.email)}<div><b>${esc(r.name || r.email)}</b> <span class="pill ${r.kind === "signup" ? "s-prog" : "s-not"}">${r.kind === "signup" ? "Asked at sign-up" : "Role upgrade"}</span><div class="small muted">${esc(r.email)}${r.phone ? " · " + esc(r.phone) : ""}${r.jobTitle ? " · " + esc(r.jobTitle) : ""}</div></div></div>
       <div class="pp-ask"><span class="small muted">Has</span> ${rolePill(r.fromRole)} <span class="small">${esc(r.fromUnit ? unitName(r.fromUnit) : "–")}${(r.fromDepartments || []).length ? " · " + esc(r.fromDepartments.join(", ")) : ""}</span> <span class="pp-arrow">→</span> <span class="small muted">Asks for</span> ${rolePill(r.role)} <span class="small">${esc(r.unit ? unitName(r.unit) : "–")}${(r.departments || []).length ? " · " + esc(r.departments.join(", ")) : ""}</span></div>
-      ${r.reason ? `<div class="pp-reason">“${esc(r.reason)}”</div>` : ""}
+      ${r.reason && !/^(Asked for at sign-up|Requested from profile)$/.test(r.reason) ? `<div class="pp-reason">“${esc(r.reason)}”</div>` : ""}
       ${grant(r.id, r)}
       <div class="pp-card-f"><input type="text" data-rr-note="${esc(r.id)}" placeholder="Note to ${esc((r.name || "them").split(" ")[0])} (optional)" maxlength="300"><button class="btn primary" type="button" data-pe="rr-yes" data-id="${esc(r.id)}">Approve</button><button class="btn" type="button" data-pe="rr-no" data-id="${esc(r.id)}">Reject</button></div></div>`).join("");
     const cards2 = acc.map(r => `<div class="pp-card" data-rrc="acc-${esc(r.id)}">
