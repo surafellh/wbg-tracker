@@ -698,6 +698,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     const pct = roll ? roll.pct : (t.status === "Done" ? 100 : (typeof t.pct === "number" ? t.pct : 0));
     const sub = [
       t.ref ? `<span class="ref">${esc(t.ref)}</span>` : '<span class="pill s-none">New</span>',
+      t.unplanned ? '<span class="pill s-prog" title="Came up during the week, not in the plan">Unplanned</span>' : "",
       t.parent ? `<span class="pill s-none" title="Part of deliverable ${esc(t.parent)}">↳ ${esc(t.parent)}</span>` : "",
       (t.mpId && t.mpKind && t.mpKind !== "target" && t.mpTitle) ? `<span class="pill s-none res" title="Part of the monthly result: ${esc(t.mpTitle)}">◎ ${esc(t.mpTitle)}</span>` : "",
       roll ? `<span class="pill s-prog" title="Deliverable made of ${roll.total} tasks; progress is calculated from them">${roll.done}/${roll.total} tasks</span>` : "",
@@ -741,7 +742,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   function planRowHtml(u, t, i){
     const ed = rowEd(u, t), lk = isLocked(u, t), free = ed && !lk, key = `${u}|${i}`;
     const dis = free ? "" : "disabled", fin = t.category === "Revenue";
-    const sub = [t.ref ? `<span class="ref">${esc(t.ref)}</span>` : '<span class="pill s-none">New</span>', t.carried ? '<span class="pill s-not">Carried</span>' : "", t.parent ? `<span class="pill s-none">↳ ${esc(t.parent)}</span>` : "", t.owner ? `<span class="who">${esc(t.owner)}</span>` : "", lk ? `<span class="mi" title="Fixed task">${ico(IC.lock)}</span>` : ""].filter(Boolean).join("");
+    const sub = [t.ref ? `<span class="ref">${esc(t.ref)}</span>` : '<span class="pill s-none">New</span>', t.unplanned ? '<span class="pill s-prog">Unplanned</span>' : "", t.carried ? '<span class="pill s-not">Carried</span>' : "", t.parent ? `<span class="pill s-none">↳ ${esc(t.parent)}</span>` : "", t.owner ? `<span class="who">${esc(t.owner)}</span>` : "", lk ? `<span class="mi" title="Fixed task">${ico(IC.lock)}</span>` : ""].filter(Boolean).join("");
     const main = free ? `<textarea class="grow title-in" rows="1" id="t-title-${t.id}" data-f="title" placeholder="Task or product" aria-label="Task">${esc(t.title)}</textarea>` : `<div class="tt">${esc(t.title) || '<span class="muted">(no title)</span>'}</div>`;
     const act = `<button class="icon-btn ib" type="button" data-open-task="${esc(u)}|${esc(t.id)}" aria-label="Open details" title="Open details">${ico(IC.open)}</button>` + (ed ? (state.confirmDelete === t.id ? `<span class="confirm">Remove? <button class="btn danger small" data-del-yes="${esc(key)}">Yes</button><button class="btn small" data-del-no>No</button></span>` : `<button class="icon-btn ib bad" type="button" data-del="${t.id}" aria-label="Remove task" title="Remove">${ico(IC.trash)}</button>`) : "");
     return `<tr class="task-row" data-u="${esc(u)}" data-i="${i}" data-id="${esc(t.id)}">
@@ -1048,7 +1049,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     const planM = state.tab === "plan", sub = planM && single ? subOf(state.editUnit, "week", state.week) : null, subbed = sub && sub.status === "pending";
     const planTop = planM && single ? `<button class="btn" type="button" id="tplTop">${ico(IC.down)}Download template</button>${ed ? `<label class="btn" title="Fill the template, then upload it here">${ico(IC.fwd)}Upload Excel<input type="file" id="impFileTop" accept=".xlsx,.xls,.csv" hidden></label>` : ""}` : "";
     const submitBtn = planM && single && ed ? `<button class="btn primary" type="button" id="submitPlan" ${state.dirty || !d0 || !d0.tasks.length || subbed ? "disabled" : ""} title="${state.dirty ? "Save the plan first" : subbed ? "Already waiting for approval" : "Send next week's plan to Group Strategy"}">${sub && sub.status !== "withdrawn" && sub.status !== "pending" ? "Submit again" : "Submit for approval"}</button>` : "";
-    const acts = `<div class="toolbar plan-acts">${planTop}${single && ed && canLead(state.editUnit) ? `<button class="btn" type="button" id="carryBtn">${ico(IC.fwd)}Bring forward</button>` : ""}${moreMenu(menu)}${single && ed ? `<button class="btn${planM ? "" : " primary"}" type="button" id="addTask">${ico(IC.plus)}Add task</button>` : ""}${submitBtn}</div>`;
+    const acts = `<div class="toolbar plan-acts">${planTop}${single && ed && canLead(state.editUnit) ? `<button class="btn" type="button" id="carryBtn">${ico(IC.fwd)}Bring forward</button>` : ""}${moreMenu(menu)}${single && ed ? `<button class="btn${planM ? "" : " primary"}" type="button" id="addTask">${ico(IC.plus)}Add task</button>` : ""}${single && ed && !planM && state.week === thisMonday() ? `<button class="btn" type="button" id="addUnplanned" title="A task that came up during the week and was not in the plan">${ico(IC.plus)}Add unplanned task</button>` : ""}${submitBtn}</div>`;
     const topRow = `<div class="plan-top"><div class="plan-wk">${weekBan()}</div>${acts}</div>`;
     const lvlSeg = `<div class="seg" role="tablist" aria-label="List level"><button type="button" role="tab" data-lvl="tasks" aria-selected="${pf().lvl !== "deliv"}">All tasks</button><button type="button" role="tab" data-lvl="deliv" aria-selected="${pf().lvl === "deliv"}">By deliverable</button></div>`;
     const planMode = state.tab === "plan", fin = !planMode && pf().kind === "fin";
@@ -1056,7 +1057,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     const bar1 = `<div class="plan-bar">${pick}<div class="toolbar">${planMode ? "" : kindSeg}${planMode || fin ? "" : lvlSeg}</div></div>`;
     if (!state.editUnit || !hasDraft()) return `${topRow}<div class="panel">${bar1}<div class="empty"><b>Choose your unit to start</b>Pick your function or business unit. Anyone can view; to update, sign in with your name and your unit's PIN (the name button at the top). Then update status, % complete, notes and evidence as the week goes on.</div></div>`;
     const warn = state.remoteChanged ? `<div class="banner warn" style="margin:12px 16px 0">Someone else saved ${isAll() ? "one of these plans" : "this plan"} while you were editing. Saving adds your changes on top of theirs. <button class="btn" id="reloadRemote" style="margin-left:6px">Drop mine and load theirs</button></div>` : "";
-    const submitLbl = past && !isAppr() ? "Submit for approval" : isAll() ? "Save all changes" : "Save plan";
+    const submitLbl = past && !isAppr() ? "Request update" : isAll() ? "Save all changes" : "Save plan";
     const saveBar = (meta) => `<div class="save-bar"><span class="small muted">${state.dirty ? `<b style='color:var(--accent)'>Unsaved changes${isAll() && state.dirtyUnits.size ? ` in ${state.dirtyUnits.size} unit${state.dirtyUnits.size>1?"s":""}` : ""}</b>` : meta}</span>
         <div class="toolbar"><button class="btn" id="discardBtn" ${state.dirty?"":"disabled"}>Discard changes</button><button class="btn primary" id="saveBtn" ${state.dirty?"":"disabled"}>${ico(IC.save)}${submitLbl}</button></div></div>`;
     const noMatch = `<div class="empty"><b>No tasks match these filters</b><button class="btn" type="button" id="pfClear">Clear filters</button></div>`;
@@ -1089,7 +1090,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     const u = unitOf(state.editUnit);
     const access = !ed
       ? `<div class="banner warn" style="margin:12px 16px 0"><b>View only.</b> To update ${esc(u.name || "this unit")}, sign in with your name and ${esc(u.name || "the unit")}'s PIN. <button class="btn" id="signInBtn" style="margin-left:6px">Sign in</button></div>`
-      : past && !isAppr() ? `<div class="banner warn" style="margin:12px 16px 0"><b>This week has ended.</b> You can still update it, but your changes go to Group Strategy for approval and are recorded only when approved.</div>`
+      : past && !isAppr() ? `<div class="banner warn" style="margin:12px 16px 0"><b>This week is closed.</b> Progress for a past week can't be edited directly. Make the change and press <b>Request update</b>: Group Strategy reviews it and it is recorded only when approved.</div>`
       : state.week <= thisMonday() && !isAppr() ? `<div class="banner info" style="margin:12px 16px 0">Saved tasks keep their title, expected outcome, type, department, due date and priority (lock icon). Update status, %, notes, owner and evidence freely. To change a fixed field or remove a task, use the pencil or the bin: Group Strategy approves it first.</div>` : "";
     const listHint = ed && !(u.departments||[]).length ? `<div class="banner info" style="margin:12px 16px 0">${esc(u.name||"This unit")} has no departments yet. Open the ⋯ menu, choose <b>Departments</b> and add them, then pick one for each task.</div>` : "";
     const rdis = ed ? "" : "disabled";
@@ -1645,6 +1646,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     if (t.id === "restoreGo") { doRestore(); return; }
     if (t.dataset.openTask) { openPanel(t.dataset.openTask); return; }
     if (t.dataset.kids) { const k = "kid:" + t.dataset.kids; state.expanded.has(k) ? state.expanded.delete(k) : state.expanded.add(k); render(); return; }
+    if (t.id==="addUnplanned") { const nt = makeTask(state.editUnit, { unplanned: true }); render(); const el = document.getElementById("t-title-"+nt.id); el && el.focus(); return; }
     if (t.id==="addTask" || t.dataset.addUnit) { const u = t.dataset.addUnit || state.editUnit, nt = makeTask(u); render(); const el = document.getElementById("t-title-"+nt.id); el && el.focus(); }
     else if (t.id==="listsBtn") { state.showLists = !state.showLists; render(); }
     else if (t.id==="listsCancel") { state.showLists = false; render(); }

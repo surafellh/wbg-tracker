@@ -6,7 +6,7 @@
 // task, needs approval. Status, %, notes, owner, dependencies and evidence stay open.
 export const LOCKED = ["title", "kind", "dept", "outcome", "due", "priority"];
 // Fields compared when working out what changed (lu / lb are "last updated" stamps, not content).
-export const TASK_FIELDS = ["title", "kind", "dept", "outcome", "owner", "due", "priority", "prevStatus", "prevPct", "status", "pct", "completedAt", "depUnit", "dep", "notes", "ev", "carried", "carriedCount", "blockedSince", "category", "target", "measure", "actual", "lower", "ref", "parent", "weight"];
+export const TASK_FIELDS = ["title", "kind", "dept", "outcome", "owner", "due", "priority", "prevStatus", "prevPct", "status", "pct", "completedAt", "depUnit", "dep", "notes", "ev", "carried", "carriedCount", "blockedSince", "category", "target", "measure", "actual", "lower", "ref", "parent", "weight", "unplanned"];
 export const DEFAULT_APPROVERS = ["Surafel", "Surafel Hailu", "Ataklti", "Ataklti Nega"];
 
 const pad = (n) => String(n).padStart(2, "0");
