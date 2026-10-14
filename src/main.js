@@ -5,7 +5,7 @@ import { applyPlugin } from "jspdf-autotable";
 import { createData, configError, planFromRow, EVIDENCE, fileType } from "./data.js";
 import { startGate } from "./gate.js";
 import { groupTasks, rollupOf, rolledPlan, leafPlan, leafTasks, parentChoices, weightOf } from "./rollup.js";
-import { ROLES, ROLE_LABEL, ROLE_HELP, isAdmin, unitMember, deptOk, canUndo, canFeedback, canEditDepartments, roleText } from "./access.js";
+import { ROLES, ROLE_LABEL, ROLE_HELP, isAdmin, unitMember, deptOk, canUndo, canFeedback, canEditDepartments, roleText, canDecide, STAGE_LABEL } from "./access.js";
 import { WEEK_CUTOVER, LOCKED, planOps, needsApproval, applyOps, addisToday, addisWeekStart, calcPct, CATEGORIES, weekStartOf, weekEndOf, nextWeekOf, prevWeekOf } from "./rules.js";
 import { unitAlerts, levelRank, BLOCKED_DAYS } from "./alerts.js";
 import { renderDashboard } from "./dashboard.js";
@@ -178,7 +178,9 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
       res.saved = true; state.lastSave = { id: planId(week, u), at: Date.now() };
     }
     if (queued.length) {
-      const r = await api.requestChange(auth(), { id: newId(), unit: u, week, summary: (opts.prefix || "") + opSummary(queued), details: opLines(queued).slice(0, 60), patch: queued });
+      const byId = new Map([...((saved && saved.tasks) || []), ...((draft && draft.tasks) || [])].map(t => [t.id, t]));
+      const depts = [...new Set(queued.map(o => (o.task ? o.task.dept : (byId.get(o.id) || {}).dept) || "").filter(Boolean))];
+      const r = await api.requestChange(auth(), { id: newId(), unit: u, week, summary: (opts.prefix || "") + opSummary(queued), details: opLines(queued).slice(0, 60), patch: queued, depts });
       if (r.error) return { ...res, error: r.error };
       res.requested = queued.length;
     }
@@ -601,7 +603,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     $("#unitsTabBtn").hidden = !isAppr(); $("#peopleTabBtn").hidden = !isAppr();
     renderNav();
     const nb = X.badgeCount(), fbb = $("#fbCount"); if (fbb) { fbb.textContent = nb; fbb.hidden = !nb; }
-    const np = pendingFor().length, ab = $("#apprCount"); const nm = (state.mentions || []).length, nr = (state.rr ? state.rr.count + state.rr.access : 0) + (typeof unseenDecided === "function" ? unseenDecided().length : 0), bb = $("#bellBtn"); if (ab) { ab.textContent = np + nm + nr > 9 ? "9+" : np + nm + nr; ab.hidden = !(np + nm + nr); } if (bb) { bb.classList.toggle("has", !!(np + nm + nr)); bb.title = np + nm + nr ? [nm ? nm + " mention" + (nm === 1 ? "" : "s") : "", np ? np + " waiting for approval" : "", nr ? nr + " role request update" + (nr === 1 ? "" : "s") : ""].filter(Boolean).join(" · ") : "Notifications"; bb.setAttribute("aria-label", "Notifications: " + bb.title); }
+    const np = canDecideAny() ? toDecide().length : pendingFor().length, ab = $("#apprCount"); const nm = (state.mentions || []).length, nr = (state.rr ? state.rr.count + state.rr.access : 0) + (typeof unseenDecided === "function" ? unseenDecided().length : 0) + fyiForMe().length, bb = $("#bellBtn"); if (ab) { ab.textContent = np + nm + nr > 9 ? "9+" : np + nm + nr; ab.hidden = !(np + nm + nr); } if (bb) { bb.classList.toggle("has", !!(np + nm + nr)); bb.title = np + nm + nr ? [nm ? nm + " mention" + (nm === 1 ? "" : "s") : "", np ? np + (canDecideAny() ? " waiting for your approval" : " waiting for approval") : "", nr ? nr + " other update" + (nr === 1 ? "" : "s") : ""].filter(Boolean).join(" · ") : "Notifications"; bb.setAttribute("aria-label", "Notifications: " + bb.title); }
     $("#whoBtn").textContent = me ? ((me.name || me.email || "?").trim().split(/\s+/).slice(0, 2).map(w => w[0]).join("").toUpperCase() || "?") : "?"; $("#whoBtn").title = me ? me.name : "Sign in";
     $("#modeChip").hidden = dataMode !== "local";
   }
@@ -860,6 +862,15 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     }, () => { state.requests = []; });
   }
   const pendingFor = (u, w) => state.requests.filter(r => r.status === "pending" && (!u || r.unit === u) && (!w || r.week === w));
+  const canDecideAny = () => !!me && (isAppr() || ["leader", "planning"].includes(me.role));
+  const toDecide = () => canDecideAny() ? state.requests.filter(r => r.status === "pending" && canDecide(me, r)) : [];
+  const seenFyi = () => { try { return JSON.parse(store.get("wp-fyi-seen") || "[]"); } catch (e) { return []; } };
+  const markSeenFyi = ids => { const x = new Set([...seenFyi(), ...ids]); store.set("wp-fyi-seen", JSON.stringify([...x].slice(-80))); };
+  // planning heads are told when a chief has approved something in their unit
+  const fyiForMe = () => (me && me.role === "planning") ? state.requests.filter(r => r.status === "approved" && r.stage === "chief" && r.unit === me.unit && r.decidedBy && r.decidedBy !== me.name && !seenFyi().includes(r.id) && Date.now() - Date.parse(r.decidedAt || 0) < 7 * 864e5) : [];
+  const KIND_LABEL = { plan: "Plan", actual: "Progress update" };
+  const deptLabel = r => (r.dept || "").split(",").filter(Boolean).join(", ") || "Whole unit";
+  const reqTitle = r => `${deptLabel(r)} · ${unitName(r.unit)}`;
   let unsubAct = null;
   function subscribeActivity(){
     if (!db || unsubAct) return;
@@ -1130,16 +1141,19 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     }).join("");
   }
   function renderApprovals(){
-    const pend = state.requests.filter(r => r.status === "pending"), done = state.requests.filter(r => r.status !== "pending").slice(0, 30);
-    const intro = isAppr() ? `<div class="banner info">Changes to past weeks, to fixed task fields and task removals wait here. Approving applies the change to the plan as it is now and records it in the Activity log; rejecting leaves the plan unchanged and needs a written reason. The unit sees your comment.</div>`
-      : `<div class="banner info">These changes are waiting for Group Strategy. Only Group Strategy can accept or reject them.</div>`;
-    const card = r => `<div class="panel req-card" style="margin-bottom:12px"><div class="panel-head"><div><div class="unit-name">${esc(unitName(r.unit))} · <span class="muted">week of ${esc(weekLabel(r.week))}</span></div>
-        <div class="small muted">Asked by <b>${esc(r.by || "?")}</b> on ${esc(fmt((r.createdAt || "").slice(0, 10)))} ${esc((r.createdAt || "").slice(11, 16))} UTC · ${esc(r.summary)}</div></div>
-        ${isAppr() ? `<div class="req-decide"><textarea id="note-${esc(r.id)}" data-req-note="${esc(r.id)}" rows="2" placeholder="Comment to the unit. Required when you reject, optional when you approve." aria-label="Comment to the unit">${esc(state.reqNotes[r.id] || "")}</textarea><div class="toolbar"><button class="btn danger" data-reject="${esc(r.id)}">Reject</button><button class="btn primary" data-approve="${esc(r.id)}">Approve</button></div></div>` : (canEdit(r.unit) ? `<button class="btn" data-withdraw="${esc(r.id)}">Withdraw</button>` : "")}</div>
-      <div class="scroll"><table><thead><tr><th>Change</th><th>Task</th><th>Before</th><th>Proposed</th></tr></thead><tbody>${patchRows(r)}</tbody></table></div></div>`;
-    const hist = done.map(r => `<tr><td class="small num">${esc((r.decidedAt || r.createdAt || "").slice(0, 10))}</td><td class="small">${esc(unitName(r.unit))}</td><td class="small">${esc(fmt(r.week))}</td><td class="small">${esc(r.summary)}<div class="muted">${esc(r.by)}</div></td><td><span class="pill ${r.status === "approved" ? "s-done" : r.status === "rejected" ? "s-bad" : "s-none"}">${esc(r.status)}</span></td><td class="small">${esc(r.decidedBy || "")}${r.note ? `<div class="muted">${esc(r.note)}</div>` : ""}</td></tr>`).join("");
-    return `${intro}${pend.length ? pend.map(card).join("") : `<div class="panel" style="margin-bottom:16px"><div class="empty"><b>Nothing waiting for approval</b>Requests appear here as soon as a unit submits one.</div></div>`}
-      <div class="panel"><div class="panel-head"><h2>Recent decisions</h2></div>${hist ? `<div class="scroll"><table><thead><tr><th>When</th><th>Unit</th><th>Week</th><th>Request</th><th>Result</th><th>By / note</th></tr></thead><tbody>${hist}</tbody></table></div>` : `<div class="empty"><b>No decisions yet</b></div>`}</div>`;
+    const pend = state.requests.filter(r => r.status === "pending").sort((x, y) => (x.createdAt || "") < (y.createdAt || "") ? -1 : 1), done = state.requests.filter(r => r.status !== "pending").slice(0, 30);
+    const mine = pend.filter(r => canDecide(me, r)), others = pend.filter(r => !canDecide(me, r));
+    const intro = canDecideAny() ? `<div class="banner info">Requests go to the person one step above the one who asked: employees and managers to their chief, chiefs to the planning head (Group Strategy in group functions). Approving applies the change to the plan and records it in the Activity log; rejecting leaves the plan unchanged and needs a written reason. The unit sees your comment.</div>`
+      : `<div class="banner info">These changes are waiting for approval. Each one shows who has to decide it.</div>`;
+    const card = r => { const dec = canDecide(me, r); return `<div class="panel req-card" style="margin-bottom:12px"><div class="panel-head"><div><div class="unit-name">${esc(reqTitle(r))} · <span class="muted">week of ${esc(weekLabel(r.week))}</span> <span class="pill s-none">${esc(KIND_LABEL[r.kind] || "Plan")}</span></div>
+        <div class="small muted">Asked by <b>${esc(r.by || "?")}</b> on ${esc(fmt((r.createdAt || "").slice(0, 10)))} ${esc((r.createdAt || "").slice(11, 16))} UTC · ${esc(r.summary)}</div>
+        <div class="small muted">Waiting for: <b>${esc(STAGE_LABEL[r.stage || "group"])}</b></div></div>
+        ${dec ? `<div class="req-decide"><textarea id="note-${esc(r.id)}" data-req-note="${esc(r.id)}" rows="2" placeholder="Comment to the unit. Required when you reject, optional when you approve." aria-label="Comment to the unit">${esc(state.reqNotes[r.id] || "")}</textarea><div class="toolbar"><button class="btn danger" data-reject="${esc(r.id)}">Reject</button><button class="btn primary" data-approve="${esc(r.id)}">Approve</button></div></div>` : (canEdit(r.unit) ? `<button class="btn" data-withdraw="${esc(r.id)}">Withdraw</button>` : "")}</div>
+      <div class="scroll"><table><thead><tr><th>Change</th><th>Task</th><th>Before</th><th>Proposed</th></tr></thead><tbody>${patchRows(r)}</tbody></table></div></div>`; };
+    const hist = done.map(r => `<tr><td class="small num">${esc((r.decidedAt || r.createdAt || "").slice(0, 10))}</td><td class="small">${esc(reqTitle(r))}</td><td class="small">${esc(fmt(r.week))}</td><td class="small">${esc(r.summary)}<div class="muted">${esc(r.by)}</div></td><td><span class="pill ${r.status === "approved" ? "s-done" : r.status === "rejected" ? "s-bad" : "s-none"}">${esc(r.status)}</span></td><td class="small">${esc(r.decidedBy || "")}${r.note ? `<div class="muted">${esc(r.note)}</div>` : ""}</td></tr>`).join("");
+    const sect = (title, list) => list.length ? `<h3 style="margin:18px 0 8px">${esc(title)} <span class="muted small">${list.length}</span></h3>${list.map(card).join("")}` : "";
+    return `${intro}${pend.length ? (canDecideAny() ? sect("Waiting for you", mine) + sect("Waiting for someone else", others) : pend.map(card).join("")) : `<div class="panel" style="margin-bottom:16px"><div class="empty"><b>Nothing waiting for approval</b>Requests appear here as soon as someone submits one.</div></div>`}
+      <div class="panel" style="margin-top:16px"><div class="panel-head"><h2>Recent decisions</h2></div>${hist ? `<div class="scroll"><table><thead><tr><th>When</th><th>Department</th><th>Week</th><th>Request</th><th>Result</th><th>By / comment</th></tr></thead><tbody>${hist}</tbody></table></div>` : `<div class="empty"><b>No decisions yet</b></div>`}</div>`;
   }
   async function decide(id, approve){
     const r = state.requests.find(x => x.id === id); if (!r) return;
@@ -1820,7 +1834,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   function renderNav(){
     const g = groupOf(state.tab);
     document.querySelectorAll("#mainNav button").forEach(b => b.setAttribute("aria-current", String(b.dataset.group === g)));
-    const subs = (GROUPS[g] || []).filter(t => t !== "approvals" || isAppr() || pendingFor().length);
+    const subs = (GROUPS[g] || []).filter(t => t !== "approvals" || isAppr() || pendingFor().length || toDecide().length);
     const nb = X.badgeCount();
     $("#subNav").innerHTML = subs.length > 1 ? subs.map(t => `<button role="tab" data-sub="${t}" aria-selected="${t === state.tab}">${SUB_LABEL[t]}${t === "fb" && nb ? ` <span class="badge">${nb}</span>` : ""}${t === "approvals" && pendingFor().length ? ` <span class="badge">${pendingFor().length}</span>` : ""}</button>`).join("") : "";
     $("#subNav").hidden = !subs.length || subs.length < 2;
@@ -2050,11 +2064,16 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     const items = ms.map((m, i) => `<button type="button" class="bm-i" data-bm="${i}"><b>${esc(m.by)}</b> mentioned you on <span class="ref">${esc(m.ref)}</span> <span class="small muted">${esc(unitName(m.unit))}</span><div class="small muted">${esc(m.snippet)}</div></button>`).join("");
     const nrr = state.rr ? state.rr.count : 0, nac = state.rr ? state.rr.access : 0, dec = unseenDecided();
     const rrItems = (isAppr() ? (nrr ? `<button type="button" class="bm-i" data-bm-people="1"><b>${nrr}</b> role request${nrr === 1 ? "" : "s"} waiting for your decision</button>` : "") + (nac ? `<button type="button" class="bm-i" data-bm-people="1"><b>${nac}</b> access request${nac === 1 ? "" : "s"} waiting</button>` : "") : "") + dec.map(x => `<button type="button" class="bm-i" data-bm-prof="${esc(x.id)}">Your role request was <b>${x.status === "approved" ? "approved" : "not approved"}</b><div class="small muted">${esc(ROLE_LABEL[x.role] || x.role)}${x.note ? " · “" + esc(x.note) + "”" : ""}</div></button>`).join("");
+    const groups = new Map(); toDecide().forEach(r => { const k = r.unit + "|" + (r.dept || ""); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(r); });
+    const appItems = [...groups.values()].map(g => { const r0 = g[0], kinds = {}; g.forEach(r => kinds[KIND_LABEL[r.kind] || "Plan"] = (kinds[KIND_LABEL[r.kind] || "Plan"] || 0) + 1);
+      return `<button type="button" class="bm-i" data-bm-appr="1"><b>${esc(deptLabel(r0))}</b> · ${esc(unitName(r0.unit))} is asking for approval<div class="small muted">${Object.entries(kinds).map(([k, v]) => v + " " + k.toLowerCase() + (v === 1 ? "" : "s")).join(", ")} · from ${esc([...new Set(g.map(r => r.by))].join(", "))}</div></button>`; }).join("");
+    const fyi = fyiForMe();
+    const fyiItems = fyi.map(r => `<button type="button" class="bm-i" data-bm-fyi="${esc(r.id)}"><b>${esc(r.decidedBy)}</b> approved ${esc((KIND_LABEL[r.kind] || "plan").toLowerCase())} changes for <b>${esc(deptLabel(r))}</b><div class="small muted">${esc(r.summary)} · asked by ${esc(r.by)}</div></button>`).join("");
     const m = document.createElement("div"); m.id = "bellMenu"; m.className = "bell-menu";
-    m.innerHTML = `<div class="small muted" style="padding:8px 12px">Notifications</div>${items}${np ? `<button type="button" class="bm-i" data-bm-appr="1"><b>${np}</b> change${np === 1 ? "" : "s"} waiting for approval</button>` : ""}${rrItems}${!items && !np && !rrItems ? '<div class="small muted" style="padding:10px 12px 14px">Nothing new.</div>' : ""}`;
+    m.innerHTML = `<div class="small muted" style="padding:8px 12px">Notifications</div>${items}${appItems}${fyiItems}${np && !canDecideAny() ? `<button type="button" class="bm-i" data-bm-appr="1"><b>${np}</b> change${np === 1 ? "" : "s"} waiting for approval</button>` : ""}${rrItems}${!items && !np && !rrItems && !fyiItems ? '<div class="small muted" style="padding:10px 12px 14px">Nothing new.</div>' : ""}`;
     document.body.appendChild(m);
     const r = $("#bellBtn").getBoundingClientRect(); m.style.top = (r.bottom + 8) + "px"; m.style.right = Math.max(8, innerWidth - r.right) + "px";
-    m.addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; closeBellMenu(); if (b.dataset.bmAppr) goTab("approvals"); else if (b.dataset.bmPeople) goTab("people"); else if (b.dataset.bmProf) { markSeenRR([b.dataset.bmProf]); renderHero(); showMenu(); } else { const x = state.mentions[Number(b.dataset.bm)]; if (x) openTaskByRef(x.unit, x.ref, x.week); } });
+    m.addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; closeBellMenu(); if (b.dataset.bmAppr) goTab("approvals"); else if (b.dataset.bmFyi) { markSeenFyi([b.dataset.bmFyi]); renderHero(); goTab("approvals"); } else if (b.dataset.bmPeople) goTab("people"); else if (b.dataset.bmProf) { markSeenRR([b.dataset.bmProf]); renderHero(); showMenu(); } else { const x = state.mentions[Number(b.dataset.bm)]; if (x) openTaskByRef(x.unit, x.ref, x.week); } });
   }
   document.addEventListener("click", e => { if ($("#bellMenu") && !e.target.closest("#bellMenu") && !e.target.closest("#bellBtn")) closeBellMenu(); });
   const panelRoot = $("#panelRoot");
@@ -2711,7 +2730,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
           <div class="pf-code"><label for="pfCode">Have an approval code?</label><div class="toolbar"><input id="pfCode" type="password" autocomplete="off" placeholder="Approval code"><button class="btn" type="button" data-pf="rr-code" data-id="${esc(pend.id)}">Approve with code</button></div><div class="small muted">If Group Strategy is with you, they type their code here and your request is approved right away.</div></div></div>`
         : `<div class="pf-grid">${lab("pfRole", "Role you need", `<select id="pfRole">${REQ_ROLES.map(r => `<option value="${r}" ${r === me.role ? "selected" : ""}>${esc(ROLE_LABEL[r] || r)}</option>`).join("")}</select>`, `<span id="pfRoleHelp">${esc(ROLE_HELP[me.role] || "")}</span>`)}
           ${lab("pfUnit", "Unit", `<select id="pfUnit">${UNIT_OPTS(mu).replace("No unit", "Choose a unit")}</select>`)}
-          <div class="pf-f" id="pfDeptWrap" ${["leader", "planning"].includes(me.role) ? "hidden" : ""}><label>Departments</label>${ddHtml("pf-dept", mu, me.departments || [], "Choose departments")}</div>
+          <div class="pf-f" id="pfDeptWrap" ${["planning"].includes(me.role) ? "hidden" : ""}><label>Departments</label>${ddHtml("pf-dept", mu, me.departments || [], "Choose departments")}</div>
           </div>
           <div class="toolbar" style="margin-top:8px"><button class="btn primary" type="button" data-pf="rr-send">Send request to Group Strategy</button></div>`;
       const histH = hist.length ? `<div class="pf-hist">${hist.map(x => `<div><span class="pill ${ST_PILL[x.status]}">${ST_TXT[x.status]}</span> <span class="small">${detail(x.role, x.unit, x.departments)}</span>${x.note ? `<div class="small muted">“${esc(x.note)}”</div>` : ""}</div>`).join("")}</div>` : "";
@@ -2761,7 +2780,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
           await api.signOutEverywhere(); location.reload();
         } else if (k === "rr-send") {
           const role = $$("#pfRole").value, unit = $$("#pfUnit").value, deps = ddValues(root, "pf-dept");
-          const r = await api.requestRole({ role, unit, departments: ["leader", "planning"].includes(role) ? [] : deps, reason: "Requested from profile", kind: "upgrade" });
+          const r = await api.requestRole({ role, unit, departments: ["planning"].includes(role) ? [] : deps, reason: "Requested from profile", kind: "upgrade" });
           if (r.error) { toast(errText(r)); return; }
           toast("Request sent to Group Strategy"); await load(); draw(); refreshRR();
         } else if (k === "rr-code") {
@@ -2777,7 +2796,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
       const el = e.target;
       if (el.id === "pfTheme") { store.set("wp-theme", el.value); applyTheme(el.value); }
       else if (el.id === "pfStart") { store.set("wp-start", el.value); toast("Saved. The app opens there next time"); }
-      else if (el.id === "pfRole") { $$("#pfRoleHelp").textContent = ROLE_HELP[el.value] || ""; $$("#pfDeptWrap").hidden = ["leader", "planning"].includes(el.value); }
+      else if (el.id === "pfRole") { $$("#pfRoleHelp").textContent = ROLE_HELP[el.value] || ""; $$("#pfDeptWrap").hidden = ["planning"].includes(el.value); }
       else if (el.id === "pfUnit") ddRefill(root, "pf-dept", el.value, []);
     };
   }
@@ -2815,7 +2834,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     if (!rr.length && !acc.length) return "";
     const grant = (key, r) => `<div class="pp-grant"><div class="pf-f"><label>Give the role</label><select data-rr-role="${esc(key)}">${REQ_OPTS(r.role || "staff")}</select></div>
       <div class="pf-f"><label>Unit</label><select data-rr-unit="${esc(key)}">${UNIT_OPTS(r.unit)}</select></div>
-      <div class="pf-f" data-rr-deptwrap="${esc(key)}" ${["leader", "planning"].includes(r.role) ? "hidden" : ""}><label>Departments</label>${ddHtml("rr-" + key, r.unit, r.departments || [], "Choose departments")}</div></div>`;
+      <div class="pf-f" data-rr-deptwrap="${esc(key)}" ${["planning"].includes(r.role) ? "hidden" : ""}><label>Departments</label>${ddHtml("rr-" + key, r.unit, r.departments || [], "Choose departments")}</div></div>`;
     const cards = rr.map(r => `<div class="pp-card" data-rrc="${esc(r.id)}">
       <div class="pp-card-h">${avatar(r.name || r.email)}<div><b>${esc(r.name || r.email)}</b> <span class="pill ${r.kind === "signup" ? "s-prog" : "s-not"}">${r.kind === "signup" ? "Asked at sign-up" : "Role upgrade"}</span><div class="small muted">${esc(r.email)}${r.phone ? " · " + esc(r.phone) : ""}${r.jobTitle ? " · " + esc(r.jobTitle) : ""}</div></div></div>
       <div class="pp-ask"><span class="small muted">Has</span> ${rolePill(r.fromRole)} <span class="small">${esc(r.fromUnit ? unitName(r.fromUnit) : "–")}${(r.fromDepartments || []).length ? " · " + esc(r.fromDepartments.join(", ")) : ""}</span> <span class="pp-arrow">→</span> <span class="small muted">Asks for</span> ${rolePill(r.role)} <span class="small">${esc(r.unit ? unitName(r.unit) : "–")}${(r.departments || []).length ? " · " + esc(r.departments.join(", ")) : ""}</span></div>
@@ -2924,10 +2943,10 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
       } else if (a === "inv-del") await done(await api.adminDeleteInvite(id), "Invite removed");
       else if (a === "rr-yes" || a === "rr-no") {
         const card = q(`[data-rrc="${CSS.escape(id)}"]`), role = card.querySelector("[data-rr-role]").value, unit = card.querySelector("[data-rr-unit]").value || null, deps = ddValues(card, "rr-" + id), note = card.querySelector("[data-rr-note]").value;
-        await done(await api.adminDecideRole(id, a === "rr-yes", { role, unit, departments: ["leader", "planning"].includes(role) ? [] : deps, note }), a === "rr-yes" ? "Approved. Their access changes on their next action." : "Rejected");
+        await done(await api.adminDecideRole(id, a === "rr-yes", { role, unit, departments: ["planning"].includes(role) ? [] : deps, note }), a === "rr-yes" ? "Approved. Their access changes on their next action." : "Rejected");
       } else if (a === "req-yes" || a === "req-no") {
         const card = q(`[data-rrc="acc-${CSS.escape(id)}"]`), role = card.querySelector("[data-rr-role]").value, unit = card.querySelector("[data-rr-unit]").value || null, deps = ddValues(card, "rr-acc-" + id);
-        await done(await api.adminDecideAccess(id, a === "req-yes", { role, unit, title: "", departments: ["leader", "planning"].includes(role) ? [] : deps }), a === "req-yes" ? "Approved. They can now sign in." : "Rejected");
+        await done(await api.adminDecideAccess(id, a === "req-yes", { role, unit, title: "", departments: ["planning"].includes(role) ? [] : deps }), a === "req-yes" ? "Approved. They can now sign in." : "Rejected");
       } else if (a === "domains") await done(await api.adminSetDomains($("#domainsIn").value.split(/[ ,;]+/).filter(Boolean)), "Domains saved");
       else if (a === "backups") {
         const r = await api.adminBackups(); if (r.error) { toast(errText(r)); return; }
@@ -2949,7 +2968,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     if (el.id === "inv-role") { $("#inv-title-wrap").hidden = el.value !== "executive"; return; }
     if (el.id === "inv-unit") { ddRefill(main, "inv-dept", el.value, []); return; }
     if (el.dataset.rrUnit) { ddRefill(main.querySelector(`[data-rrc="${CSS.escape(el.dataset.rrUnit)}"]`), "rr-" + el.dataset.rrUnit, el.value, []); return; }
-    if (el.dataset.rrRole) { const w = main.querySelector(`[data-rr-deptwrap="${CSS.escape(el.dataset.rrRole)}"]`); if (w) w.hidden = ["leader", "planning"].includes(el.value); }
+    if (el.dataset.rrRole) { const w = main.querySelector(`[data-rr-deptwrap="${CSS.escape(el.dataset.rrRole)}"]`); if (w) w.hidden = ["planning"].includes(el.value); }
   });
   main.addEventListener("click", e => {
     if (e.target.id === "ppScrim") { state.pp.edit = null; render(); return; }

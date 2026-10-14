@@ -159,7 +159,7 @@ export function startGate(api, current) {
         if (r.error) return err(MSG[r.error] || "Could not finish setup: " + r.error);
         const want = roleSel ? roleSel.value : "staff";
         if (want !== "staff" && api.requestRole) {
-          let rr = null; try { rr = await api.requestRole({ role: want, unit, departments: ["leader", "planning"].includes(want) ? [] : deps, reason: "Asked for at sign-up", kind: "signup" }); } catch (x) { rr = { error: "x" }; }
+          let rr = null; try { rr = await api.requestRole({ role: want, unit, departments: ["planning"].includes(want) ? [] : deps, reason: "Asked for at sign-up", kind: "signup" }); } catch (x) { rr = { error: "x" }; }
           const ok = rr && !rr.error;
           shell(`<p><b>${ok ? "Your role request was sent to Group Strategy." : "You are in as Staff."}</b></p><p class="small muted">${ok ? "Until it is approved you have Staff access to your own department. You will see the answer on the bell inside the app." : "We could not send the role request. You can ask again from Profile, under Role and access."}</p>${ok && rr.id && api.approveRoleWithCode ? `<div style="margin:14px 0 6px"><label for="gCode" class="small muted">Group Strategy is with you? Enter the approval code to get the role now</label><input id="gCode" type="password" autocomplete="off" placeholder="Approval code"><div class="gate-err small" role="alert"></div><button class="btn" id="gCodeBtn" type="button">Approve with code</button></div>` : ""}<button class="btn primary" id="gGo" type="button">Continue</button>`);
           root.querySelector("#gGo").onclick = () => done(r.profile);

@@ -6,7 +6,7 @@ import { createClient } from "@supabase/supabase-js";
 import { SEED_UNITS, SEED_PLANS, SEED_ACTIVITY } from "./seedData.js";
 import { SEED_SUPPORT } from "./seedSupport.js";
 import { addisWeekStart, addisToday } from "./rules.js";
-import { isAdmin, fullRead, unitRead, unitMember, unitLead, canUndo, canFeedback, canEditDepartments, visiblePlan, mergeSave, mergeScope, deptOk } from "./access.js";
+import { isAdmin, fullRead, unitRead, unitMember, unitLead, canUndo, canFeedback, canEditDepartments, visiblePlan, mergeSave, mergeScope, deptOk, canDecide, routeStage } from "./access.js";
 
 const URL_ = import.meta.env.VITE_SUPABASE_URL;
 const KEY_ = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -18,7 +18,7 @@ const COLLECTIONS = {
   units: { table: "units", map: { name: "name", type: "type", order: "sort_order", departments: "departments", people: "people" }, ts: [] },
   plans: { table: "plans", map: { week: "week", unit: "unit_id", tasks: "tasks", wins: "wins", blockers: "blockers", asks: "asks", updatedAt: "updated_at", updatedBy: "updated_by", source: "source" }, ts: ["updatedAt"] },
   activity: { table: "activity", map: { ts: "ts", by: "by_name", unit: "unit_id", week: "week", action: "action", summary: "summary", details: "details" }, ts: ["ts"], nullText: ["week"] },
-  requests: { table: "change_requests", map: { createdAt: "created_at", unit: "unit_id", week: "week", planId: "plan_id", by: "requested_by", status: "status", summary: "summary", details: "details", patch: "patch", decidedBy: "decided_by", decidedAt: "decided_at", note: "decision_note" }, ts: ["createdAt", "decidedAt"] },
+  requests: { table: "change_requests", map: { createdAt: "created_at", unit: "unit_id", week: "week", planId: "plan_id", by: "requested_by", status: "status", summary: "summary", details: "details", patch: "patch", decidedBy: "decided_by", decidedAt: "decided_at", note: "decision_note", dept: "dept", kind: "req_kind", stage: "stage" }, ts: ["createdAt", "decidedAt"] },
   support: { table: "support_requests", map: { ref: "ref", function: "function_id", requester: "requester", category: "category", description: "description", priority: "priority", requested: "date_requested", status: "status", responded: "response_date", action: "action_taken", respondedBy: "responded_by", evidence: "evidence_ref", followUp: "follow_up", remarks: "remarks", createdBy: "created_by", createdAt: "created_at", updatedBy: "updated_by", updatedAt: "updated_at" }, ts: ["createdAt", "updatedAt"], nullText: ["requested", "responded"] },
   feedback: { table: "feedback", map: { unit: "unit_id", week: "week", from: "from_role", by: "by_name", body: "body", taskRef: "task_ref", createdAt: "created_at", ackBy: "ack_by", ackAt: "ack_at" }, ts: ["createdAt", "ackAt"], nullText: ["week", "ackAt"] },
   actions: { table: "corrective_actions", map: { unit: "unit_id", week: "week", source: "source", issue: "issue", action: "action", owner: "owner", due: "due", status: "status", taskTitle: "task_title", taskRef: "task_ref", notes: "notes", createdBy: "created_by", createdAt: "created_at", updatedBy: "updated_by", updatedAt: "updated_at", closedAt: "closed_at" }, ts: ["createdAt", "updatedAt", "closedAt"], nullText: ["week", "due", "closedAt"] },
@@ -336,6 +336,7 @@ function createLocalData() {
     { id: "gm@wagwagoelectric.com", name: "Wagwago GM (test)", role: "leader", title: "GM", unit: "wagwago-electric", departments: [] },
     { id: "planning@wagwagoelectric.com", name: "Tsedenya (Wagwago planning)", role: "planning", title: "Planning", unit: "wagwago-electric", departments: ["Planning"] },
     { id: "hr.manager@wagwagoelectric.com", name: "Eden (Wagwago HR manager)", role: "manager", title: "Manager", unit: "wagwago-electric", departments: ["HR"] },
+    { id: "hr.chief@wagwagoelectric.com", name: "Selam (Wagwago HR chief)", role: "leader", title: "Chief", unit: "wagwago-electric", departments: ["HR"] },
     { id: "design@wagwagoelectric.com", name: "Alem (Wagwago Design)", role: "staff", title: "", unit: "wagwago-electric", departments: ["Design and Engineering"] },
     { id: "planning@trucksload.net", name: "Trucksload planning (test)", role: "planning", title: "Planning", unit: "trucksload", departments: ["Planning"] },
     { id: "chro@wagwagoelectric.com", name: "Group HR chief (test)", role: "leader", title: "Chief", unit: "hrm", departments: [] },
@@ -398,15 +399,20 @@ function createLocalData() {
     requestChange(auth, req) {
       if (!unitOk(auth, req.unit) && !isAppr(auth)) return err("not_allowed");
       const r = getStore("requests");
-      r.push({ id: req.id, createdAt: new Date().toISOString(), unit: req.unit, week: req.week, planId: planId(req.week, req.unit), by: (auth.name || "").trim(), status: "pending", summary: req.summary || "", details: req.details || [], patch: req.patch || [], decidedBy: null, decidedAt: null, note: "" });
+      let depts = [...new Set((req.depts || []).filter(Boolean))];
+      if (["manager", "staff"].includes(auth.role)) { depts = depts.filter((d) => (auth.departments || []).includes(d)); if (!depts.length) depts = [...(auth.departments || [])]; }
+      const kind = (req.patch || []).some((o) => o.op === "submit") ? "plan" : (req.week < addisWeekStart() ? "actual" : "plan");
+      const stage = isAppr(auth) ? "group" : routeStage(people(), getStore("units"), req.unit, auth.role, depts);
+      r.push({ id: req.id, createdAt: new Date().toISOString(), unit: req.unit, week: req.week, planId: planId(req.week, req.unit), by: (auth.name || "").trim(), status: "pending", summary: req.summary || "", details: req.details || [], patch: req.patch || [], decidedBy: null, decidedAt: null, note: "", dept: depts.join(","), kind, stage });
       setStore("requests", r);
       addActivity(auth.name, req.unit, req.week, { action: "request", summary: "Asked for approval: " + (req.summary || ""), details: req.details || [] });
       return ok();
     },
     decideRequest(auth, id, approve, note, plan) {
-      if (!isAppr(auth)) return err("not_allowed");
       const r = getStore("requests"), q = r.find((x) => x.id === id);
       if (!q || q.status !== "pending") return err("not_pending");
+      if (!canDecide(auth, q)) return err("not_allowed");
+      if (!approve && !String(note || "").trim()) return err("reason_needed");
       if (approve) savePlanRaw(auth, { ...plan, unit: q.unit, week: q.week }, "");
       Object.assign(q, { status: approve ? "approved" : "rejected", decidedBy: auth.name.trim(), decidedAt: new Date().toISOString(), note: note || "" });
       setStore("requests", r);

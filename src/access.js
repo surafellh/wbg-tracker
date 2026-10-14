@@ -10,7 +10,7 @@ export const ROLE_LABEL = {
 export const ROLE_HELP = {
   super_admin: "Sees and changes everything, manages people and roles, approves changes, can undo anything.",
   executive: "Sees everything. Writes feedback. Cannot change plans. Set the title to CEO or DCEO.",
-  leader: "Sees every unit. Edits everything in their own unit or function.",
+  leader: "Sees every unit. Edits everything in their own unit or function. Approves the plans and updates of the departments they cover (leave departments empty to cover the whole unit).",
   planning: "Sees and edits everything in their own unit, including deleting. Manages the unit's departments.",
   manager: "Sees their whole unit. Edits only their own departments.",
   staff: "Sees and edits only their own department.",
@@ -78,4 +78,28 @@ export function mergeSave(p, unit, old, plan, ctx) {
 // Restore for a manager: take the old version of own departments only.
 export function mergeScope(p, unit, current, source) {
   return [...(current || []).filter((t) => !deptOk(p, unit, t.dept || "")), ...(source || []).filter((t) => deptOk(p, unit, t.dept || ""))];
+}
+
+// ---- approval chain: who decides a request (the database enforces the same rules) ----
+export const STAGE_LABEL = { chief: "Chief", planning: "Planning head", group: "Group Strategy" };
+const deptList = (r) => String((r && r.dept) || "").split(",").map((x) => x.trim()).filter(Boolean);
+export function canDecide(p, r) {
+  if (!p || !p.role || !r) return false;
+  if (p.role === "super_admin") return true;
+  if (r.by && p.name && r.by === p.name) return false; // nobody approves their own request
+  if (!p.unit || p.unit !== r.unit) return false;
+  const st = r.stage || "group";
+  if (p.role === "planning") return st === "chief" || st === "planning";
+  if (p.role === "leader") { const mine = p.departments || [], ds = deptList(r); return st === "chief" && (!mine.length || (ds.length > 0 && ds.every((d) => mine.includes(d)))); }
+  return false;
+}
+// Which step must decide a request made by `role` in `unit` for `depts`? (people = profiles, units = unit rows)
+export function routeStage(people, units, unit, role, depts) {
+  const fn = ((units || []).find((u) => u.id === unit) || {}).type === "Corporate function";
+  const act = (people || []).filter((x) => x.unit === unit && x.status === "active" && x.setupDone !== false);
+  const chief = act.some((x) => x.role === "leader" && (!(x.departments || []).length || (depts.length > 0 && depts.every((d) => x.departments.includes(d)))));
+  const plan = act.some((x) => x.role === "planning");
+  if (role === "staff" || role === "manager") return chief ? "chief" : (plan && !fn ? "planning" : "group");
+  if (role === "leader") return plan && !fn ? "planning" : "group";
+  return "group";
 }
