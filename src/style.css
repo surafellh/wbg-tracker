@@ -780,3 +780,6 @@ details.dd[open] .dd-btn{border-color:var(--brand)}
 .pf-code label{font-size:12px;color:var(--muted);font-weight:600;display:block;margin-bottom:4px}
 .pf-code input{flex:1;min-width:140px}
 .pp-depts,.pp-code{margin-bottom:16px}
+.ceo-i{padding:12px 0;border-top:1px solid var(--line)}.ceo-i:first-child{border-top:0}
+.ceo-h{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:6px}
+.ceo-l{margin:0;padding-left:20px;display:grid;gap:4px;font-size:14px}

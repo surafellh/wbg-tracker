@@ -6,6 +6,7 @@ import { createData, configError, planFromRow, EVIDENCE, fileType } from "./data
 import { startGate } from "./gate.js";
 import { groupTasks, rollupOf, rolledPlan, leafPlan, leafTasks, parentChoices, weightOf } from "./rollup.js";
 import { ROLES, ROLE_LABEL, ROLE_HELP, isAdmin, unitMember, deptOk, canUndo, canFeedback, canEditDepartments, roleText } from "./access.js";
+import { assess, actions as ceoActions } from "./ceoaction.js";
 import { WEEK_CUTOVER, LOCKED, planOps, needsApproval, applyOps, addisToday, addisWeekStart, calcPct, CATEGORIES, weekStartOf, weekEndOf, nextWeekOf, prevWeekOf } from "./rules.js";
 import { unitAlerts, levelRank, BLOCKED_DAYS } from "./alerts.js";
 import { renderDashboard } from "./dashboard.js";
@@ -412,6 +413,15 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     const overall = `<div class="panel overall" style="margin-bottom:14px"><div class="panel-head"><div><h2>Overall progress</h2><div class="small muted">${esc(scopeName)} · ${esc(perLabel)}</div></div></div>
       <div style="padding:6px 16px 16px">${sm.total ? `${progressBar("Average completion across " + sm.total + " task" + (sm.total === 1 ? "" : "s"), sm.avg, "", true)}
       <div class="toolbar small" style="margin-top:10px;gap:14px;flex-wrap:wrap"><span><b>${sm.done}</b> done</span><span><b>${sm.total - sm.done - sm.blocked}</b> in progress or not started</span><span><b>${sm.blocked}</b> blocked</span><span><b>${sm.overdue}</b> overdue</span>${sm.high ? `<span><b>${sm.highDone}</b> of <b>${sm.high}</b> high-priority done</span>` : ""}</div>` : `<div class="muted small">No tasks for this selection yet.</div>`}</div></div>`;
+    const ceoCard = (() => {
+      const mk = (id, nm, tt) => assess({ name: nm, type: unitOf(id).type, tasks: leafTasks(tt), today: todayIso });
+      let rows;
+      if (f.unit) { const a = mk(f.unit, unitName(f.unit), scope); rows = a ? [a] : []; }
+      else { const by = new Map(); scope.forEach(t => { if (!by.has(t.unit)) by.set(t.unit, []); by.get(t.unit).push(t); }); rows = [...by].map(([id, tt]) => mk(id, unitName(id), tt)).filter(Boolean).sort((a, b) => a.score - b.score); }
+      if (!rows.length) return "";
+      const item = a => `<div class="ceo-i"><div class="ceo-h"><b>${esc(a.name)}</b><span class="pill ${a.score >= 75 ? "s-done" : a.score >= 50 ? "s-prog" : "s-bad"}">${esc(a.band.label)} · ${a.score}%</span><span class="small muted">${a.isBU ? "Business unit" : "Function"}${a.isBU && a.finPct != null ? ` · financial ${a.finPct}%` : ""}</span></div><ol class="ceo-l">${ceoActions(a).map(x => `<li>${esc(x)}</li>`).join("")}</ol></div>`;
+      return `<div class="panel ceo" style="margin-bottom:14px"><div class="panel-head"><div><h2>Action for the CEO</h2><div class="small muted">${esc(scopeName)} · ${esc(perLabel)}</div></div></div><div style="padding:4px 16px 14px">${rows.map(item).join("")}</div></div>`;
+    })();
     let body = "";
     if (f.group) {
       const byU = new Map(); list.forEach(t => { if (!byU.has(t.unit)) byU.set(t.unit, { name: t.unitName, d: new Map() }); const u = byU.get(t.unit), k = t.dept || ""; if (!u.d.has(k)) u.d.set(k, []); u.d.get(k).push(t); });
@@ -426,7 +436,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
         });
       });
     } else body = list.map(readRows).join("");
-    return `${overall}<div class="panel">
+    return `${overall}${ceoCard}<div class="panel">
       ${f.from === "monthly" ? `<div class="toolbar" style="padding:12px 16px;border-bottom:1px solid var(--line)"><button class="btn" id="backMonthly">‹ Back to monthly report</button><span class="small muted">Showing the tasks behind the number you selected.</span></div>` : ""}
       ${chips.length ? `<div class="chipset" style="padding:12px 16px;border-bottom:1px solid var(--line)">${chips.map(([k, l]) => `<span class="chip">${esc(l)}<button data-chip="${k}" aria-label="Remove filter">×</button></span>`).join("")}</div>` : ""}
       <div class="panel-head">
