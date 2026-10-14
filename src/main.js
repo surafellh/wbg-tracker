@@ -134,11 +134,10 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   // ---------- saving: direct changes save now, the rest goes to Group Strategy for approval ----------
   const newId = () => `${Date.now().toString(36)}${uid()}`;
   const ERR = {
-    not_allowed: "Your role does not allow this change. If your access was just changed, sign out and in again.", cannot_change_self: "You cannot remove your own Group Strategy access.", title_needed: "Choose CEO or DCEO.", unit_needed: "Choose the unit.", department_needed: "Choose at least one department.", bad_email: "That is not a valid email.", already_registered: "That email already has an account.", name_needed: "Enter a full name.",
     conflict: "Someone saved this plan a moment ago. Their version is now loaded underneath yours: press Save again to add your changes.",
     needs_approval: "This change needs Group Strategy approval.", not_pending: "That request was already decided.",
     too_late: "Undo is only possible for 30 minutes after your own save.", not_found: "Nothing to restore.",
-    already_pending: "You already have a request waiting. Withdraw it first to send a different one.", no_change: "That is the same as your current role and unit.", reason_needed: "Write a short reason (at least 5 characters).", bad_role: "That role cannot be requested.", quota_exceeded: "Storage is full. Ask the Strategy Office to archive old weeks.", pin_too_short: "A PIN needs at least 4 characters.", code_too_short: "The approver code needs at least 6 characters.",
+    bad_code: "That approval code is not right.", too_many: "Too many wrong tries. Wait 15 minutes and try again.", code_off: "The approval code is not turned on.", already_pending: "You already have a request waiting. Withdraw it first to send a different one.", no_change: "That is the same as your current role and unit.", reason_needed: "Write a short reason (at least 5 characters).", bad_role: "That role cannot be requested.", quota_exceeded: "Storage is full. Ask the Strategy Office to archive old weeks.", pin_too_short: "A PIN needs at least 4 characters.", code_too_short: "The approver code needs at least 6 characters.",
   };
   const errText = e => ERR[e && (e.error || e.code || e)] || "Could not save. Check your connection and try again.";
   function opSummary(ops){
@@ -2631,13 +2630,29 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   const rolePill = r => `<span class="pill role-${esc(r)}">${esc(ROLE_LABEL[r] || r)}</span>`;
   // department dropdown: pick one or more from the unit's departments
   const ddLabel = (sel, ph) => sel.length ? (sel.length <= 2 ? sel.map(esc).join(", ") : `${sel.length} departments`) : `<span class="muted">${esc(ph || "Choose departments")}</span>`;
-  const ddHtml = (id, unit, sel, ph) => {
+  const ddHtml = (id, unit, sel, ph, open) => {
     const opts = unitOf(unit).departments || [], keep = (sel || []).filter(x => opts.includes(x));
-    return `<details class="dd" data-dd="${esc(id)}"><summary class="dd-btn">${ddLabel(keep, unit ? ph : "Choose a unit first")}</summary><div class="dd-menu">${opts.length ? opts.map(o => `<label><input type="checkbox" value="${esc(o)}" ${keep.includes(o) ? "checked" : ""}> ${esc(o)}</label>`).join("") : `<div class="small muted" style="padding:8px 10px">${unit ? "This unit has no departments yet" : "Choose a unit first"}</div>`}</div></details>`;
+    const add = unit && canEditDepartments(me, unit) ? `<div class="dd-add"><input type="text" maxlength="60" placeholder="New department" data-dd-new aria-label="New department name"><button type="button" class="btn small" data-dd-add>Add</button></div>` : "";
+    return `<details class="dd" data-dd="${esc(id)}" data-unit="${esc(unit || "")}"${open ? " open" : ""}><summary class="dd-btn">${ddLabel(keep, unit ? ph : "Choose a unit first")}</summary><div class="dd-menu">${opts.length ? opts.map(o => `<label><input type="checkbox" value="${esc(o)}" ${keep.includes(o) ? "checked" : ""}> ${esc(o)}</label>`).join("") : `<div class="small muted" style="padding:8px 10px">${unit ? "No departments yet" : "Choose a unit first"}</div>`}${add}</div></details>`;
   };
   const ddValues = (root, id) => { const d = (root || document).querySelector(`[data-dd="${CSS.escape(id)}"]`); return d ? [...d.querySelectorAll("input:checked")].map(i => i.value) : []; };
   const ddRefill = (root, id, unit, sel) => { const d = (root || document).querySelector(`[data-dd="${CSS.escape(id)}"]`); if (d) d.outerHTML = ddHtml(id, unit, sel || [], "Choose departments"); };
   document.addEventListener("change", e => { const m = e.target.closest && e.target.closest(".dd-menu"); if (!m) return; const dd = m.closest(".dd"), vals = [...m.querySelectorAll("input:checked")].map(i => i.value); dd.querySelector("summary").innerHTML = ddLabel(vals, "Choose departments"); });
+  async function saveDepts(unit, list, text){
+    try { const r = await api.saveUnit(auth(), "lists", { id: unit, departments: list }, text); if (r.error) { toast(errText(r)); return false; } } catch (e) { toast(errText(e)); return false; }
+    const u = state.units.find(x => x.id === unit); if (u) u.departments = list; state.ddBusy = Date.now(); return true;
+  }
+  async function ddAddDept(dd){
+    const unit = dd.dataset.unit, inp = dd.querySelector("[data-dd-new]"), name = (inp.value || "").trim().replace(/\s+/g, " ");
+    if (!name) { toast("Type a department name first"); return; }
+    const list = unitOf(unit).departments || [];
+    if (list.some(x => x.toLowerCase() === name.toLowerCase())) { toast("That department already exists"); return; }
+    const id = dd.dataset.dd, keep = [...dd.querySelectorAll("input:checked")].map(i => i.value);
+    if (!(await saveDepts(unit, [...list, name], `Added department "${name}"`))) return;
+    dd.outerHTML = ddHtml(id, unit, [...keep, name], "Choose departments", true); toast("Department added");
+  }
+  document.addEventListener("click", e => { const b = e.target.closest && e.target.closest("[data-dd-add]"); if (b) { e.preventDefault(); ddAddDept(b.closest(".dd")); } });
+  document.addEventListener("keydown", e => { if (e.key === "Enter" && e.target.matches && e.target.matches("[data-dd-new]")) { e.preventDefault(); ddAddDept(e.target.closest(".dd")); } });
   document.addEventListener("click", e => { document.querySelectorAll("details.dd[open]").forEach(d => { if (!d.contains(e.target)) d.open = false; }); });
 
   const REQ_ROLES = ["staff", "manager", "planning", "leader"];
@@ -2677,7 +2692,8 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
       const pend = reqs.find(x => x.status === "pending"), hist = reqs.filter(x => x.status !== "pending").slice(0, 3), mu = me.unit || "";
       const lab = (id, t, inner, hint) => `<div class="pf-f"><label for="${id}">${t}</label>${inner}${hint ? `<div class="small muted">${hint}</div>` : ""}</div>`;
       const reqBox = me.role === "super_admin" ? `<div class="small muted">You are Group Strategy. You decide role requests from the People page, so there is nothing to request here.</div>`
-        : pend ? `<div class="pf-pend"><span class="pill ${ST_PILL.pending}">${ST_TXT.pending}</span><div style="margin:6px 0"><b>${detail(pend.role, pend.unit, pend.departments)}</b></div>${pend.reason ? `<div class="small muted">“${esc(pend.reason)}”</div>` : ""}<div class="small muted">Sent ${esc(fmt((pend.createdAt || "").slice(0, 10)))} · ${pend.kind === "signup" ? "at sign-up" : "role upgrade"}. You will see the answer on the bell.</div><div style="margin-top:8px"><button class="btn small" type="button" data-pf="rr-wd" data-id="${esc(pend.id)}">Withdraw request</button></div></div>`
+        : pend ? `<div class="pf-pend"><span class="pill ${ST_PILL.pending}">${ST_TXT.pending}</span><div style="margin:6px 0"><b>${detail(pend.role, pend.unit, pend.departments)}</b></div>${pend.reason ? `<div class="small muted">“${esc(pend.reason)}”</div>` : ""}<div class="small muted">Sent ${esc(fmt((pend.createdAt || "").slice(0, 10)))} · ${pend.kind === "signup" ? "at sign-up" : "role upgrade"}. You will see the answer on the bell.</div><div style="margin-top:8px"><button class="btn small" type="button" data-pf="rr-wd" data-id="${esc(pend.id)}">Withdraw request</button></div>
+          <div class="pf-code"><label for="pfCode">Have an approval code?</label><div class="toolbar"><input id="pfCode" type="password" autocomplete="off" placeholder="Approval code"><button class="btn" type="button" data-pf="rr-code" data-id="${esc(pend.id)}">Approve with code</button></div><div class="small muted">If Group Strategy is with you, they type their code here and your request is approved right away.</div></div></div>`
         : `<div class="pf-grid">${lab("pfRole", "Role you need", `<select id="pfRole">${REQ_ROLES.map(r => `<option value="${r}" ${r === me.role ? "selected" : ""}>${esc(ROLE_LABEL[r] || r)}</option>`).join("")}</select>`, `<span id="pfRoleHelp">${esc(ROLE_HELP[me.role] || "")}</span>`)}
           ${lab("pfUnit", "Unit", `<select id="pfUnit">${UNIT_OPTS(mu).replace("No unit", "Choose a unit")}</select>`)}
           <div class="pf-f" id="pfDeptWrap" ${["leader", "planning"].includes(me.role) ? "hidden" : ""}><label>Departments</label>${ddHtml("pf-dept", mu, me.departments || [], "Choose departments")}</div>
@@ -2733,6 +2749,9 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
           const r = await api.requestRole({ role, unit, departments: ["leader", "planning"].includes(role) ? [] : deps, reason: $$("#pfWhy").value, kind: "upgrade" });
           if (r.error) { toast(errText(r)); return; }
           toast("Request sent to Group Strategy"); await load(); draw(); refreshRR();
+        } else if (k === "rr-code") {
+          const r = await api.approveRoleWithCode(b.dataset.id, $$("#pfCode").value); if (r.error) { toast(errText(r)); return; }
+          if (r.profile) applyMe(r.profile); toast("Approved with the code. Your access is updated."); await load(); draw(); refreshRR();
         } else if (k === "rr-wd") {
           const r = await api.withdrawRoleRequest(b.dataset.id); if (r.error) { toast(errText(r)); return; }
           toast("Request withdrawn"); await load(); draw(); refreshRR();
@@ -2757,6 +2776,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     if (!isAppr() || !api) return;
     state.people = state.people || { loading: true };
     try { const r = await api.adminUsers(); state.people = r.error ? { error: r.error } : { ...r }; } catch (e) { state.people = { error: e.code || "error" }; }
+    try { const c = await api.adminApprovalCodeStatus(); state.appCode = c && !c.error ? c : {}; } catch (e) { state.appCode = {}; }
     await refreshRR();
     if (state.tab === "people") render();
   }
@@ -2803,11 +2823,25 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
         <div class="pf-f"><label for="pp-role">Role</label><select id="pp-role">${ROLE_OPTS(u.role)}</select><div class="small muted" id="pp-role-help">${esc(ROLE_HELP[u.role] || "")}</div></div>
         <div class="pf-f" id="pp-title-wrap" ${u.role === "executive" ? "" : "hidden"}><label for="pp-title">Title</label><select id="pp-title"><option ${u.title === "CEO" ? "selected" : ""}>CEO</option><option ${u.title === "DCEO" ? "selected" : ""}>DCEO</option></select></div>
         <div class="pf-f"><label for="pp-unit">Unit</label><select id="pp-unit">${UNIT_OPTS(u.unit)}</select></div>
-        <div class="pf-f"><label>Departments</label>${ddHtml("pp-dept", u.unit, u.departments || [], "Choose departments")}<div class="small muted">Managers and staff need at least one. Leaders and planning see the whole unit.</div></div>
+        <div class="pf-f"><label>Departments</label>${ddHtml("pp-dept", u.unit, u.departments || [], "Choose departments")}<div class="small muted">Optional. Leaders and planning see and edit the whole unit. Managers and staff edit only their departments, so add one for them to start updating tasks.</div></div>
         <div class="pf-f"><label for="pp-status">Access</label><select id="pp-status" ${self ? "disabled" : ""}><option value="active" ${u.status === "active" ? "selected" : ""}>Active</option><option value="disabled" ${u.status === "disabled" ? "selected" : ""}>Disabled (cannot sign in)</option></select></div>
         ${self ? '<div class="banner info">You cannot change your own role or switch yourself off.</div>' : ""}
         <div class="small muted">Last seen ${u.lastSeen ? esc(String(u.lastSeen).slice(0, 16).replace("T", " ")) + " UTC" : "never"} · joined ${u.createdAt ? esc(String(u.createdAt).slice(0, 10)) : "–"}</div></div>
       <div class="panel-foot save-bar"><div class="toolbar">${self ? "" : `<button class="btn" type="button" data-pe="reset-pw" data-id="${esc(u.id)}" title="Removes their password and signs them out. They sign in with a code and choose a new password.">Reset password</button>`}</div><div class="toolbar"><button class="btn" type="button" data-pe="pp-close">Cancel</button><button class="btn primary" type="button" data-pe="save-user" data-id="${esc(u.id)}">Save changes</button></div></div></aside>`;
+  }
+  function ppDepts(){
+    const us = sortedUnits(); if (!us.length) return "";
+    const cur = state.pp.deptUnit && us.some(u => u.id === state.pp.deptUnit) ? state.pp.deptUnit : us[0].id, ds = unitOf(cur).departments || [];
+    return `<div class="panel pp-depts"><div class="panel-head"><div><h2>Departments</h2><div class="small muted">Add or remove the departments of a unit. Tasks, people and role requests pick from this list.</div></div>
+      <select id="ppDeptUnit" aria-label="Unit">${us.map(u => `<option value="${esc(u.id)}" ${u.id === cur ? "selected" : ""}>${esc(u.name)}</option>`).join("")}</select></div>
+      <div class="asks"><div class="chipset" style="margin-bottom:10px">${ds.map(d => `<span class="chip">${esc(d)}<button type="button" data-pe="dept-del" data-id="${esc(d)}" aria-label="Remove ${esc(d)}">×</button></span>`).join("") || '<span class="muted small">No departments yet. Add the first one below.</span>'}</div>
+      <div class="toolbar"><input type="text" id="ppDeptNew" placeholder="New department name" maxlength="60" style="flex:1;min-width:180px"><button class="btn primary" type="button" data-pe="dept-add">Add department</button></div></div></div>`;
+  }
+  function ppCode(){
+    const c = state.appCode || {};
+    return `<div class="panel pp-code"><div class="panel-head"><div><h2>Approval code</h2><div class="small muted">A code only you know. When someone is next to you, ask them to type it on their own screen (sign-up screen, or Profile and settings, Role and access). Their waiting role request is approved as they asked, and you don't need your own phone or PC.</div></div><span class="pill ${c.set ? "s-done" : "s-none"}">${c.set ? "On" : "Off"}</span></div>
+      <div class="asks"><div class="toolbar"><input type="password" id="ppCodeIn" autocomplete="new-password" placeholder="${c.set ? "New code (at least 6 characters)" : "Choose a code (at least 6 characters)"}" style="min-width:260px"><button class="btn primary" type="button" data-pe="code-save">${c.set ? "Change code" : "Turn on"}</button>${c.set ? '<button class="btn" type="button" data-pe="code-off">Turn off</button>' : ""}</div>
+      ${c.set && c.setAt ? `<div class="small muted" style="margin-top:6px">Set ${esc(String(c.setAt).slice(0, 10))}. Keep it to yourself and change it from time to time.</div>` : ""}</div></div>`;
   }
   function renderPeople(){
     const p = state.people;
@@ -2829,6 +2863,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
         <div class="pf-f"><label for="inv-unit">Unit</label><select id="inv-unit">${UNIT_OPTS("")}</select></div><div class="pf-f"><label>Departments</label>${ddHtml("inv-dept", "", [], "Choose departments")}</div>
         <div class="pf-f" style="align-self:end"><button class="btn primary" type="button" data-pe="invite">Send invite</button></div></div>
       ${invs ? `<div class="scroll"><table><thead><tr><th>Waiting invites</th><th>Role</th><th>Unit</th><th>Departments</th><th></th></tr></thead><tbody>${invs}</tbody></table></div>` : ""}</details>
+    ${ppDepts()}${ppCode()}
     <div class="grid2 even"><div class="panel"><div class="panel-head"><h2>Allowed email domains</h2></div><div class="asks"><p class="small">People with these company email domains can sign themselves up. They start as Staff in the unit they choose and can ask for a different role, which reaches you here and on the bell.</p>
       <div class="toolbar"><input type="text" id="domainsIn" style="min-width:260px" value="${esc((p.domains || []).join(", "))}"><button class="btn" data-pe="domains">Save domains</button></div></div></div>
       <div class="panel"><div class="panel-head"><h2>Daily backups</h2></div><div class="asks"><p class="small">A copy of all units and plans is kept every night. Download one to keep offline.</p><div id="backupList" class="toolbar" style="flex-wrap:wrap"><button class="btn" data-pe="backups">Show available days</button></div></div></div></div>${ppDrawer(p)}`;
@@ -2838,11 +2873,31 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     const done = async (r, ok) => { if (r && r.error) { toast(errText(r)); return false; } toast(ok); state.people = null; await loadPeople(); return true; };
     const q = (s) => document.querySelector(s);
     try {
+      if (a === "dept-add") {
+        const unit = state.pp.deptUnit || (sortedUnits()[0] || {}).id, el = $("#ppDeptNew"), name = (el.value || "").trim().replace(/\s+/g, " "), list = unitOf(unit).departments || [];
+        if (!name) { toast("Type a department name first"); return; }
+        if (list.some(x => x.toLowerCase() === name.toLowerCase())) { toast("That department already exists"); return; }
+        if (await saveDepts(unit, [...list, name], `Added department "${name}"`)) { state.pp.deptUnit = unit; toast("Department added"); render(); setTimeout(() => { const n = $("#ppDeptNew"); n && n.focus(); }); }
+        return;
+      }
+      if (a === "dept-del") {
+        const unit = state.pp.deptUnit || (sortedUnits()[0] || {}).id, list = unitOf(unit).departments || [];
+        if (!confirm(`Remove the department "${id}"? Tasks keep their label; people already in it keep it until you change them.`)) return;
+        if (await saveDepts(unit, list.filter(x => x !== id), `Removed department "${id}"`)) { state.pp.deptUnit = unit; toast("Department removed"); render(); }
+        return;
+      }
+      if (a === "code-save" || a === "code-off") {
+        const v = a === "code-off" ? "" : ($("#ppCodeIn").value || "").trim();
+        if (a === "code-off" && !confirm("Turn off the approval code? Role requests will then wait for you to approve them.")) return;
+        if (a === "code-save" && v.length < 6) { toast("Use at least 6 characters for the code."); return; }
+        const r = await api.adminSetApprovalCode(v); if (r.error) { toast(errText(r)); return; }
+        toast(a === "code-off" ? "Approval code turned off" : "Approval code saved");
+        const c = await api.adminApprovalCodeStatus(); state.appCode = c && !c.error ? c : {}; render(); return;
+      }
       if (a === "pp-edit") { state.pp.edit = id; render(); return; }
       if (a === "pp-close") { state.pp.edit = null; render(); return; }
       if (a === "save-user") {
         const role = q("#pp-role").value, unit = q("#pp-unit").value || null, deps = ddValues(document, "pp-dept");
-        if (["manager", "staff"].includes(role) && !deps.length) { toast("Choose at least one department for a " + (ROLE_LABEL[role] || role).toLowerCase() + "."); return; }
         const r = await api.adminSaveUser(id, { name: q("#pp-name").value, role, title: role === "executive" ? q("#pp-title").value : "", unit, departments: deps, status: q("#pp-status").value });
         if (await done(r, "Saved")) { state.pp.edit = null; render(); }
       } else if (a === "reset-pw") {
@@ -2850,16 +2905,13 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
         await done(await api.adminResetPassword(id), "Password reset. They sign in with a code.");
       } else if (a === "invite") {
         const role = q("#inv-role").value, unit = q("#inv-unit").value || null, deps = ddValues(document, "inv-dept");
-        if (["manager", "staff"].includes(role) && !deps.length) { toast("Choose at least one department for a " + (ROLE_LABEL[role] || role).toLowerCase() + "."); return; }
         await done(await api.adminInvite({ email: q("#inv-email").value, name: q("#inv-name").value, role, title: role === "executive" ? q("#inv-title").value : "", unit, departments: deps }), "Invite saved. They can now sign in with that email.");
       } else if (a === "inv-del") await done(await api.adminDeleteInvite(id), "Invite removed");
       else if (a === "rr-yes" || a === "rr-no") {
         const card = q(`[data-rrc="${CSS.escape(id)}"]`), role = card.querySelector("[data-rr-role]").value, unit = card.querySelector("[data-rr-unit]").value || null, deps = ddValues(card, "rr-" + id), note = card.querySelector("[data-rr-note]").value;
-        if (a === "rr-yes" && ["manager", "staff"].includes(role) && !deps.length) { toast("Choose at least one department."); return; }
         await done(await api.adminDecideRole(id, a === "rr-yes", { role, unit, departments: ["leader", "planning"].includes(role) ? [] : deps, note }), a === "rr-yes" ? "Approved. Their access changes on their next action." : "Rejected");
       } else if (a === "req-yes" || a === "req-no") {
         const card = q(`[data-rrc="acc-${CSS.escape(id)}"]`), role = card.querySelector("[data-rr-role]").value, unit = card.querySelector("[data-rr-unit]").value || null, deps = ddValues(card, "rr-acc-" + id);
-        if (a === "req-yes" && ["manager", "staff"].includes(role) && !deps.length) { toast("Choose at least one department."); return; }
         await done(await api.adminDecideAccess(id, a === "req-yes", { role, unit, title: "", departments: ["leader", "planning"].includes(role) ? [] : deps }), a === "req-yes" ? "Approved. They can now sign in." : "Rejected");
       } else if (a === "domains") await done(await api.adminSetDomains($("#domainsIn").value.split(/[ ,;]+/).filter(Boolean)), "Domains saved");
       else if (a === "backups") {
@@ -2876,6 +2928,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   main.addEventListener("change", e => {
     const el = e.target;
     if (el.id === "ppUnit" || el.id === "ppRole" || el.id === "ppSt") { state.pp[el.id === "ppUnit" ? "unit" : el.id === "ppRole" ? "role" : "st"] = el.value; const b = $("#ppBody"); if (b && state.people) b.innerHTML = ppRows(state.people); return; }
+    if (el.id === "ppDeptUnit") { state.pp.deptUnit = el.value; render(); return; }
     if (el.id === "pp-role") { $("#pp-title-wrap").hidden = el.value !== "executive"; $("#pp-role-help").textContent = ROLE_HELP[el.value] || ""; return; }
     if (el.id === "pp-unit") { ddRefill(main, "pp-dept", el.value, []); return; }
     if (el.id === "inv-role") { $("#inv-title-wrap").hidden = el.value !== "executive"; return; }
@@ -2906,7 +2959,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
       if (state.editUnit && state.editUnit !== ALL && !state.units.some(u => u.id===state.editUnit)) { state.editUnit = null; state.draft = null; }
       if (state.tab==="update" && !hasDraft()) loadDraft();
       else if (state.allDrafts) sortedUnits().forEach(u => { if (!state.allDrafts[u.id]) state.allDrafts[u.id] = clone(state.plans[u.id] || emptyPlan(u.id)); });
-      render();
+      if (!(state.tab === "people" && ((state.pp && state.pp.edit) || Date.now() - (state.ddBusy || 0) < 5000))) render();
     }, err => banner(`Could not load units (${err.code}). Reload the page to reconnect.`));
     subscribePlans();
   }

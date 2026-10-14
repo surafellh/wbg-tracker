@@ -773,3 +773,10 @@ details.dd[open] .dd-btn{border-color:var(--brand)}
 .dd-menu label,.pf-f .dd-menu label{display:flex;justify-content:flex-start;text-align:left;font-size:13.5px;font-weight:400;color:var(--ink);width:auto;margin:0}
 .dd-menu input[type=checkbox]{width:16px;height:16px;flex:none;margin:0}
 .pp-filters input[type=search]{height:36px;padding:0 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);font:inherit}
+
+.dd-add{display:flex;gap:6px;padding:6px;border-top:1px solid var(--line);margin-top:4px;position:sticky;bottom:0;background:var(--surface)}
+.dd-add input{flex:1;min-width:0;height:32px;padding:0 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);font:inherit}
+.pf-code{margin-top:12px;padding-top:10px;border-top:1px dashed var(--line)}
+.pf-code label{font-size:12px;color:var(--muted);font-weight:600;display:block;margin-bottom:4px}
+.pf-code input{flex:1;min-width:140px}
+.pp-depts,.pp-code{margin-bottom:16px}

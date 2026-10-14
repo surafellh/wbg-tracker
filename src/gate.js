@@ -3,7 +3,7 @@
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const MSG = {
   not_allowed: "That email is not allowed to sign in. Use your company email, or request access.",
-  name_needed: "Enter your full name.", unit_needed: "Choose your unit.", department_needed: "Choose your department.",
+  name_needed: "Enter your full name.", unit_needed: "Choose your unit.", department_needed: "That department is not in this unit.", bad_code: "That approval code is not right.", too_many: "Too many wrong tries. Wait 15 minutes and try again.", code_off: "The approval code is not turned on.",
   bad_request: "Enter your full name and a valid email.", contact_needed: "Add a WhatsApp number or phone so Group Strategy can reach you.",
   rate_limited: "Too many requests. Try again later.", already_registered: "That email already has access. Go back and sign in.",
 };
@@ -136,7 +136,7 @@ export function startGate(api, current) {
         <form id="gForm"><label for="sName">Full name</label><input id="sName" value="${esc(p.name || "")}" maxlength="60" autocomplete="name" required>
         ${invited ? `<div class="small muted" style="margin-top:8px">Your access: <b>${esc(p.role)}</b>${p.unit ? " · " + esc((list.find((u) => u.id === p.unit) || {}).name || p.unit) : ""}${(p.departments || []).length ? " · " + esc(p.departments.join(", ")) : ""}</div>` : `
         <label for="sUnit">Your unit</label><select id="sUnit"><option value="">Choose your unit</option>${list.map((u) => `<option value="${esc(u.id)}">${esc(u.name)}</option>`).join("")}</select>
-        <div id="sDeptWrap" hidden><label for="sDept">Your department</label><select id="sDept"></select></div>
+        <div id="sDeptWrap" hidden><label for="sDept">Your department <span class="muted">(optional)</span></label><select id="sDept"></select></div>
         <label for="sRole">Role you need</label><select id="sRole"><option value="staff">Staff: update my own department's plan</option><option value="manager">Manager: manage my departments' plans</option><option value="planning">Planning: prepare plans for my whole unit</option><option value="leader">Unit leader: lead my unit</option></select>
         <div id="sWhyWrap" hidden><label for="sWhy">Why do you need it?</label><input id="sWhy" maxlength="300" placeholder="For example: I lead the planning team of this unit"></div>
         <div class="small muted" style="margin-top:8px">You start as Staff in your own department. If you ask for another role, it goes to Group Strategy and you are told when it is approved.</div>`}
@@ -145,7 +145,7 @@ export function startGate(api, current) {
       const unitSel = root.querySelector("#sUnit");
       if (unitSel) unitSel.onchange = () => {
         const u = list.find((x) => x.id === unitSel.value), ds = (u && u.departments) || [], w = root.querySelector("#sDeptWrap");
-        w.hidden = !ds.length; root.querySelector("#sDept").innerHTML = `<option value="">Choose your department</option>` + ds.map((d) => `<option>${esc(d)}</option>`).join("");
+        w.hidden = !ds.length; root.querySelector("#sDept").innerHTML = `<option value="">Not now, I will choose later</option>` + ds.map((d) => `<option>${esc(d)}</option>`).join("");
       };
       const roleSel = root.querySelector("#sRole");
       if (roleSel) roleSel.onchange = () => { root.querySelector("#sWhyWrap").hidden = roleSel.value === "staff"; const dw = root.querySelector("#sDeptWrap"); if (dw && ["leader", "planning"].includes(roleSel.value)) dw.hidden = dw.hidden; };
@@ -160,8 +160,15 @@ export function startGate(api, current) {
         if (want !== "staff" && api.requestRole) {
           let rr = null; try { rr = await api.requestRole({ role: want, unit, departments: ["leader", "planning"].includes(want) ? [] : deps, reason: root.querySelector("#sWhy").value.trim() || "Asked for at sign-up", kind: "signup" }); } catch (x) { rr = { error: "x" }; }
           const ok = rr && !rr.error;
-          shell(`<p><b>${ok ? "Your role request was sent to Group Strategy." : "You are in as Staff."}</b></p><p class="small muted">${ok ? "Until it is approved you have Staff access to your own department. You will see the answer on the bell inside the app." : "We could not send the role request. You can ask again from Profile, under Role and access."}</p><button class="btn primary" id="gGo">Continue</button>`);
-          root.querySelector("#gGo").onclick = () => done(r.profile); return;
+          shell(`<p><b>${ok ? "Your role request was sent to Group Strategy." : "You are in as Staff."}</b></p><p class="small muted">${ok ? "Until it is approved you have Staff access to your own department. You will see the answer on the bell inside the app." : "We could not send the role request. You can ask again from Profile, under Role and access."}</p>${ok && rr.id && api.approveRoleWithCode ? `<div style="margin:14px 0 6px"><label for="gCode" class="small muted">Group Strategy is with you? Enter the approval code to get the role now</label><input id="gCode" type="password" autocomplete="off" placeholder="Approval code"><div class="gate-err small" role="alert"></div><button class="btn" id="gCodeBtn" type="button">Approve with code</button></div>` : ""}<button class="btn primary" id="gGo" type="button">Continue</button>`);
+          root.querySelector("#gGo").onclick = () => done(r.profile);
+          const cb = root.querySelector("#gCodeBtn");
+          if (cb) cb.onclick = async () => {
+            busy(cb, true, "Checking…"); const x = await api.approveRoleWithCode(rr.id, root.querySelector("#gCode").value); busy(cb, false, "Approve with code");
+            if (x.error) return err(MSG[x.error] || "Could not approve: " + x.error);
+            let np = x.profile; try { np = (await api.me()) || np; } catch (e) {} done(np || r.profile);
+          };
+          return;
         }
         done(r.profile);
       };
