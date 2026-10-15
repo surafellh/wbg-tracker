@@ -62,8 +62,9 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
 
   function toast(msg, action){
     const t = $("#toast"); t.innerHTML = ""; t.append(document.createTextNode(msg));
-    if (action) { const b = document.createElement("button"); b.className = "toast-act"; b.type = "button"; b.textContent = action.label; b.onclick = () => { t.hidden = true; action.fn(); }; t.append(b); }
-    t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(() => t.hidden = true, action ? 9000 : 2800);
+    const acts = (Array.isArray(action) ? action : [action]).filter(Boolean);
+    acts.forEach(a => { const b = document.createElement("button"); b.className = "toast-act"; b.type = "button"; b.textContent = a.label; b.onclick = () => { t.hidden = true; a.fn(); }; t.append(b); });
+    t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(() => t.hidden = true, acts.some(a => a.ms) ? Math.max(...acts.map(a => a.ms || 0)) : acts.length ? 9000 : 2800);
   }
 
   // ---------- data ----------
@@ -201,7 +202,11 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     state.dirty = false; state.remoteChanged = false; state.dirtyUnits = new Set();
     loadDraft(); render();
     const msg = [saved && (isAll() ? `Saved ${saved} plan${saved === 1 ? "" : "s"}` : "Plan saved"), requested && `${requested} change${requested === 1 ? "" : "s"} sent to Group Strategy for approval`].filter(Boolean).join(" · ") || "Nothing to save";
-    toast(msg, saved && !isAll() && state.lastSave && mayUndo() ? { label: "Undo", fn: undoLast } : null);
+    const undoAct = saved && !isAll() && state.lastSave && mayUndo() ? { label: "Undo", fn: undoLast } : null;
+    const sb = saved && !isAll() && state.tab === "plan" && state.week === nextMonday() ? subOf(state.editUnit, "week", state.week) : null;
+    const askSubmit = saved && !isAll() && state.tab === "plan" && state.week === nextMonday() && !(sb && sb.status === "pending") && (((state.plans[state.editUnit] || {}).tasks) || []).length;
+    if (askSubmit) toast("Plan saved. Now click Submit for approval to send it.", [{ label: "Submit for approval", fn: submitWeek, ms: 15000 }, undoAct]);
+    else toast(msg, undoAct);
   }
   async function undoLast(){
     const ls = state.lastSave; if (!ls) return;
