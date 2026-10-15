@@ -96,8 +96,8 @@ export function startGate(api, current) {
     async function screenPassword(p) {
       let has = false; try { has = await api.hasPassword(); } catch (x) {}
       shell(`<p><b>${has ? "Choose a new password" : "Create your password"}</b></p><p class="small muted">Use it with your email next time, so you do not need a code. At least 6 characters; a short sentence is a good password.</p>
-        <form id="gForm"><label for="pw1">New password</label><input id="pw1" type="password" autocomplete="new-password" required minlength="10">
-        <label for="pw2">Repeat it</label><input id="pw2" type="password" autocomplete="new-password" required minlength="10">
+        <form id="gForm"><label for="pw1">New password</label><input id="pw1" type="password" autocomplete="new-password" required minlength="6">
+        <label for="pw2">Repeat it</label><input id="pw2" type="password" autocomplete="new-password" required minlength="6">
         <div class="gate-err small" role="alert"></div><button class="btn primary" type="submit">Save password</button></form>
         <div class="small" style="margin-top:14px"><a href="#" id="gSkip">Skip for now</a> (you will use a code next time)</div>`);
       root.querySelector("#pw1").focus();
