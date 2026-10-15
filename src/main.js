@@ -7,7 +7,7 @@ import { startGate } from "./gate.js";
 import { groupTasks, rollupOf, rolledPlan, leafPlan, leafTasks, parentChoices, weightOf } from "./rollup.js";
 import { ROLES, ROLE_LABEL, ROLE_HELP, isAdmin, unitMember, deptOk, canUndo, canFeedback, canEditDepartments, roleText, canDecide, STAGE_LABEL } from "./access.js";
 import { assess, actions as ceoActions, letter as ceoLetter, INTERNAL, fmtD, addDaysIso } from "./ceoaction.js";
-import { WEEK_CUTOVER, LOCKED, planOps, needsApproval, applyOps, addisToday, addisWeekStart, calcPct, CATEGORIES, weekStartOf, weekEndOf, nextWeekOf, prevWeekOf } from "./rules.js";
+import { WEEK_CUTOVER, LOCKED, planOps, needsApproval, applyOps, addisToday, addisWeekStart, addisLockWeek, calcPct, CATEGORIES, weekStartOf, weekEndOf, nextWeekOf, prevWeekOf } from "./rules.js";
 import { unitAlerts, levelRank, BLOCKED_DAYS } from "./alerts.js";
 import { renderDashboard } from "./dashboard.js";
 import { createExtras } from "./extras.js";
@@ -252,7 +252,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   state.expanded = new Set(); state.bf = null; state.carryInfo = null; state.carryKey = "";
   const newFilter = () => ({ unit: "", status: "", statuses: [], priority: "", kind: "", dept: "", q: "", period: "week", from: "", group: false, category: "" });
   state.filter = newFilter();
-  const thisMonday = () => addisWeekStart();   // start of the current week (Saturday from 10 Oct 2026)
+  const thisMonday = () => weekStartOf(todayIso);   // start of the current week (Saturday from 10 Oct 2026)
   const nextMonday = () => nextWeekOf(thisMonday());
 
   // ---------- this week's update / next week's plan ----------
@@ -1175,7 +1175,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     if (!state.units.length) return `<div class="panel"><div class="empty"><b>No units to report for</b>Units appear here once the Strategy Office adds them.</div></div>`;
     const opts = `<option value="${ALL}" ${isAll()?"selected":""}>All units</option>` + sortedUnits().map(u => `<option value="${esc(u.id)}" ${u.id===state.editUnit?"selected":""}>${esc(u.name)}${u.id === myUnit() ? " (yours)" : ""}</option>`).join("");
     const single = hasDraft() && !isAll(), ed = single && canEdit(state.editUnit);
-    const past = state.week < thisMonday();
+    const past = state.week < addisLockWeek();
     const lead = single ? X.banner(state.editUnit) : "", remBox = single ? remindersPanel(state.editUnit) : "";
     const d0 = state.draft;
     const pick = `<div class="toolbar"><label for="unitPick" class="small muted">Unit</label><select id="unitPick"><option value="">Choose your function or unit…</option>${opts}</select></div>`;
@@ -1230,6 +1230,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     const access = !ed
       ? `<div class="banner warn" style="margin:12px 16px 0"><b>View only.</b> To update ${esc(u.name || "this unit")}, sign in with your name and ${esc(u.name || "the unit")}'s PIN. <button class="btn" id="signInBtn" style="margin-left:6px">Sign in</button></div>`
       : past && !isAppr() ? `<div class="banner warn" style="margin:12px 16px 0"><b>This week is closed.</b> Progress for a past week can't be edited directly. Make the change and press <b>Request update</b>: Group Strategy reviews it and it is recorded only when approved.</div>`
+      : state.week < thisMonday() && !isAppr() ? `<div class="slimnote warn">This week has ended. You can still update its progress until Saturday 12:00 noon; after that, changes need approval.</div>`
       : state.week <= thisMonday() && !isAppr() ? `<div class="slimnote" title="Saved tasks keep their title, expected outcome, type, department, due date and priority (lock icon). Update status, %, notes, owner and evidence freely. To change a fixed field or remove a task, use the pencil or the bin: Group Strategy approves it first.">ⓘ Some fields are locked. Hover for details.</div>` : "";
     const listHint = ed && !(u.departments||[]).length ? `<div class="banner info" style="margin:12px 16px 0">${esc(u.name||"This unit")} has no departments yet. Open the ⋯ menu, choose <b>Departments</b> and add them, then pick one for each task.</div>` : "";
     const rdis = ed ? "" : "disabled";

@@ -46,10 +46,18 @@ export function weekStartOf(s) {
 export const weekEndOf = (w) => (w >= WEEK_CUTOVER ? shiftIso(w, 6) : (shiftIso(w, 5) < WEEK_CUTOVER ? shiftIso(w, 5) : shiftIso(WEEK_CUTOVER, -1)));
 export const nextWeekOf = (w) => (w >= WEEK_CUTOVER ? shiftIso(w, 7) : (shiftIso(w, 7) >= WEEK_CUTOVER ? WEEK_CUTOVER : shiftIso(w, 7)));
 export const prevWeekOf = (w) => (w > WEEK_CUTOVER ? shiftIso(w, -7) : (w === WEEK_CUTOVER ? weekStartOf(shiftIso(WEEK_CUTOVER, -1)) : shiftIso(w, -7)));
-// The week closes (and the next one starts) on Saturday at 2 PM Addis time, not at midnight: a grace period of 14 hours
-// after Friday ends, so people can still finish updating the week that just ended on Saturday morning.
-export const GRACE_HOURS = 14;
-export const addisWeekStart = (now = new Date()) => weekStartOf(addisToday(new Date(now.getTime() - GRACE_HOURS * 36e5)));
+export const addisWeekStart = (now) => weekStartOf(addisToday(now));
+// Grace period: until Saturday 12:00 (Addis time) the week that just ended can still be updated directly.
+// Weeks themselves still run Saturday to Friday. Returns the latest week that may be saved without approval.
+export const GRACE_UNTIL_HOUR = 12;
+export function addisLockWeek(now = new Date()) {
+  const cur = addisWeekStart(now);
+  try {
+    const p = Object.fromEntries(new Intl.DateTimeFormat("en-GB", { timeZone: "Africa/Addis_Ababa", weekday: "short", hour: "2-digit", hour12: false }).formatToParts(now).map((x) => [x.type, x.value]));
+    if (p.weekday === "Sat" && Number(p.hour) % 24 < GRACE_UNTIL_HOUR) return prevWeekOf(cur);
+  } catch (e) { /* fall through */ }
+  return cur;
+}
 
 export function isApproverName(name, list = DEFAULT_APPROVERS) {
   const n = String(name || "").trim().toLowerCase();

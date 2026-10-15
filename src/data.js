@@ -5,7 +5,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { SEED_UNITS, SEED_PLANS, SEED_ACTIVITY } from "./seedData.js";
 import { SEED_SUPPORT } from "./seedSupport.js";
-import { addisWeekStart, addisToday } from "./rules.js";
+import { addisWeekStart, addisLockWeek, addisToday } from "./rules.js";
 import { isAdmin, fullRead, unitRead, unitMember, unitLead, canUndo, canFeedback, canEditDepartments, visiblePlan, mergeSave, mergeScope, deptOk, canDecide, routeStage } from "./access.js";
 
 const URL_ = import.meta.env.VITE_SUPABASE_URL;
@@ -391,7 +391,7 @@ function createLocalData() {
       if (!auth.role) return err("not_allowed");
       const old = getStore("plans").find((x) => x.id === planId(plan.week, plan.unit));
       if (old && base && !force && old.updatedAt !== base) return err("conflict", { updatedAt: old.updatedAt, updatedBy: old.updatedBy });
-      const r = mergeSave(auth, plan.unit, old, plan, { monday: addisWeekStart(), today: addisToday() });
+      const r = mergeSave(auth, plan.unit, old, plan, { monday: addisLockWeek(), today: addisToday() });
       if (r.error) return err(r.error, r.reason ? { reason: r.reason } : {});
       const at = savePlanRaw(auth, { ...plan, tasks: r.tasks, wins: r.wins, blockers: r.blockers, asks: r.asks });
       if (activity) addActivity(auth.name, plan.unit, plan.week, activity);
@@ -402,7 +402,7 @@ function createLocalData() {
       const r = getStore("requests");
       let depts = [...new Set((req.depts || []).filter(Boolean))];
       if (["manager", "staff"].includes(auth.role)) { depts = depts.filter((d) => (auth.departments || []).includes(d)); if (!depts.length) depts = [...(auth.departments || [])]; }
-      const kind = (req.patch || []).some((o) => o.op === "submit") ? "plan" : (req.week < addisWeekStart() ? "actual" : "plan");
+      const kind = (req.patch || []).some((o) => o.op === "submit") ? "plan" : (req.week < addisLockWeek() ? "actual" : "plan");
       const stage = isAppr(auth) ? "group" : routeStage(people(), getStore("units"), req.unit, auth.role, depts);
       r.push({ id: req.id, createdAt: new Date().toISOString(), unit: req.unit, week: req.week, planId: planId(req.week, req.unit), by: (auth.name || "").trim(), status: "pending", summary: req.summary || "", details: req.details || [], patch: req.patch || [], decidedBy: null, decidedAt: null, note: "", dept: depts.join(","), kind, stage });
       setStore("requests", r);
@@ -433,7 +433,7 @@ function createLocalData() {
       const when = h.at.slice(0, 16).replace("T", " ");
       if (h.tbl === "plans") {
         const p = planFromRow(h.old);
-        if (!isAppr(auth) && (auth.unit !== p.unit || p.week < addisWeekStart())) return err("not_allowed");
+        if (!isAppr(auth) && (auth.unit !== p.unit || p.week < addisLockWeek())) return err("not_allowed");
         let tasks = p.tasks;
         if (auth.role === "manager") { const cur = getStore("plans").find((x) => x.id === p.id); tasks = mergeScope(auth, p.unit, cur && cur.tasks, p.tasks); }
         savePlanRaw(auth, { ...p, tasks }, "Restored copy from " + when);
