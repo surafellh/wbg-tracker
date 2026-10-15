@@ -46,7 +46,10 @@ export function weekStartOf(s) {
 export const weekEndOf = (w) => (w >= WEEK_CUTOVER ? shiftIso(w, 6) : (shiftIso(w, 5) < WEEK_CUTOVER ? shiftIso(w, 5) : shiftIso(WEEK_CUTOVER, -1)));
 export const nextWeekOf = (w) => (w >= WEEK_CUTOVER ? shiftIso(w, 7) : (shiftIso(w, 7) >= WEEK_CUTOVER ? WEEK_CUTOVER : shiftIso(w, 7)));
 export const prevWeekOf = (w) => (w > WEEK_CUTOVER ? shiftIso(w, -7) : (w === WEEK_CUTOVER ? weekStartOf(shiftIso(WEEK_CUTOVER, -1)) : shiftIso(w, -7)));
-export const addisWeekStart = (now) => weekStartOf(addisToday(now));
+// The week closes (and the next one starts) on Saturday at 2 PM Addis time, not at midnight: a grace period of 14 hours
+// after Friday ends, so people can still finish updating the week that just ended on Saturday morning.
+export const GRACE_HOURS = 14;
+export const addisWeekStart = (now = new Date()) => weekStartOf(addisToday(new Date(now.getTime() - GRACE_HOURS * 36e5)));
 
 export function isApproverName(name, list = DEFAULT_APPROVERS) {
   const n = String(name || "").trim().toLowerCase();

@@ -252,7 +252,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   state.expanded = new Set(); state.bf = null; state.carryInfo = null; state.carryKey = "";
   const newFilter = () => ({ unit: "", status: "", statuses: [], priority: "", kind: "", dept: "", q: "", period: "week", from: "", group: false, category: "" });
   state.filter = newFilter();
-  const thisMonday = () => weekStartOf(todayIso);   // start of the current week (Saturday from 10 Oct 2026)
+  const thisMonday = () => addisWeekStart();   // start of the current week (Saturday from 10 Oct 2026)
   const nextMonday = () => nextWeekOf(thisMonday());
 
   // ---------- this week's update / next week's plan ----------
