@@ -959,12 +959,13 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     (state.activity || []).forEach(a => {
       if (a.action !== "save" || !a.role || !a.week || String(a.week).slice(0, 10) > cur || a.by === me.name || now - Date.parse(a.ts || 0) > 7 * DAY) return;
       const up = a.role === "leader" ? (me.role === "planning" && me.unit === a.unit) || me.role === "super_admin" || me.role === "executive"
+        : a.role === "planning" ? me.role === "super_admin" || me.role === "executive"
         : ["manager", "staff"].includes(a.role) ? me.role === "leader" && me.unit === a.unit : false;
       if (!up) return;
       const day = String(a.ts).slice(0, 10), id = "pu:" + a.by + "|" + a.unit + "|" + day, g = groups.get(id) || { id, by: a.by, role: a.role, unit: a.unit, week: String(a.week).slice(0, 10), ts: a.ts, n: 0, det: [] };
       g.n++; g.det.push({ ts: a.ts, s: a.summary || "", d: (Array.isArray(a.details) ? a.details : []).slice(0, 15).map(x => String(x).slice(0, 200)) }); if (a.ts > g.ts) g.ts = a.ts; groups.set(id, g);
     });
-    groups.forEach(g => out.push({ id: g.id, ts: g.ts, n: g.n, det: g.det.sort((x, y) => x.ts < y.ts ? -1 : 1).slice(-12), html: `<b>${esc(g.by)}</b> (${g.role === "leader" ? "chief" : g.role}, ${esc(unitName(g.unit))}) updated progress<div class="small muted">${g.n} save${g.n === 1 ? "" : "s"} on ${esc(fmt(String(g.ts).slice(0, 10)))}</div>`, go: { t: "unit", unit: g.unit, week: g.week } }));
+    groups.forEach(g => out.push({ id: g.id, ts: g.ts, n: g.n, det: g.det.sort((x, y) => x.ts < y.ts ? -1 : 1).slice(-12), html: `<b>${esc(g.by)}</b> (${g.role === "leader" ? "chief" : g.role === "planning" ? "planning head" : g.role}, ${esc(unitName(g.unit))}) updated progress<div class="small muted">${g.n} save${g.n === 1 ? "" : "s"} on ${esc(fmt(String(g.ts).slice(0, 10)))}</div>`, go: { t: "unit", unit: g.unit, week: g.week } }));
     return out;
   };
   function syncMsgs(){
