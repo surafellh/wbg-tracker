@@ -959,10 +959,10 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
       const up = a.role === "leader" ? (me.role === "planning" && me.unit === a.unit) || me.role === "super_admin" || me.role === "executive"
         : ["manager", "staff"].includes(a.role) ? me.role === "leader" && me.unit === a.unit : false;
       if (!up) return;
-      const day = String(a.ts).slice(0, 10), id = "pu:" + a.by + "|" + a.unit + "|" + day, g = groups.get(id) || { id, by: a.by, role: a.role, unit: a.unit, week: String(a.week).slice(0, 10), ts: a.ts, n: 0 };
-      g.n++; if (a.ts > g.ts) g.ts = a.ts; groups.set(id, g);
+      const day = String(a.ts).slice(0, 10), id = "pu:" + a.by + "|" + a.unit + "|" + day, g = groups.get(id) || { id, by: a.by, role: a.role, unit: a.unit, week: String(a.week).slice(0, 10), ts: a.ts, n: 0, det: [] };
+      g.n++; g.det.push({ ts: a.ts, s: a.summary || "", d: (Array.isArray(a.details) ? a.details : []).slice(0, 15).map(x => String(x).slice(0, 200)) }); if (a.ts > g.ts) g.ts = a.ts; groups.set(id, g);
     });
-    groups.forEach(g => out.push({ id: g.id, ts: g.ts, n: g.n, html: `<b>${esc(g.by)}</b> (${g.role === "leader" ? "chief" : g.role}, ${esc(unitName(g.unit))}) updated progress<div class="small muted">${g.n} save${g.n === 1 ? "" : "s"} on ${esc(fmt(String(g.ts).slice(0, 10)))}</div>`, go: { t: "unit", unit: g.unit, week: g.week } }));
+    groups.forEach(g => out.push({ id: g.id, ts: g.ts, n: g.n, det: g.det.sort((x, y) => x.ts < y.ts ? -1 : 1).slice(-12), html: `<b>${esc(g.by)}</b> (${g.role === "leader" ? "chief" : g.role}, ${esc(unitName(g.unit))}) updated progress<div class="small muted">${g.n} save${g.n === 1 ? "" : "s"} on ${esc(fmt(String(g.ts).slice(0, 10)))}</div>`, go: { t: "unit", unit: g.unit, week: g.week } }));
     return out;
   };
   function syncMsgs(){
@@ -971,7 +971,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
       const o = log[m.id];
       if (!o) { log[m.id] = { ...m, read: first && Date.now() - Date.parse(m.ts || 0) > 864e5 }; ch = true; }
       else if (m.n > (o.n || 1)) { log[m.id] = { ...m, read: false }; ch = true; }
-      else if (o.html !== m.html) { log[m.id] = { ...o, html: m.html, go: m.go }; ch = true; }
+      else if (o.html !== m.html || JSON.stringify(o.det || null) !== JSON.stringify(m.det || null)) { log[m.id] = { ...o, html: m.html, go: m.go, det: m.det }; ch = true; }
     });
     const keys = Object.keys(log).sort((a, b) => (log[b].ts || "") < (log[a].ts || "") ? -1 : 1);
     if (keys.length > 80) { keys.slice(80).forEach(k => delete log[k]); ch = true; }
@@ -2200,12 +2200,13 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     const appItems = [...groups.values()].map(g => { const r0 = g[0], kinds = {}; g.forEach(r => kinds[KIND_LABEL[r.kind] || "Plan"] = (kinds[KIND_LABEL[r.kind] || "Plan"] || 0) + 1);
       return `<button type="button" class="bm-i" data-bm-appr="1"><b>${esc(deptLabel(r0))}</b> · ${esc(unitName(r0.unit))} is asking for approval<div class="small muted">${Object.entries(kinds).map(([k, v]) => v + " " + k.toLowerCase() + (v === 1 ? "" : "s")).join(", ")} · from ${esc([...new Set(g.map(r => r.by))].join(", "))}</div></button>`; }).join("");
     const hist = msgList().slice(0, 40), nun = hist.filter(m => !m.read).length;
-    const fyiItems = hist.length ? `<div class="bm-head small muted"><span>History</span>${nun ? `<button type="button" class="lnk" data-bm-allread="1">Mark all as read</button>` : ""}</div>` + hist.map(m => `<button type="button" class="bm-i${m.read ? " bm-read" : " bm-new"}" data-bm-msg="${esc(m.id)}">${m.read ? "" : '<span class="bm-dot" aria-label="New"></span>'}${m.html}<div class="small muted">${esc(fmt(String(m.ts || "").slice(0, 10)))}</div></button>`).join("") : "";
+    const fyiItems = hist.length ? `<div class="bm-head small muted"><span>History</span>${nun ? `<button type="button" class="lnk" data-bm-allread="1">Mark all as read</button>` : ""}</div>` + hist.map(m => { const det = (m.det || []).map(x => `<div class="bm-d1"><b>${esc(new Date(x.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }))}</b> ${esc(x.s)}${(x.d || []).map(l => `<div class="bm-dl">${esc(l)}</div>`).join("")}</div>`).join("");
+      return `<div class="bm-wrap${m.read ? " bm-read" : " bm-new"}"><button type="button" class="bm-i" data-bm-msg="${esc(m.id)}">${m.read ? "" : '<span class="bm-dot" aria-label="New"></span>'}${m.html}<div class="small muted">${esc(fmt(String(m.ts || "").slice(0, 10)))}</div></button>${det ? `<button type="button" class="lnk bm-tgl" data-bm-tgl="1" aria-expanded="false">Show what changed</button><div class="bm-det" hidden>${det}</div>` : ""}</div>`; }).join("") : "";
     const m = document.createElement("div"); m.id = "bellMenu"; m.className = "bell-menu";
     m.innerHTML = `<div class="small muted" style="padding:8px 12px">Notifications</div>${items}${appItems}${fyiItems}${np && !canDecideAny() ? `<button type="button" class="bm-i" data-bm-appr="1"><b>${np}</b> change${np === 1 ? "" : "s"} waiting for approval</button>` : ""}${rrItems}${!items && !np && !rrItems && !appItems && !fyiItems ? '<div class="small muted" style="padding:10px 12px 14px">Nothing new.</div>' : ""}`;
     document.body.appendChild(m);
     const r = $("#bellBtn").getBoundingClientRect(); m.style.top = (r.bottom + 8) + "px"; m.style.right = Math.max(8, innerWidth - r.right) + "px";
-    m.addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; if (!b.dataset.bmAllread) closeBellMenu(); if (b.dataset.bmAppr) goTab("approvals"); else if (b.dataset.bmAllread) { markMsgsRead(); renderHero(); closeBellMenu(); bellMenu(); } else if (b.dataset.bmMsg) { const m = syncMsgs()[b.dataset.bmMsg]; markMsgsRead([b.dataset.bmMsg]); renderHero(); if (m) openMsg(m.go || {}); } else if (b.dataset.bmPeople) goTab("people"); else if (b.dataset.bmProf) { markSeenRR([b.dataset.bmProf]); renderHero(); showMenu(); } else { const x = state.mentions[Number(b.dataset.bm)]; if (x) openTaskByRef(x.unit, x.ref, x.week); } });
+    m.addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; if (b.dataset.bmTgl) { const d = b.nextElementSibling, open = d.hidden; d.hidden = !open; b.setAttribute("aria-expanded", String(open)); b.textContent = open ? "Hide details" : "Show what changed"; return; } if (!b.dataset.bmAllread) closeBellMenu(); if (b.dataset.bmAppr) goTab("approvals"); else if (b.dataset.bmAllread) { markMsgsRead(); renderHero(); closeBellMenu(); bellMenu(); } else if (b.dataset.bmMsg) { const m = syncMsgs()[b.dataset.bmMsg]; markMsgsRead([b.dataset.bmMsg]); renderHero(); if (m) openMsg(m.go || {}); } else if (b.dataset.bmPeople) goTab("people"); else if (b.dataset.bmProf) { markSeenRR([b.dataset.bmProf]); renderHero(); showMenu(); } else { const x = state.mentions[Number(b.dataset.bm)]; if (x) openTaskByRef(x.unit, x.ref, x.week); } });
   }
   document.addEventListener("click", e => { if ($("#bellMenu") && !e.target.closest("#bellMenu") && !e.target.closest("#bellBtn")) closeBellMenu(); });
   const panelRoot = $("#panelRoot");
