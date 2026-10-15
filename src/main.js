@@ -1838,7 +1838,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     else if (t.dataset.delYes !== undefined) { const [u, i] = t.dataset.delYes.split("|"); planFor(u).tasks.splice(Number(i),1); state.confirmDelete = null; state.dirty = true; state.dirtyUnits.add(u); render(); }
     else if (t.hasAttribute("data-del-no")) { state.confirmDelete = null; render(); }
     else if (t.id==="exportBtn") exportCsv();
-    else if (t.id==="pdfBtn") exportPdf();
+    else if (t.id==="pdfBtn") { if (state.tab === "dashboard") exportDashboardPdf(); else exportPdf(); }
     else if (t.id==="xlsxAllBtn") exportXlsxAll();
     else if (t.id==="unitPdfBtn") exportUnitPdf();
     else if (t.id==="unitXlsxBtn") exportUnitXlsx();
@@ -2365,6 +2365,58 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   }
 
   // ---------- PDF report ----------
+  // The dashboard as it looks on screen (cards, bars, charts), cut into landscape A4 pages between sections
+  async function exportDashboardPdf(){
+    if (!window.jspdf || !downloads) { toast("The report tool did not load. Reload the page and try again."); return; }
+    const main = document.getElementById("main"); if (!main || !main.querySelector(".kpis")) { toast("Open the dashboard first"); return; }
+    toast("Preparing the dashboard PDF…");
+    try {
+      const { default: html2canvas } = await import("html2canvas");
+      const WIDTH = 1280, bg = getComputedStyle(document.body).backgroundColor || "#ffffff";
+      let blocks = [], mainW = WIDTH;
+      const canvas = await html2canvas(main, { scale: 2, windowWidth: WIDTH, backgroundColor: bg, useCORS: true, logging: false, onclone: (doc) => {
+        const m = doc.getElementById("main"); if (!m) return;
+        doc.querySelectorAll(".dash-bar, .seg, .more > summary, .viz-table, .toast, #bellMenu, .tip, .tooltip").forEach(e => { e.style.display = "none"; });
+        doc.querySelectorAll(".more").forEach(d => { d.open = true; d.setAttribute("open", ""); });
+        m.querySelectorAll("*").forEach(e => { if (e.closest("svg")) return; const cs = doc.defaultView.getComputedStyle(e);
+          if (/(auto|scroll|hidden)/.test(cs.overflowY) && e.scrollHeight > e.clientHeight + 2 && e.tagName !== "TEXTAREA") { e.style.maxHeight = "none"; e.style.height = "auto"; e.style.overflow = "visible"; } });
+        doc.querySelectorAll("svg").forEach(svg => svg.querySelectorAll("*").forEach(el => {
+          const cs = doc.defaultView.getComputedStyle(el);
+          ["fill", "stroke", "stroke-width", "stroke-dasharray", "stroke-dashoffset", "stroke-linecap", "stroke-linejoin", "opacity", "fill-opacity", "font-size", "font-weight", "font-family", "text-anchor"].forEach(k => { const v = cs.getPropertyValue(k); if (v) el.style.setProperty(k, v); });
+        }));
+        mainW = m.getBoundingClientRect().width || WIDTH;
+        const top = m.getBoundingClientRect().top, list = [];
+        Array.from(m.children).forEach(ch => {
+          if (getComputedStyle(ch).display === "none") return;
+          const kids = ch.classList.contains("more") ? Array.from(ch.children).filter(k => k.tagName !== "SUMMARY") : [ch];
+          kids.forEach(k => { const r = k.getBoundingClientRect(); if (r.height > 2) list.push({ top: r.top - top, bottom: r.bottom - top }); });
+        });
+        blocks = list;
+      } });
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
+      const PW = doc.internal.pageSize.getWidth(), PH = doc.internal.pageSize.getHeight(), ML = 24, TOP = 30, BOT = 26;
+      const f = (PW - 2 * ML) / mainW, usable = (PH - TOP - BOT) / f, k = canvas.width / mainW;
+      const cuts = []; let y0 = 0; const total = canvas.height / k;
+      const sorted = blocks.sort((a, b) => a.top - b.top);
+      for (const b of sorted) {
+        if (b.bottom - y0 > usable && b.top > y0 + 1) { cuts.push([y0, b.top]); y0 = b.top; }
+        while (b.bottom - y0 > usable) { cuts.push([y0, y0 + usable]); y0 += usable; }
+      }
+      if (total - y0 > 1) cuts.push([y0, total]);
+      const scope = $(".dh h1") ? $(".dh h1").textContent.trim() : "Dashboard", per = $(".dh p") ? $(".dh p").textContent.trim() : "";
+      cuts.forEach(([a, b], i) => {
+        if (i) doc.addPage();
+        const h = Math.max(1, Math.round((b - a) * k)), c2 = document.createElement("canvas"); c2.width = canvas.width; c2.height = h;
+        const g = c2.getContext("2d"); g.fillStyle = bg; g.fillRect(0, 0, c2.width, h); g.drawImage(canvas, 0, Math.round(a * k), canvas.width, h, 0, 0, canvas.width, h);
+        doc.addImage(c2.toDataURL("image/jpeg", 0.92), "JPEG", ML, TOP, PW - 2 * ML, (h / k) * f);
+        doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.setTextColor(...Y.brown); doc.text("WBG STRATEGY OFFICE  ·  WEEKLY ACTIVITY TRACKING  ·  DASHBOARD", ML, 20);
+        doc.setFont("helvetica", "normal"); doc.setTextColor(...Y.muted); doc.text(`${scope}${per ? " · " + per : ""}  ·  Generated ${fmt(todayIso)}  ·  Page ${i + 1} of ${cuts.length}`, ML, PH - 12);
+      });
+      const safe = s => String(s).replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim();
+      await downloads.save({ filename: `Wagwago dashboard ${safe(scope)} ${todayIso}.pdf`, data: doc.output("arraybuffer") }); toast("Dashboard PDF saved");
+    } catch (e) { if (e && e.code !== "declined") toast("Could not make the dashboard PDF: " + (e && e.message || e)); }
+  }
   async function exportPdf(){
     if (!window.jspdf || !downloads) { toast("The report tool did not load. Reload the page and try again."); return; }
     const { jsPDF } = window.jspdf;

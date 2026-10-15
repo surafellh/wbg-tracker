@@ -58,7 +58,7 @@ export function renderDashboard(c) {
         <div class="dpop-g">Show</div><div class="dpop-sel"><select id="dCat" aria-label="Category"><option value="">All categories</option>${["Operational", "Revenue"].map((k) => `<option ${c.filter.category === k ? "selected" : ""}>${k}</option>`).join("")}</select>
         <select id="dLevel" aria-label="Count"><option value="deliverables" ${c.filter.level === "deliverables" ? "selected" : ""}>Count deliverables</option><option value="tasks" ${c.filter.level === "tasks" ? "selected" : ""}>Count all tasks</option></select></div></div>` : ""}</div>
     <div class="seg" role="tablist">${[["week", "Weekly"], ["month", "Monthly"], ["quarter", "Quarterly"]].map(([k, l]) => `<button role="tab" data-dper="${k}" aria-selected="${per0 === k}">${l}</button>`).join("")}</div>
-    ${c.downloads ? `<button class="btn" id="pdfBtn" title="Performance report (PDF)">PDF</button>` : ""}</div>`;
+    ${c.downloads ? `<button class="btn" id="pdfBtn" title="Download the dashboard as a PDF, with the charts">PDF</button>` : ""}</div>`;
 
   const pct = (n, t) => (t ? Math.round((n / t) * 100) : 0);
   const kpi = (k, v, of, p, pill) => `<div class="kpi"><div class="k">${k}</div><div class="v num">${v}${of ? ` <small>of ${of}</small>` : ""}</div><div class="kbar"><i style="width:${Math.min(100, p || 0)}%"></i></div>${pill ? `<span class="kpill">${pill}</span>` : ""}</div>`;
