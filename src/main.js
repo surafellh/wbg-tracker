@@ -266,7 +266,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   function carryBanner(){
     const c = state.carryInfo; if (!c || c.key !== `${state.week}|${state.editUnit}` || !state.draft) return "";
     const have = new Set(state.draft.tasks.map(t => norm(t.title))); const n = c.items.filter(t => !have.has(norm(t.title))).length;
-    return n ? `<div class="banner warn" style="margin:12px 16px 0">${n} unfinished task${n > 1 ? "s" : ""} from earlier weeks ${n > 1 ? "are" : "is"} not in this week yet. <button class="btn" id="bfBtn2" style="margin-left:6px">Review and bring forward</button></div>` : "";
+    return n ? `<div class="slimnote warn">${n} unfinished task${n > 1 ? "s" : ""} from earlier weeks not in this week. <button class="lnk" id="bfBtn2">Review and bring forward</button></div>` : "";
   }
   function fetchCarry(){
     if (!((state.tab === "update" || state.tab === "plan") && db && state.editUnit && !isAll() && state.draft)) return;
@@ -867,13 +867,13 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     tasks.forEach(t => { if (t.status === "Done") c.done++; else if (t.status === "In progress") c.prog++; else if (t.status === "Blocked" || t.status === "Delayed") c.blk++; else c.ns++; });
     return { total: Math.round(tasks.reduce((a, t) => a + pctOf(t), 0) / n), n, c };
   }
-  function scoreCard(tasks){
-    const sc = weekScore(tasks); if (!sc) return "";
+  function scoreCard(tasks, rem = ""){
+    const sc = weekScore(tasks); if (!sc) return rem ? `<div class="pstrip">${rem}</div>` : "";
     const r = RATE(sc.total), c = sc.c, seg = (k, col, l) => c[k] ? `<i style="width:${c[k] / sc.n * 100}%;background:${col}" title="${l}: ${c[k]}"></i>` : "";
-    return `<section class="panel score-card"><div class="sc-main"><div class="sc-h"><b>Week score</b><span class="pill s-not" title="Based on task completion only. The official rating is set at quarter end.">Indicative</span></div>
-      <div class="sc-n"><span class="num">${sc.total}%</span><span class="pill ${r[1]}">${r[0]}</span></div><div class="small muted">Task completion: the average % complete of every task this week. The official rating is set at quarter end.</div></div>
+    return `<div class="pstrip">${rem}<section class="panel score-card" title="Week score: the average % complete of every task this week. Indicative only; the official rating is set at quarter end.">
+      <div class="sc-n"><span class="sc-l">Week score</span><span class="num">${sc.total}%</span><span class="pill ${r[1]}">${r[0]}</span></div>
       <div class="sc-bars"><div class="stk">${seg("done", "var(--good)", "Done")}${seg("prog", "var(--bar)", "In progress")}${seg("blk", "var(--bad)", "Blocked or delayed")}${seg("ns", "var(--track)", "Not started")}</div>
-      <div class="leg"><span><i class="sw" style="background:var(--good)"></i>Done ${c.done}</span><span><i class="sw" style="background:var(--bar)"></i>In progress ${c.prog}</span><span><i class="sw" style="background:var(--bad)"></i>Blocked or delayed ${c.blk}</span><span><i class="sw" style="background:var(--track)"></i>Not started ${c.ns}</span></div></div></section>`;
+      <div class="leg"><span><i class="sw" style="background:var(--good)"></i>Done ${c.done}</span><span><i class="sw" style="background:var(--bar)"></i>In progress ${c.prog}</span><span><i class="sw" style="background:var(--bad)"></i>Blocked ${c.blk}</span><span><i class="sw" style="background:var(--track)"></i>Not started ${c.ns}</span></div></div></section></div>`;
   }
   const editHeadOld = () => `<thead><tr>${th("edit","title","Task")}${th("edit","due","Due")}${th("edit","dept","Department")}${th("edit","priority","Priority")}${th("edit","status","Status")}${th("edit","pct","Progress")}<th class="c-act"></th></tr></thead>`;
   const editHead = () => {
@@ -1129,8 +1129,8 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   function remindersPanel(u){
     const list = alertsFor(u).sort((a, b) => levelRank[a.level] - levelRank[b.level]);
     if (!list.length) return "";
-    const open = state.remOpen !== false;
-    return `<details class="reminders" ${open ? "open" : ""} id="remPanel"><summary><b>Reminders for ${esc(unitName(u))}</b> <span class="small muted">${list.length} item${list.length === 1 ? "" : "s"}, checked automatically</span></summary>
+    const open = state.remOpen === true;
+    return `<details class="reminders" ${open ? "open" : ""} id="remPanel"><summary title="Checked automatically for ${esc(unitName(u))}"><b>Reminders</b> <span class="pill ${list.some(a => a.level === "bad") ? "s-bad" : "s-not"}">${list.length}</span></summary>
       <ul>${list.map(a => `<li class="${a.level}"><span class="pill ${a.level === "bad" ? "s-bad" : a.level === "warn" ? "s-not" : "s-none"}">${a.level === "bad" ? "Act now" : a.level === "warn" ? "Soon" : "Note"}</span> <span>${esc(a.text)}${a.tasks.length ? `<span class="small muted"> ${a.tasks.slice(0, 3).map(t => `“${esc(short(t.title))}”${t.fromUnit ? ` (${esc(unitName(t.fromUnit))})` : ""}`).join(", ")}${a.tasks.length > 3 ? ` +${a.tasks.length - 3}` : ""}</span>` : ""}</span></li>`).join("")}</ul></details>`;
   }
   function requestsPanel(u){
@@ -1165,7 +1165,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     const pill = planTab ? (next ? '<span class="pill out">PLAN FOR NEXT WEEK</span>' : '<span class="pill s-not">NOT NEXT WEEK</span>') + sb : '<span class="pill tag-actual">ACTUAL</span>';
     const rel = w === tm ? "This week" : w < tm ? "Past week" : next ? "Next week" : "Later week";
     const hint = planTab ? (next ? "Add next week's tasks by hand, bring forward unfinished work, or fill in the Excel template and upload it. Press Submit for approval when the plan is ready." : `This is not next week. <button class="lnk" id="goNext">Go to next week (${esc(weekLabel(nextMonday()))})</button>`)
-      : "Update status and % as the week goes on. Tasks for the coming week go under Next plan.";
+      : "";
     return `<div class="weekban">${pill}<span class="pill s-none wk-no" title="Week number inside its month${fyWeek(w) ? " · fiscal week " + fyWeek(w) : ""}">${esc(wkTag(w))}</span><span class="wk-big">${esc(weekLabel(w))}</span><span class="eth">${esc(ethWeekLabel(w))}</span><span class="small muted">${rel}</span></div><div class="small muted plan-hint">${hint}</div>`;
   }
   const moreMenu = items => items.length ? `<details class="more"><summary class="btn" aria-label="More actions" title="More actions">${ico(IC.more)}</summary><div class="more-menu">${items.join("")}</div></details>` : "";
@@ -1174,7 +1174,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     const opts = `<option value="${ALL}" ${isAll()?"selected":""}>All units</option>` + sortedUnits().map(u => `<option value="${esc(u.id)}" ${u.id===state.editUnit?"selected":""}>${esc(u.name)}${u.id === myUnit() ? " (yours)" : ""}</option>`).join("");
     const single = hasDraft() && !isAll(), ed = single && canEdit(state.editUnit);
     const past = state.week < thisMonday();
-    const lead = single ? X.banner(state.editUnit) + remindersPanel(state.editUnit) : "";
+    const lead = single ? X.banner(state.editUnit) : "", remBox = single ? remindersPanel(state.editUnit) : "";
     const d0 = state.draft;
     const pick = `<div class="toolbar"><label for="unitPick" class="small muted">Unit</label><select id="unitPick"><option value="">Choose your function or unit…</option>${opts}</select></div>`;
     const menu = [];
@@ -1228,14 +1228,14 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     const access = !ed
       ? `<div class="banner warn" style="margin:12px 16px 0"><b>View only.</b> To update ${esc(u.name || "this unit")}, sign in with your name and ${esc(u.name || "the unit")}'s PIN. <button class="btn" id="signInBtn" style="margin-left:6px">Sign in</button></div>`
       : past && !isAppr() ? `<div class="banner warn" style="margin:12px 16px 0"><b>This week is closed.</b> Progress for a past week can't be edited directly. Make the change and press <b>Request update</b>: Group Strategy reviews it and it is recorded only when approved.</div>`
-      : state.week <= thisMonday() && !isAppr() ? `<div class="banner info" style="margin:12px 16px 0">Saved tasks keep their title, expected outcome, type, department, due date and priority (lock icon). Update status, %, notes, owner and evidence freely. To change a fixed field or remove a task, use the pencil or the bin: Group Strategy approves it first.</div>` : "";
+      : state.week <= thisMonday() && !isAppr() ? `<div class="slimnote" title="Saved tasks keep their title, expected outcome, type, department, due date and priority (lock icon). Update status, %, notes, owner and evidence freely. To change a fixed field or remove a task, use the pencil or the bin: Group Strategy approves it first.">ⓘ Some fields are locked. Hover for details.</div>` : "";
     const listHint = ed && !(u.departments||[]).length ? `<div class="banner info" style="margin:12px 16px 0">${esc(u.name||"This unit")} has no departments yet. Open the ⋯ menu, choose <b>Departments</b> and add them, then pick one for each task.</div>` : "";
     const rdis = ed ? "" : "disabled";
     const us = summarize(d);
     const deptList = [...new Set([...(u.departments || []), ...d.tasks.map(t => t.dept).filter(Boolean)])].sort();
     const vis = visibleRows(d.tasks);
     const prog = us.total ? ` · ${us.done} done · ${us.avg}% overall` : "";
-    return `${lead}${topRow}${planMode ? "" : scoreCard(d.tasks)}<div class="panel">${bar1}${planFilterBar(deptList, vis.length, d.tasks.length, prog)}${state.showLists && ed && canLead(state.editUnit) ? renderLists() : ""}${access}${warn}${requestsPanel(state.editUnit)}${ed ? carryBanner() : ""}${listHint}
+    return `${lead}${topRow}${planMode ? remBox && `<div class="pstrip">${remBox}</div>` : scoreCard(d.tasks, remBox)}<div class="panel">${bar1}${planFilterBar(deptList, vis.length, d.tasks.length, prog)}${state.showLists && ed && canLead(state.editUnit) ? renderLists() : ""}${access}${warn}${requestsPanel(state.editUnit)}${ed ? carryBanner() : ""}${listHint}
       ${ownerDatalist(state.editUnit)}${d.tasks.length ? (vis.length ? `<div class="scroll edit-scroll"><table class="edit-table">${editHead()}<tbody>${vis.map(r => taskRowHtml(state.editUnit, d.tasks[r.i], r.i, r.ind)).join("")}${fin ? finTotal(vis.map(r => d.tasks[r.i])) : ""}</tbody></table></div>` : (fin && !pf().q && !pf().pri && !pf().st && !pf().dep ? `<div class="empty"><b>No financial lines yet</b>Add revenue lines in Next plan or Monthly plan with the category Financial, and they appear here to fill in the actual.</div>` : noMatch)) : `<div class="empty"><b>No tasks yet for ${esc(unitName(state.editUnit))}</b>${ed ? "Add this week's tasks, or bring forward unfinished ones." : "Nothing entered for this week."}</div>`}
       ${planMode ? "" : `<div class="reports">
         <div><label for="f-wins">Key results this week</label><textarea id="f-wins" data-r="wins" placeholder="What was achieved" ${rdis}>${esc(d.wins)}</textarea></div>
@@ -1407,7 +1407,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     const alerts = sortedUnits().flatMap(u => unitAlerts({ unit: u, plan: state.plans[u.id], weekPlans: state.plans, week: state.week, thisMonday: thisMonday(), today: todayIso, requests: [] })).sort((a, b) => levelRank[a.level] - levelRank[b.level]);
     const w = ($("#main").clientWidth || 1000);
     return renderDashboard({ weeks: state.dashData.weeks, byWeek: by, byWeekAll: byAll, units: sortedUnits(), week: state.week, today: todayIso, filter: { ...state.dash, level: state.level },
-      alerts: alerts.filter(a => (!state.dash.type || unitOf(a.unit).type === state.dash.type) && (!state.dash.units.length || state.dash.units.includes(a.unit))), pending: pendingFor().length, downloads,
+      alerts: alerts.filter(a => (!state.dash.type || unitOf(a.unit).type === state.dash.type) && (!state.dash.units.length || state.dash.units.includes(a.unit))), pending: pendingFor().length, downloads, canUpdate: !!(me && !["executive"].includes(me.role)),
       width: w > 900 ? Math.floor((w - 16) * 2 / 3) - 34 : w - 34, unitName, h: { esc, fmt, weekLabel, toEth, ethMonth: w => ethName(toEth(w)), ethWeek: w => ethWeekLabel(w) } });
   }
 
@@ -1838,7 +1838,8 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     else if (t.dataset.delYes !== undefined) { const [u, i] = t.dataset.delYes.split("|"); planFor(u).tasks.splice(Number(i),1); state.confirmDelete = null; state.dirty = true; state.dirtyUnits.add(u); render(); }
     else if (t.hasAttribute("data-del-no")) { state.confirmDelete = null; render(); }
     else if (t.id==="exportBtn") exportCsv();
-    else if (t.id==="pdfBtn") { if (state.tab === "dashboard") exportDashboardPdf(); else exportPdf(); }
+    else if (t.id==="goUpdate") { const g = document.querySelector('#mainNav button[data-group="plans"]'); if (g) g.click(); else goTab("update"); }
+    else if (t.id==="pdfBtn") { if (state.tab === "dashboard") printDashboard(); else exportPdf(); }
     else if (t.id==="xlsxAllBtn") exportXlsxAll();
     else if (t.id==="unitPdfBtn") exportUnitPdf();
     else if (t.id==="unitXlsxBtn") exportUnitXlsx();
@@ -2366,62 +2367,13 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
 
   // ---------- PDF report ----------
   // The dashboard as it looks on screen (cards, bars, charts), cut into landscape A4 pages between sections
-  async function exportDashboardPdf(){
-    if (!window.jspdf || !downloads) { toast("The report tool did not load. Reload the page and try again."); return; }
-    const main = document.getElementById("main"); if (!main || !main.querySelector(".kpis")) { toast("Open the dashboard first"); return; }
-    toast("Preparing the dashboard PDF…");
-    try {
-      const { default: html2canvas } = await import("html2canvas");
-      const WIDTH = 1280, bg = "#f6f5ef";
-      // A hidden, off-screen copy of the dashboard in the light look. The screen you are looking at is not touched.
-      const stage = document.createElement("div");
-      stage.setAttribute("aria-hidden", "true");
-      stage.style.cssText = `position:fixed;left:-30000px;top:0;width:${WIDTH}px;background:${bg};color:#2a2208;pointer-events:none`;
-      for (const sh of Array.from(document.styleSheets)) { let rules; try { rules = sh.cssRules; } catch (e) { continue; }
-        for (const r of Array.from(rules)) if (r.type === 1 && r.selectorText === ":root") for (const k of Array.from(r.style)) if (k.startsWith("--")) stage.style.setProperty(k, r.style.getPropertyValue(k)); }
-      const m = main.cloneNode(true); m.removeAttribute("id"); m.style.cssText = "max-width:none;margin:0;padding:0 0 4px";
-      stage.appendChild(m); document.body.appendChild(stage);
-      let blocks = [], canvas;
-      try {
-        m.querySelectorAll(".dash-bar, .seg, .more > summary, .viz-table, .tip, .tooltip").forEach(e => e.remove());
-        m.querySelectorAll(".more").forEach(d => { d.open = true; d.setAttribute("open", ""); });
-        m.querySelectorAll("*").forEach(e => { if (e.closest("svg")) return; const cs = getComputedStyle(e);
-          if (/(auto|scroll|hidden)/.test(cs.overflowY) && e.scrollHeight > e.clientHeight + 2 && e.tagName !== "TEXTAREA") { e.style.maxHeight = "none"; e.style.height = "auto"; e.style.overflow = "visible"; } });
-        m.querySelectorAll("svg").forEach(svg => svg.querySelectorAll("*").forEach(el => { const cs = getComputedStyle(el);
-          ["fill", "stroke", "stroke-width", "stroke-dasharray", "stroke-dashoffset", "stroke-linecap", "stroke-linejoin", "opacity", "fill-opacity", "font-size", "font-weight", "font-family", "text-anchor"].forEach(k => { const v = cs.getPropertyValue(k); if (v) el.style.setProperty(k, v); }); }));
-        await new Promise(r => setTimeout(r, 50));
-        const top = m.getBoundingClientRect().top;
-        Array.from(m.children).forEach(ch => {
-          if (getComputedStyle(ch).display === "none") return;
-          const kids = ch.classList.contains("more") ? Array.from(ch.children) : [ch];
-          kids.forEach(k => { const r = k.getBoundingClientRect(); if (r.height > 2) blocks.push({ top: r.top - top, bottom: r.bottom - top }); });
-        });
-        canvas = await html2canvas(m, { scale: 2, windowWidth: WIDTH, backgroundColor: bg, useCORS: true, logging: false });
-      } finally { stage.remove(); }
-      const mainW = WIDTH;
-      const { jsPDF } = window.jspdf;
-      const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
-      const PW = doc.internal.pageSize.getWidth(), PH = doc.internal.pageSize.getHeight(), ML = 24, TOP = 30, BOT = 26;
-      const f = (PW - 2 * ML) / mainW, usable = (PH - TOP - BOT) / f, k = canvas.width / mainW;
-      const cuts = []; let y0 = 0; const total = canvas.height / k;
-      const sorted = blocks.sort((a, b) => a.top - b.top);
-      for (const b of sorted) {
-        if (b.bottom - y0 > usable && b.top > y0 + 1) { cuts.push([y0, b.top]); y0 = b.top; }
-        while (b.bottom - y0 > usable) { cuts.push([y0, y0 + usable]); y0 += usable; }
-      }
-      if (total - y0 > 1) cuts.push([y0, total]);
-      const scope = $(".dh h1") ? $(".dh h1").textContent.trim() : "Dashboard", per = $(".dh p") ? $(".dh p").textContent.trim() : "";
-      cuts.forEach(([a, b], i) => {
-        if (i) doc.addPage();
-        const h = Math.max(1, Math.round((b - a) * k)), c2 = document.createElement("canvas"); c2.width = canvas.width; c2.height = h;
-        const g = c2.getContext("2d"); g.fillStyle = bg; g.fillRect(0, 0, c2.width, h); g.drawImage(canvas, 0, Math.round(a * k), canvas.width, h, 0, 0, canvas.width, h);
-        doc.addImage(c2.toDataURL("image/jpeg", 0.92), "JPEG", ML, TOP, PW - 2 * ML, (h / k) * f);
-        doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.setTextColor(...Y.brown); doc.text("WBG STRATEGY OFFICE  ·  WEEKLY ACTIVITY TRACKING  ·  DASHBOARD", ML, 20);
-        doc.setFont("helvetica", "normal"); doc.setTextColor(...Y.muted); doc.text(`${scope}${per ? " · " + per : ""}  ·  Generated ${fmt(todayIso)}  ·  Page ${i + 1} of ${cuts.length}`, ML, PH - 12);
-      });
-      const safe = s => String(s).replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim();
-      await downloads.save({ filename: `Wagwago dashboard ${safe(scope)} ${todayIso}.pdf`, data: doc.output("arraybuffer") }); toast("Dashboard PDF saved");
-    } catch (e) { if (e && e.code !== "declined") toast("Could not make the dashboard PDF: " + (e && e.message || e)); }
+  function printDashboard(){
+    const opened = [...document.querySelectorAll("details.more:not([open])")];
+    opened.forEach((d) => d.setAttribute("open", ""));
+    document.body.classList.add("printing-dash");
+    const done = () => { document.body.classList.remove("printing-dash"); opened.forEach((d) => d.removeAttribute("open")); window.removeEventListener("afterprint", done); };
+    window.addEventListener("afterprint", done);
+    setTimeout(() => window.print(), 150);
   }
   async function exportPdf(){
     if (!window.jspdf || !downloads) { toast("The report tool did not load. Reload the page and try again."); return; }

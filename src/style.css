@@ -802,3 +802,48 @@ details.dd[open] .dd-btn{border-color:var(--brand)}
 .bm-det{margin:0 12px 10px;padding:8px 10px;background:var(--bg,#fff);border:1px solid var(--line);border-radius:8px;font-size:12px}
 .bm-d1+.bm-d1{margin-top:8px;padding-top:8px;border-top:1px dashed var(--line)}
 .bm-dl{margin-top:3px;color:var(--muted,#667);overflow-wrap:anywhere}
+
+/* ---------- Dashboard: print / Save as PDF (always light, vector charts, selectable text) ---------- */
+@media print{
+  html:has(body.printing-dash),html:has(body.printing-dash):root{color-scheme:light!important;
+    --bg:#fff;--surface:#fff;--surface-2:#faf8ee;--ink:#2a2208;--muted:#6b5f3a;--line:#e8e4d3;
+    --brand:#8a6400;--brand-soft:#fbefbd;--accent:#b5560b;--track:#ece8d4;--ghost:#e8d38a;--bar:#e0a800;--btn:#f5c518;--btn-ink:#2a2208;
+    --good:#1d7f55;--good-bg:#dff2e8;--warn:#8a5a00;--warn-bg:#fdeec4;--bad:#b63a26;--bad-bg:#fbe1db;--neutral-bg:#efecdf;
+    --viz-1:#e0a800;--viz-2:#6f5cc4;--viz-s1:#1d7f55;--viz-s2:#e0a800;--viz-s3:#6f5cc4;--viz-s4:#b63a26;--viz-grid:#ece3c4;
+    --hm0:#dcae2a;--hm1:#c49200;--hm2:#a07300;--hm3:#7c5600;--hm4:#553b00;--hm-ink0:#2a2208;--hm-ink1:#2a2208;--hm-ink2:#fff;--hm-ink3:#fff;--hm-ink4:#fff}
+  body.printing-dash{-webkit-print-color-adjust:exact;print-color-adjust:exact;background:#fff!important;color:#2a2208!important}
+  body.printing-dash .dash-bar,body.printing-dash .seg,body.printing-dash .back,body.printing-dash .toast{display:none!important}
+  body.printing-dash .panel,body.printing-dash .kpis>*{break-inside:avoid;box-shadow:none!important}
+  body.printing-dash *{max-height:none!important}
+  body.printing-dash .scroll,body.printing-dash [style*="overflow"]{overflow:visible!important}
+  body.printing-dash .dh::before{content:"WBG STRATEGY OFFICE · WEEKLY ACTIVITY TRACKING";display:block;font-size:9px;letter-spacing:.12em;color:#6b5f3a;margin-bottom:4px}
+}
+@media print{body.printing-dash button.bul-row:not(.x):not(.y):not(.z){display:grid!important;break-inside:avoid}body.printing-dash .bul{max-height:none!important;overflow:visible!important}}
+/* Print layout: fixed A4 landscape "report page", no browser header/footer, keeps the two-column dashboard grid */
+@media print{
+  @page{size:A4 landscape;margin:0}
+  body.printing-dash{zoom:.74;padding:10mm 11mm!important}
+  body.printing-dash .wrap,body.printing-dash main{max-width:none!important;padding:0!important}
+  body.printing-dash .dgrid{grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important}
+  body.printing-dash .dgrid-b{grid-template-columns:minmax(0,3fr) minmax(0,2fr)!important}
+  body.printing-dash .kpis{grid-template-columns:repeat(4,minmax(0,1fr))!important}
+}
+
+/* Progress update: compact status strip (reminders + week score side by side) */
+.pstrip{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:12px;align-items:start;margin-bottom:12px}
+.pstrip:not(:has(.score-card)),.pstrip:not(:has(.reminders)){grid-template-columns:minmax(0,1fr)}
+.pstrip .reminders{margin:0;padding:10px 14px;border-left-width:4px}
+.pstrip .reminders summary{display:flex;align-items:center;gap:8px;min-height:30px}
+.pstrip .score-card{margin:0;padding:10px 16px;display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 24px;align-items:center}
+.pstrip .sc-n{margin:0;gap:10px;align-items:center}.pstrip .sc-n .num{font-size:24px;line-height:1}
+.pstrip .sc-l{font-size:12px;color:var(--muted);font-weight:600}
+.pstrip .score-card .stk{height:8px;margin-bottom:6px}
+.pstrip .score-card .leg{font-size:12px;gap:2px 14px}
+@media (max-width:900px){.pstrip{grid-template-columns:minmax(0,1fr)}.pstrip .score-card{grid-template-columns:minmax(0,1fr)}}
+
+.slimnote{margin:8px 16px 0;padding:6px 10px;border-radius:8px;font-size:12.5px;color:var(--muted);background:var(--surface-2);display:flex;gap:8px;align-items:center;flex-wrap:wrap;cursor:help}
+.slimnote.warn{background:var(--warn-bg);color:var(--warn);cursor:default}
+.slimnote .lnk{font-weight:600;color:inherit;text-decoration:underline;cursor:pointer;background:none;border:0;padding:0}
+.pstrip .reminders{position:relative}
+.pstrip .reminders[open]{z-index:20}
+.pstrip .reminders ul{position:absolute;left:-4px;top:100%;margin-top:6px;width:min(620px,92vw);background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;box-shadow:0 10px 30px rgba(0,0,0,.25)}
