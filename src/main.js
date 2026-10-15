@@ -643,6 +643,8 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   function banner(m){ bannerMsg = m; render(); }
 
   function unitName(id){ const u = state.units.find(x => x.id===id); return u ? u.name : id; }
+  // the CEO and D/CEO offices do not record plans or progress, so they are not tracked or expected to report
+  const NO_PLAN_UNITS = ["ceo", "d-ceo"];
   function sortedUnits(){ return [...state.units].sort((a,b) => (a.type||"").localeCompare(b.type||"") || (a.order??99)-(b.order??99) || a.name.localeCompare(b.name)); }
 
   const GROUPS = { dashboard: ["dashboard"], plans: ["update", "plan", "mplan", "approvals"], delivery: ["support", "fb"], reports: ["tasks", "monthly", "ceo"] };
@@ -3121,7 +3123,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     window.addEventListener("offline", () => banner("You are offline. Changes will not save until the connection returns."));
     window.addEventListener("online", () => { bannerMsg = ""; subscribePlans(); render(); });
     db.collection("units").onSnapshot(snap => {
-      state.units = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      state.units = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(u => !NO_PLAN_UNITS.includes(u.id));
       state.unitsLoaded = true;
       if (state.editUnit && state.editUnit !== ALL && !state.units.some(u => u.id===state.editUnit)) { state.editUnit = null; state.draft = null; }
       if (state.tab==="update" && !hasDraft()) loadDraft();
