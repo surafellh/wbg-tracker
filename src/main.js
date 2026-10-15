@@ -1131,8 +1131,8 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     const list = alertsFor(u).sort((a, b) => levelRank[a.level] - levelRank[b.level]);
     if (!list.length) return "";
     const open = state.remOpen === true;
-    return `<details class="reminders" ${open ? "open" : ""} id="remPanel"><summary title="Checked automatically for ${esc(unitName(u))}"><b>Reminders</b> <span class="pill ${list.some(a => a.level === "bad") ? "s-bad" : "s-not"}">${list.length}</span></summary>
-      <ul>${list.map(a => { const lv = `<span class="pill ${a.level === "bad" ? "s-bad" : a.level === "warn" ? "s-not" : "s-none"}">${a.level === "bad" ? "Act now" : a.level === "warn" ? "Soon" : "Note"}</span>`; return a.tasks.length ? `<li class="${a.level}"><details class="rem-i"><summary>${lv} <span>${esc(a.text)}</span></summary><ol class="rem-t">${a.tasks.map(t => `<li>${esc(short(t.title))}${t.fromUnit ? ` <span class="muted small">(${esc(unitName(t.fromUnit))})</span>` : ""}</li>`).join("")}</ol></details></li>` : `<li class="${a.level}">${lv} <span>${esc(a.text)}</span></li>`; }).join("")}</ul></details>`;
+    return `<div class="reminders" id="remPanel" title="Checked automatically for ${esc(unitName(u))}">
+      <ul>${list.map(a => { const lv = `<span class="pill ${a.level === "bad" ? "s-bad" : a.level === "warn" ? "s-not" : "s-none"}">${a.level === "bad" ? "Act now" : a.level === "warn" ? "Soon" : "Note"}</span>`; return a.tasks.length ? `<li class="${a.level}"><details class="rem-i"><summary>${lv} <span>${esc(a.text)}</span></summary><ol class="rem-t">${a.tasks.map(t => `<li>${esc(short(t.title))}${t.fromUnit ? ` <span class="muted small">(${esc(unitName(t.fromUnit))})</span>` : ""}</li>`).join("")}</ol></details></li>` : `<li class="${a.level}">${lv} <span>${esc(a.text)}</span></li>`; }).join("")}</ul></div>`;
   }
   function requestsPanel(u){
     const list = pendingFor(u, state.week); if (!list.length) return "";
