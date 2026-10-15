@@ -1,7 +1,7 @@
 // Executive dashboard: headline figures, trends and unit comparisons drawn as plain SVG / HTML (no chart library).
 // Colours come from the --viz-* tokens in style.css (validated for colour-blind separation in light and dark mode).
 
-const real = (p) => ((p && p.tasks) || []).filter((t) => t.kind !== "KPI / OKR");
+const real = (p) => ((p && p.tasks) || []).filter((t) => t.kind !== "KPI / OKR" && t.status !== "Closed");
 // A task with no status or no % counts as 0, so the average cannot look better than the work really is.
 const pctOf = (t) => (t.status === "Done" ? 100 : typeof t.pct === "number" ? t.pct : 0);
 const avg = (a) => (a.length ? Math.round(a.reduce((x, y) => x + y, 0) / a.length) : null);

@@ -15,7 +15,7 @@ import { openViewer, canPreview } from "./viewer.js";
 applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
 
 (() => {
-  const STATUSES = ["Not started","In progress","Done","Blocked","Delayed"];
+  const STATUSES = ["Not started","In progress","Done","Blocked","Delayed","Closed"];
   const PRIORITIES = ["High","Medium","Low"];
   const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   const $ = s => document.querySelector(s);
@@ -28,7 +28,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   const fmt = s => { if(!s) return ""; const d = parse(s); return `${d.getDate()} ${MONTHS[d.getMonth()]}`; };
   const weekLabel = w => { const a = parse(w), b = parse(weekEndOf(w)); return a.getMonth()===b.getMonth() ? `${a.getDate()}–${b.getDate()} ${MONTHS[b.getMonth()]} ${b.getFullYear()}` : `${a.getDate()} ${MONTHS[a.getMonth()]} – ${b.getDate()} ${MONTHS[b.getMonth()]} ${b.getFullYear()}`; };
   const uid = () => Math.random().toString(36).slice(2,10);
-  const statusClass = s => s==="Done"?"s-done":s==="In progress"?"s-prog":s==="Blocked"?"s-bad":(s==="Not started"||s==="Delayed")?"s-not":"s-none";
+  const statusClass = s => s==="Done"?"s-done":s==="In progress"?"s-prog":s==="Blocked"?"s-bad":(s==="Not started"||s==="Delayed")?"s-not":s==="Closed"?"s-closed":"s-none";
   const todayIso = addisToday();
   const who = t => [t.dept, t.owner].filter(Boolean).join(" · ");
 
@@ -280,7 +280,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     const rows = snap.docs.map(d => d.data()).filter(v => v && v.unit === unit).sort((a, b) => a.week < b.week ? 1 : -1);
     const seen = new Map();
     rows.forEach(p => allRealTasks(p).forEach(t => { const k = t.ref || norm(t.title); if (!seen.has(k)) seen.set(k, { t, wk: p.week }); }));
-    return [...seen.values()].filter(x => x.t.status !== "Done");
+    return [...seen.values()].filter(x => x.t.status !== "Done" && x.t.status !== "Closed");
   }
   async function openBf(){
     if (!db || isAll() || !state.editUnit || !state.draft) { toast("Choose one unit first"); return; }
@@ -860,12 +860,13 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   }
   // Indicative score for the week (shown to the unit, official rating comes later)
   const RATE = p => p >= 95 ? ["Outstanding", "s-done"] : p >= 90 ? ["Very high", "s-done"] : p >= 80 ? ["High", "s-done"] : p >= 75 ? ["Satisfactory", "s-prog"] : p >= 50 ? ["Needs improvement", "s-not"] : ["Low", "s-bad"];
-  function weekScore(tasks){
+  function weekScore(all){
+    const tasks = all.filter(t => t.status !== "Closed"), closed = all.length - tasks.length;
     const n = tasks.length; if (!n) return null;
     const pctOf = t => t.status === "Done" ? 100 : (typeof t.pct === "number" ? t.pct : 0);
     const c = { done: 0, prog: 0, blk: 0, ns: 0 };
     tasks.forEach(t => { if (t.status === "Done") c.done++; else if (t.status === "In progress") c.prog++; else if (t.status === "Blocked" || t.status === "Delayed") c.blk++; else c.ns++; });
-    return { total: Math.round(tasks.reduce((a, t) => a + pctOf(t), 0) / n), n, c };
+    return { total: Math.round(tasks.reduce((a, t) => a + pctOf(t), 0) / n), n, c, closed };
   }
   function scoreCard(tasks, rem = ""){
     const sc = weekScore(tasks); if (!sc) return rem ? `<div class="pstrip">${rem}</div>` : "";
@@ -873,7 +874,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     return `<div class="pstrip">${rem}<section class="panel score-card" title="Week score: the average % complete of every task this week. Indicative only; the official rating is set at quarter end.">
       <div class="sc-n"><span class="sc-l">Week score</span><span class="num">${sc.total}%</span><span class="pill ${r[1]}">${r[0]}</span></div>
       <div class="sc-bars"><div class="stk">${seg("done", "var(--good)", "Done")}${seg("prog", "var(--bar)", "In progress")}${seg("blk", "var(--bad)", "Blocked or delayed")}${seg("ns", "var(--track)", "Not started")}</div>
-      <div class="leg"><span><i class="sw" style="background:var(--good)"></i>Done ${c.done}</span><span><i class="sw" style="background:var(--bar)"></i>In progress ${c.prog}</span><span><i class="sw" style="background:var(--bad)"></i>Blocked ${c.blk}</span><span><i class="sw" style="background:var(--track)"></i>Not started ${c.ns}</span></div></div></section></div>`;
+      <div class="leg"><span><i class="sw" style="background:var(--good)"></i>Done ${c.done}</span><span><i class="sw" style="background:var(--bar)"></i>In progress ${c.prog}</span><span><i class="sw" style="background:var(--bad)"></i>Blocked ${c.blk}</span><span><i class="sw" style="background:var(--track)"></i>Not started ${c.ns}</span>${sc.closed ? `<span title="Closed tasks are not counted in the score"><i class="sw" style="background:var(--line)"></i>Closed ${sc.closed}</span>` : ""}</div></div></section></div>`;
   }
   const editHeadOld = () => `<thead><tr>${th("edit","title","Task")}${th("edit","due","Due")}${th("edit","dept","Department")}${th("edit","priority","Priority")}${th("edit","status","Status")}${th("edit","pct","Progress")}<th class="c-act"></th></tr></thead>`;
   const editHead = () => {
@@ -887,7 +888,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   const MONTHS_FULL = ["January","February","March","April","May","June","July","August","September","October","November","December"];
   // ---------- sorting by column (click a column title) ----------
   state.sort = {};
-  const PRI_RANK = { High: 0, Medium: 1, Low: 2 }, ST_RANK = { "Not started": 0, "In progress": 1, "Blocked": 2, "Delayed": 3, "Done": 4 };
+  const PRI_RANK = { High: 0, Medium: 1, Low: 2 }, ST_RANK = { "Not started": 0, "In progress": 1, "Blocked": 2, "Delayed": 3, "Done": 4, "Closed": 5 };
   const sortVal = (t, k) => ({
     title: (t.title || "").toLowerCase(), kind: t.kind || "Task", dept: (t.dept || "").toLowerCase(), owner: (t.owner || "").toLowerCase(), unit: (t.unitName || "").toLowerCase(),
     due: t.due || "", priority: PRI_RANK[t.priority] ?? 9, status: ST_RANK[t.status] ?? 9, pct: typeof t.pct === "number" ? t.pct : (t.status === "Done" ? 100 : -1),
@@ -916,7 +917,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   });
   // counts follow the chosen level: deliverables (rolled up) or the individual tasks behind them
   const levelPlan = p => !p ? p : (state.level === "deliverables" ? rolledPlan(p) : leafPlan(p));
-  const realTasks = p => ((p && levelPlan(p).tasks) || []).filter(t => t.kind !== "KPI / OKR");
+  const realTasks = p => ((p && levelPlan(p).tasks) || []).filter(t => t.kind !== "KPI / OKR" && t.status !== "Closed");
   const allRealTasks = p => ((p && p.tasks) || []).filter(t => t.kind !== "KPI / OKR");
   const kpiTasks = p => ((p && p.tasks) || []).filter(t => t.kind === "KPI / OKR");
   const norm = s => String(s ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
@@ -1131,7 +1132,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     if (!list.length) return "";
     const open = state.remOpen === true;
     return `<details class="reminders" ${open ? "open" : ""} id="remPanel"><summary title="Checked automatically for ${esc(unitName(u))}"><b>Reminders</b> <span class="pill ${list.some(a => a.level === "bad") ? "s-bad" : "s-not"}">${list.length}</span></summary>
-      <ul>${list.map(a => `<li class="${a.level}"><span class="pill ${a.level === "bad" ? "s-bad" : a.level === "warn" ? "s-not" : "s-none"}">${a.level === "bad" ? "Act now" : a.level === "warn" ? "Soon" : "Note"}</span> <span>${esc(a.text)}${a.tasks.length ? `<span class="small muted"> ${a.tasks.slice(0, 3).map(t => `“${esc(short(t.title))}”${t.fromUnit ? ` (${esc(unitName(t.fromUnit))})` : ""}`).join(", ")}${a.tasks.length > 3 ? ` +${a.tasks.length - 3}` : ""}</span>` : ""}</span></li>`).join("")}</ul></details>`;
+      <ul>${list.map(a => { const lv = `<span class="pill ${a.level === "bad" ? "s-bad" : a.level === "warn" ? "s-not" : "s-none"}">${a.level === "bad" ? "Act now" : a.level === "warn" ? "Soon" : "Note"}</span>`; return a.tasks.length ? `<li class="${a.level}"><details class="rem-i"><summary>${lv} <span>${esc(a.text)}</span></summary><ol class="rem-t">${a.tasks.map(t => `<li>${esc(short(t.title))}${t.fromUnit ? ` <span class="muted small">(${esc(unitName(t.fromUnit))})</span>` : ""}</li>`).join("")}</ol></details></li>` : `<li class="${a.level}">${lv} <span>${esc(a.text)}</span></li>`; }).join("")}</ul></details>`;
   }
   function requestsPanel(u){
     const list = pendingFor(u, state.week); if (!list.length) return "";
@@ -1186,7 +1187,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     const planM = state.tab === "plan", sub = planM && single ? subOf(state.editUnit, "week", state.week) : null, subbed = sub && sub.status === "pending";
     const planTop = planM && single ? `<button class="btn" type="button" id="tplTop">${ico(IC.down)}Download template</button>${ed ? `<label class="btn" title="Fill the template, then upload it here">${ico(IC.fwd)}Upload Excel<input type="file" id="impFileTop" accept=".xlsx,.xls,.csv" hidden></label>` : ""}` : "";
     const submitBtn = planM && single && ed ? `<button class="btn primary" type="button" id="submitPlan" ${state.dirty || !d0 || !d0.tasks.length || subbed ? "disabled" : ""} title="${state.dirty ? "Save the plan first" : subbed ? "Already waiting for approval" : "Send next week's plan to Group Strategy"}">${sub && sub.status !== "withdrawn" && sub.status !== "pending" ? "Submit again" : "Submit for approval"}</button>` : "";
-    const acts = `<div class="toolbar plan-acts">${planTop}${single && ed && canLead(state.editUnit) ? `<button class="btn" type="button" id="carryBtn">${ico(IC.fwd)}Bring forward</button>` : ""}${moreMenu(menu)}${single && ed ? `<button class="btn${planM ? "" : " primary"}" type="button" id="addTask">${ico(IC.plus)}Add task</button>` : ""}${single && ed && !planM && state.week === thisMonday() ? `<button class="btn" type="button" id="addUnplanned" title="A task that came up during the week and was not in the plan">${ico(IC.plus)}Add unplanned task</button>` : ""}${submitBtn}</div>`;
+    const acts = `<div class="toolbar plan-acts">${planTop}${single && ed && canLead(state.editUnit) && planM ? `<button class="btn" type="button" id="carryBtn">${ico(IC.fwd)}Bring forward</button>` : ""}${moreMenu(menu)}${single && ed ? (!planM && state.week === thisMonday() ? `<details class="more add-menu"><summary class="btn primary">${ico(IC.plus)}Add task <span aria-hidden="true">▾</span></summary><div class="more-menu"><button type="button" id="addTask">Add task</button><button type="button" id="addUnplanned" title="A task that came up during the week and was not in the plan">Add unplanned task</button></div></details>` : `<button class="btn${planM ? "" : " primary"}" type="button" id="addTask">${ico(IC.plus)}Add task</button>`) : ""}${submitBtn}</div>`;
     const topRow = `<div class="plan-top"><div class="plan-wk">${weekBan()}</div>${acts}</div>`;
     const lvlSeg = `<div class="seg" role="tablist" aria-label="List level"><button type="button" role="tab" data-lvl="tasks" aria-selected="${pf().lvl !== "deliv"}">All tasks</button><button type="button" role="tab" data-lvl="deliv" aria-selected="${pf().lvl === "deliv"}">By deliverable</button></div>`;
     const planMode = state.tab === "plan", fin = !planMode && pf().kind === "fin";
@@ -2584,7 +2585,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     if ((m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/))) return `${m[3]}-${pad(+m[2])}-${pad(+m[1])}`;
     return null;
   }
-  const STATUS_MAP = { "not started":"Not started", "in progress":"In progress", "done":"Done", "blocked":"Blocked", "delayed":"Delayed", "started":"In progress", "complete":"Done", "completed":"Done" };
+  const STATUS_MAP = { "not started":"Not started", "in progress":"In progress", "done":"Done", "blocked":"Blocked", "delayed":"Delayed", "closed":"Closed", "cancelled":"Closed", "started":"In progress", "complete":"Done", "completed":"Done" };
   function matchUnit(v){
     const k = norm(v); if (!k) return null;
     let hit = state.units.find(u => norm(u.name) === k || norm(u.id) === k); if (hit) return hit;

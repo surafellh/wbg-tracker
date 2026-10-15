@@ -3,7 +3,7 @@
 // (The same checks run on a schedule in supabase/upgrade-3-reminders.sql to send Telegram reminders.)
 
 const DAY = 864e5;
-const real = (p) => ((p && p.tasks) || []).filter((t) => t.kind !== "KPI / OKR");
+const real = (p) => ((p && p.tasks) || []).filter((t) => t.kind !== "KPI / OKR" && t.status !== "Closed");
 const daysBetween = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / DAY);
 const addDays = (s, n) => { const d = new Date(Date.parse(s + "T00:00:00Z") + n * DAY); return d.toISOString().slice(0, 10); };
 

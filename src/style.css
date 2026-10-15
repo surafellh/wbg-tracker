@@ -847,3 +847,13 @@ details.dd[open] .dd-btn{border-color:var(--brand)}
 .pstrip .reminders{position:relative}
 .pstrip .reminders[open]{z-index:20}
 .pstrip .reminders ul{position:absolute;left:-4px;top:100%;margin-top:6px;width:min(620px,92vw);background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+
+.pill.s-closed{background:var(--neutral-bg);color:var(--muted);text-decoration:line-through}
+select.st.s-closed{background:var(--neutral-bg);color:var(--muted)}
+.rem-i>summary{cursor:pointer;display:flex;gap:8px;align-items:flex-start;list-style:none}
+.rem-i>summary::-webkit-details-marker{display:none}
+.rem-i>summary::after{content:"▸";margin-left:auto;color:var(--muted)}
+.rem-i[open]>summary::after{content:"▾"}
+.rem-t{margin:6px 0 4px 74px;padding-left:16px;font-size:12.5px;color:var(--muted);display:grid;gap:3px}
+.pstrip .reminders li{display:block}
+.add-menu .more-menu{min-width:190px}
