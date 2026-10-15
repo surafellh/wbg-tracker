@@ -2372,32 +2372,33 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     toast("Preparing the dashboard PDF…");
     try {
       const { default: html2canvas } = await import("html2canvas");
-      const root = document.documentElement, prevTheme = root.getAttribute("data-theme");
-      root.setAttribute("data-theme", "light");   // the PDF is always light; switched back as soon as the picture is taken
-      await new Promise(r => setTimeout(r, 60));
-      const WIDTH = 1280, bg = "#f6f5ef";   // always the light look, whatever the screen theme is
-      let blocks = [], mainW = WIDTH, canvas;
-      try { canvas = await html2canvas(main, { scale: 2, windowWidth: WIDTH, backgroundColor: bg, useCORS: true, logging: false, onclone: (doc) => {
-        const m = doc.getElementById("main"); if (!m) return;
-        doc.documentElement.setAttribute("data-theme", "light"); doc.body.style.background = bg; doc.body.style.color = "#2a2208";
-        doc.documentElement.style.colorScheme = "light"; void doc.documentElement.offsetHeight;
-        doc.querySelectorAll(".dash-bar, .seg, .more > summary, .viz-table, .toast, #bellMenu, .tip, .tooltip").forEach(e => { e.style.display = "none"; });
-        doc.querySelectorAll(".more").forEach(d => { d.open = true; d.setAttribute("open", ""); });
-        m.querySelectorAll("*").forEach(e => { if (e.closest("svg")) return; const cs = doc.defaultView.getComputedStyle(e);
+      const WIDTH = 1280, bg = "#f6f5ef";
+      // A hidden, off-screen copy of the dashboard in the light look. The screen you are looking at is not touched.
+      const stage = document.createElement("div");
+      stage.setAttribute("aria-hidden", "true");
+      stage.style.cssText = `position:fixed;left:-30000px;top:0;width:${WIDTH}px;background:${bg};color:#2a2208;pointer-events:none`;
+      for (const sh of Array.from(document.styleSheets)) { let rules; try { rules = sh.cssRules; } catch (e) { continue; }
+        for (const r of Array.from(rules)) if (r.type === 1 && r.selectorText === ":root") for (const k of Array.from(r.style)) if (k.startsWith("--")) stage.style.setProperty(k, r.style.getPropertyValue(k)); }
+      const m = main.cloneNode(true); m.removeAttribute("id"); m.style.cssText = "max-width:none;margin:0;padding:0 0 4px";
+      stage.appendChild(m); document.body.appendChild(stage);
+      let blocks = [], canvas;
+      try {
+        m.querySelectorAll(".dash-bar, .seg, .more > summary, .viz-table, .tip, .tooltip").forEach(e => e.remove());
+        m.querySelectorAll(".more").forEach(d => { d.open = true; d.setAttribute("open", ""); });
+        m.querySelectorAll("*").forEach(e => { if (e.closest("svg")) return; const cs = getComputedStyle(e);
           if (/(auto|scroll|hidden)/.test(cs.overflowY) && e.scrollHeight > e.clientHeight + 2 && e.tagName !== "TEXTAREA") { e.style.maxHeight = "none"; e.style.height = "auto"; e.style.overflow = "visible"; } });
-        doc.querySelectorAll("svg").forEach(svg => svg.querySelectorAll("*").forEach(el => {
-          const cs = doc.defaultView.getComputedStyle(el);
-          ["fill", "stroke", "stroke-width", "stroke-dasharray", "stroke-dashoffset", "stroke-linecap", "stroke-linejoin", "opacity", "fill-opacity", "font-size", "font-weight", "font-family", "text-anchor"].forEach(k => { const v = cs.getPropertyValue(k); if (v) el.style.setProperty(k, v); });
-        }));
-        mainW = m.getBoundingClientRect().width || WIDTH;
-        const top = m.getBoundingClientRect().top, list = [];
+        m.querySelectorAll("svg").forEach(svg => svg.querySelectorAll("*").forEach(el => { const cs = getComputedStyle(el);
+          ["fill", "stroke", "stroke-width", "stroke-dasharray", "stroke-dashoffset", "stroke-linecap", "stroke-linejoin", "opacity", "fill-opacity", "font-size", "font-weight", "font-family", "text-anchor"].forEach(k => { const v = cs.getPropertyValue(k); if (v) el.style.setProperty(k, v); }); }));
+        await new Promise(r => setTimeout(r, 50));
+        const top = m.getBoundingClientRect().top;
         Array.from(m.children).forEach(ch => {
           if (getComputedStyle(ch).display === "none") return;
-          const kids = ch.classList.contains("more") ? Array.from(ch.children).filter(k => k.tagName !== "SUMMARY") : [ch];
-          kids.forEach(k => { const r = k.getBoundingClientRect(); if (r.height > 2) list.push({ top: r.top - top, bottom: r.bottom - top }); });
+          const kids = ch.classList.contains("more") ? Array.from(ch.children) : [ch];
+          kids.forEach(k => { const r = k.getBoundingClientRect(); if (r.height > 2) blocks.push({ top: r.top - top, bottom: r.bottom - top }); });
         });
-        blocks = list;
-      } }); } finally { if (prevTheme === null) root.removeAttribute("data-theme"); else root.setAttribute("data-theme", prevTheme); }
+        canvas = await html2canvas(m, { scale: 2, windowWidth: WIDTH, backgroundColor: bg, useCORS: true, logging: false });
+      } finally { stage.remove(); }
+      const mainW = WIDTH;
       const { jsPDF } = window.jspdf;
       const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
       const PW = doc.internal.pageSize.getWidth(), PH = doc.internal.pageSize.getHeight(), ML = 24, TOP = 30, BOT = 26;
