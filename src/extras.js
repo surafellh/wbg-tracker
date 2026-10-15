@@ -136,7 +136,7 @@ export function createExtras(c) {
     if (f.view === "feedback") {
       const list = state.fbs.filter((x) => (!f.unit || x.unit === f.unit) && (!f.from || x.from === f.from) && (!f.ack || (f.ack === "new" ? !x.ackAt : !!x.ackAt)));
       const cards = list.slice(0, f.ashow).map((x) => `<div class="fb-card${x.ackAt ? "" : " new"}">
-        <div class="fb-top"><span class="pill ${x.from === "CEO" ? "s-bad" : x.from === "DCEO" ? "s-prog" : "s-done"}">${esc(x.from)}</span> <b>${esc(c.unitName(x.unit))}</b>
+        <div class="fb-top"><span class="pill ${x.from === "CEO" ? "s-bad" : x.from === "DCEO" ? "s-prog" : "s-done"}">${esc(x.from)}</span> <b>${esc(c.unitName(x.unit))}</b>${x.toLead ? ' <span class="pill s-prog" title="Only the head of the unit, Group Strategy, the CEO and the DCEO can read this letter">Letter to the head of the unit</span>' : ""}
           <span class="small muted">${x.week ? esc(c.weekLabel(x.week)) + " · " : ""}${esc(fmt((x.createdAt || "").slice(0, 10)))}${x.by ? " · " + esc(x.by) : ""}</span></div>
         ${x.taskRef ? `<div class="small"><span class="ref">${esc(x.taskRef)}</span></div>` : ""}<div class="fb-body">${esc(x.body)}</div>
         <div class="fb-foot small">${x.ackAt ? `<span class="muted">Acknowledged by ${esc(x.ackBy)} on ${esc(fmt(x.ackAt.slice(0, 10)))}</span>` : (c.canLead(x.unit) ? `<button class="btn small" data-x="fb-ack" data-id="${esc(x.id)}">Acknowledge</button> <button class="btn small ghost" data-x="act-from-fb" data-unit="${esc(x.unit)}" data-id="${esc(x.id)}">Log a corrective action</button>` : '<span class="muted">Not yet acknowledged</span>')}

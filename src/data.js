@@ -17,10 +17,10 @@ const isSupabaseConfigured = () => !!(URL_ && KEY_ && !URL_.includes("YOUR-PROJE
 const COLLECTIONS = {
   units: { table: "units", map: { name: "name", type: "type", order: "sort_order", departments: "departments", people: "people" }, ts: [] },
   plans: { table: "plans", map: { week: "week", unit: "unit_id", tasks: "tasks", wins: "wins", blockers: "blockers", asks: "asks", updatedAt: "updated_at", updatedBy: "updated_by", source: "source" }, ts: ["updatedAt"] },
-  activity: { table: "activity", map: { ts: "ts", by: "by_name", unit: "unit_id", week: "week", action: "action", summary: "summary", details: "details" }, ts: ["ts"], nullText: ["week"] },
+  activity: { table: "activity", map: { ts: "ts", by: "by_name", unit: "unit_id", week: "week", action: "action", summary: "summary", details: "details", role: "by_role" }, ts: ["ts"], nullText: ["week"] },
   requests: { table: "change_requests", map: { createdAt: "created_at", unit: "unit_id", week: "week", planId: "plan_id", by: "requested_by", status: "status", summary: "summary", details: "details", patch: "patch", decidedBy: "decided_by", decidedAt: "decided_at", note: "decision_note", dept: "dept", kind: "req_kind", stage: "stage" }, ts: ["createdAt", "decidedAt"] },
   support: { table: "support_requests", map: { ref: "ref", function: "function_id", requester: "requester", category: "category", description: "description", priority: "priority", requested: "date_requested", status: "status", responded: "response_date", action: "action_taken", respondedBy: "responded_by", evidence: "evidence_ref", followUp: "follow_up", remarks: "remarks", createdBy: "created_by", createdAt: "created_at", updatedBy: "updated_by", updatedAt: "updated_at" }, ts: ["createdAt", "updatedAt"], nullText: ["requested", "responded"] },
-  feedback: { table: "feedback", map: { unit: "unit_id", week: "week", from: "from_role", by: "by_name", body: "body", taskRef: "task_ref", createdAt: "created_at", ackBy: "ack_by", ackAt: "ack_at" }, ts: ["createdAt", "ackAt"], nullText: ["week", "ackAt"] },
+  feedback: { table: "feedback", map: { unit: "unit_id", week: "week", from: "from_role", by: "by_name", body: "body", taskRef: "task_ref", createdAt: "created_at", ackBy: "ack_by", ackAt: "ack_at", toLead: "to_lead" }, ts: ["createdAt", "ackAt"], nullText: ["week", "ackAt"] },
   actions: { table: "corrective_actions", map: { unit: "unit_id", week: "week", source: "source", issue: "issue", action: "action", owner: "owner", due: "due", status: "status", taskTitle: "task_title", taskRef: "task_ref", notes: "notes", createdBy: "created_by", createdAt: "created_at", updatedBy: "updated_by", updatedAt: "updated_at", closedAt: "closed_at" }, ts: ["createdAt", "updatedAt", "closedAt"], nullText: ["week", "due", "closedAt"] },
   history: { table: "row_history", map: { tbl: "tbl", rowId: "row_id", op: "op", old: "old_row", at: "changed_at", by: "changed_by" }, ts: ["at"] },
 };
@@ -326,7 +326,7 @@ function createLocalData() {
     setStore(c, items);
   };
   const del = (c, id) => { const items = getStore(c), i = items.findIndex((x) => x.id === id); if (i < 0) return; if (c === "plans" || c === "units") keepHistory(c, items[i], "DELETE"); items.splice(i, 1); setStore(c, items); };
-  const addActivity = (by, unit, week, e) => { const a = getStore("activity"); a.push({ id: e.id || Date.now().toString(36) + Math.random().toString(36).slice(2, 8), ts: new Date().toISOString(), by: by || "", unit: unit || "", week: week || "", action: e.action || "save", summary: e.summary || "", details: e.details || [] }); setStore("activity", a); };
+  const addActivity = (by, unit, week, e) => { const a = getStore("activity"); a.push({ id: e.id || Date.now().toString(36) + Math.random().toString(36).slice(2, 8), ts: new Date().toISOString(), by: by || "", unit: unit || "", week: week || "", action: e.action || "save", summary: e.summary || "", details: e.details || [], role: (A().role || "") }); setStore("activity", a); };
 
   // ----- people in test mode: pick who you are; the same rules as the database apply -----
   const PEOPLE0 = [
@@ -361,7 +361,8 @@ function createLocalData() {
     const U = (u) => unitRead(a, u);
     if (c === "plans") return items.filter((p) => U(p.unit) || (a.role === "staff" && a.unit === p.unit)).map((p) => visiblePlan(a, p));
     if (c === "activity") return items.filter((x) => (x.unit ? U(x.unit) : fullRead(a)));
-    if (c === "requests" || c === "feedback" || c === "actions") return items.filter((x) => U(x.unit));
+    if (c === "feedback") return items.filter((x) => ["super_admin", "executive"].includes(a.role) || (x.toLead ? a.role === "leader" && a.unit === x.unit : U(x.unit)));
+    if (c === "requests" || c === "actions") return items.filter((x) => U(x.unit));
     if (c === "support") return items.filter((x) => U(x.function));
     if (c === "history") return items.filter((x) => U(x.tbl === "plans" ? x.old.unit_id : x.rowId));
     return items;
@@ -490,8 +491,8 @@ function createLocalData() {
       const from = auth.role === "executive" ? auth.title : (row.from || "Group Strategy");
       if (!row.unit || !(row.body || "").trim() || !["CEO", "DCEO", "Group Strategy"].includes(from)) return err("bad_request");
       const old = row.id ? getStore("feedback").find((x) => x.id === row.id) : null;
-      put("feedback", { ackBy: "", ackAt: "", ...(old || {}), id: old ? old.id : (row.id || Date.now().toString(36) + Math.random().toString(36).slice(2, 8)), unit: row.unit, week: row.week || "", taskRef: row.taskRef || (old && old.taskRef) || "", from, body: row.body, by: old ? old.by : (auth.name || "").trim(), createdAt: old ? old.createdAt : new Date().toISOString() });
-      addActivity(auth.name, row.unit, row.week || "", { action: "feedback", summary: "Feedback from " + from });
+      put("feedback", { ackBy: "", ackAt: "", ...(old || {}), id: old ? old.id : (row.id || Date.now().toString(36) + Math.random().toString(36).slice(2, 8)), unit: row.unit, week: row.week || "", taskRef: row.taskRef || (old && old.taskRef) || "", from, body: row.body, toLead: row.toLead !== undefined ? !!row.toLead : !!(old && old.toLead), by: old ? old.by : (auth.name || "").trim(), createdAt: old ? old.createdAt : new Date().toISOString() });
+      addActivity(auth.name, row.unit, row.week || "", { action: "feedback", summary: (row.toLead ? "Letter from " : "Feedback from ") + from });
       return ok();
     },
     deleteFeedback(auth, id) { const f = getStore("feedback").find((x) => x.id === id); if (!f) return err("not_found"); if (!(isAppr(auth) || (auth.role === "executive" && f.by === auth.name))) return err("not_allowed"); del("feedback", id); return ok(); },

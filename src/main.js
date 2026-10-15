@@ -6,6 +6,7 @@ import { createData, configError, planFromRow, EVIDENCE, fileType } from "./data
 import { startGate } from "./gate.js";
 import { groupTasks, rollupOf, rolledPlan, leafPlan, leafTasks, parentChoices, weightOf } from "./rollup.js";
 import { ROLES, ROLE_LABEL, ROLE_HELP, isAdmin, unitMember, deptOk, canUndo, canFeedback, canEditDepartments, roleText, canDecide, STAGE_LABEL } from "./access.js";
+import { assess, actions as ceoActions, letter as ceoLetter, INTERNAL, fmtD, addDaysIso } from "./ceoaction.js";
 import { WEEK_CUTOVER, LOCKED, planOps, needsApproval, applyOps, addisToday, addisWeekStart, calcPct, CATEGORIES, weekStartOf, weekEndOf, nextWeekOf, prevWeekOf } from "./rules.js";
 import { unitAlerts, levelRank, BLOCKED_DAYS } from "./alerts.js";
 import { renderDashboard } from "./dashboard.js";
@@ -205,7 +206,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     const undoAct = saved && !isAll() && state.lastSave && mayUndo() ? { label: "Undo", fn: undoLast } : null;
     const sb = saved && !isAll() && state.tab === "plan" && state.week === nextMonday() ? subOf(state.editUnit, "week", state.week) : null;
     const askSubmit = saved && !isAll() && state.tab === "plan" && state.week === nextMonday() && !(sb && sb.status === "pending") && (((state.plans[state.editUnit] || {}).tasks) || []).length;
-    if (askSubmit) toast("Plan saved. Now click Submit for approval to send it.", [{ label: "Submit for approval", fn: submitWeek, ms: 15000 }, undoAct]);
+    if (askSubmit) toast("Plan saved. Click Submit for approval, at the top of the page, to send it.", [{ label: "Submit for approval", fn: submitWeek, ms: 10000 }, undoAct]);
     else toast(msg, undoAct);
   }
   async function undoLast(){
@@ -409,6 +410,72 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     if (f.dept) c.push(["dept", "Department: " + f.dept]);
     return c;
   }
+  // ---------- Actions for the CEO (Group Strategy, CEO and DCEO only) ----------
+  state.ceoType = ""; state.ceoOpen = new Set(); state.ceoDraft = null; state.ceoSent = new Set();
+  function ceoRows(){
+    const month = state.filter.period === "month";
+    if (month && !state.monthData) return null;
+    const by = new Map(); poolTasks().forEach(t => { if (!by.has(t.unit)) by.set(t.unit, []); by.get(t.unit).push(t); });
+    return sortedUnits().filter(u => !state.ceoType || u.type === state.ceoType).map(u => ({ id: u.id, a: assess({ name: u.name, type: u.type, tasks: leafTasks(by.get(u.id) || []), today: todayIso }) })).filter(r => r.a).sort((x, y) => x.a.score - y.a.score);
+  }
+  function renderCeo(){
+    if (!canFeedback(me)) return `<div class="panel"><div class="empty"><b>Not available</b>This page is for Group Strategy, the CEO and the DCEO.</div></div>`;
+    const month = state.filter.period === "month", per = month ? "month" : "week", perLabel = month ? ethName(state.eth) : weekLabel(state.week);
+    const rows = ceoRows();
+    const bar = `<div class="panel-head"><div><h2>Actions for the CEO</h2><div class="small muted">${esc(perLabel)} · ${month ? "monthly view: firmer actions" : "weekly view: check-ins"}</div></div>
+      <div class="toolbar"><select id="fPeriod" aria-label="Period"><option value="week" ${!month ? "selected" : ""}>Week: ${esc(weekLabel(state.week))}</option><option value="month" ${month ? "selected" : ""}>Month: ${esc(ethName(state.eth))}</option></select>
+      <div class="seg" role="tablist" aria-label="Unit type">${[["", "All"], ["Business unit", "Business units"], ["Corporate function", "Function units"]].map(([v, l]) => `<button type="button" role="tab" data-ceotype="${v}" aria-selected="${state.ceoType === v}">${l}</button>`).join("")}</div></div></div>`;
+    if (!rows) return `<div class="panel">${bar}<div class="empty"><b>Collecting the weeks of ${esc(ETH_M[state.eth.m - 1])}…</b></div></div>`;
+    if (!rows.length) return `<div class="panel">${bar}<div class="empty"><b>No tasks to assess</b>Nothing is planned for this selection yet.</div></div>`;
+    const cnt = {}; rows.forEach(r => cnt[r.a.band.label] = (cnt[r.a.band.label] || 0) + 1);
+    const chips = `<div class="toolbar small" style="padding:10px 16px;gap:14px;flex-wrap:wrap">${Object.entries(cnt).map(([k, v]) => `<span><b>${v}</b> ${esc(k)}</span>`).join("")}</div>`;
+    const body = rows.map(r => {
+      const a = r.a, acts = ceoActions(a, per), open = state.ceoOpen.has(r.id);
+      const pill = `<span class="pill ${a.score >= 75 ? "s-done" : a.score >= 50 ? "s-prog" : "s-bad"}">${esc(a.band.label)} · ${a.score}%</span>`;
+      return `<tr class="clickable" data-ceotgl="${esc(r.id)}" tabindex="0"><td><b>${open ? "▾" : "▸"} ${esc(a.name)}</b></td><td class="small">${a.isBU ? "Business unit" : "Function"}</td><td>${pill}</td><td class="small num">${a.isBU && a.finPct != null ? a.finPct + "%" : "–"}</td><td class="small">${esc(acts[0] ? acts[0].text : "")}${acts.length > 1 ? ` <span class="muted">+${acts.length - 1}</span>` : ""}</td></tr>`
+        + (open ? `<tr class="ceo-open"><td colspan="5"><ol class="ceo-l">${acts.map((x, i) => ceoItem(r, x, i, per)).join("")}</ol></td></tr>` : "");
+    }).join("");
+    return `<div class="panel">${bar}${chips}<div class="scroll"><table><thead><tr><th>Unit</th><th>Type</th><th>Rating</th><th>Financial</th><th>First action</th></tr></thead><tbody>${body}</tbody></table></div></div>`;
+  }
+  const ceoCtx = per => ({ sender: me.name || "", senderTitle: roleText(me), perLabel: per === "month" ? ethName(state.eth) : weekLabel(state.week), period: per, today: todayIso });
+  const ceoKey = (r, x) => `${r.id}|${state.filter.period}|${x.k}`;
+  function ceoItem(r, x, i, per){
+    const dr = state.ceoDraft && state.ceoDraft.key === ceoKey(r, x) ? state.ceoDraft : null, sent = state.ceoSent.has(ceoKey(r, x));
+    let btn = "";
+    if (sent) btn = `<span class="pill s-done">Done</span>`;
+    else if (x.k === "none") btn = "";
+    else if (INTERNAL.includes(x.k)) btn = isAppr() ? `<button class="btn small" type="button" data-ceoprep="${i}" data-u="${esc(r.id)}">Log follow-up</button>` : "";
+    else btn = `<button class="btn small${dr ? "" : " primary"}" type="button" data-ceoprep="${i}" data-u="${esc(r.id)}">${dr ? "Close draft" : "Prepare letter"}</button>`;
+    const box = dr ? `<div class="ceo-draft"><label class="small muted" for="ceoSub">Subject</label><input id="ceoSub" value="${esc(dr.subject)}"><label class="small muted" for="ceoBody">Letter</label><textarea id="ceoBody" rows="12">${esc(dr.body)}</textarea>
+      ${dr.needsReply ? `<div class="toolbar" style="margin:8px 0"><label class="small" for="ceoDue">Written reply due</label><input type="date" id="ceoDue" value="${esc(dr.due)}"></div>` : ""}
+      <div class="toolbar"><button class="btn small primary" type="button" data-ceodo="send" data-u="${esc(r.id)}" data-i="${i}">${dr.needsReply && isAppr() ? "Send and track the reply" : "Send to " + esc(r.a.name)}</button><button class="btn small" type="button" data-ceodo="cancel">Cancel</button></div>
+      <div class="small muted">${dr.needsReply && isAppr() ? "It is sent to the unit as feedback and a corrective action is opened with the reply date." : "It is sent to the unit as feedback."}</div></div>` : "";
+    return `<li><div class="ceo-line"><span>${esc(x.text)}</span>${btn}</div>${box}</li>`;
+  }
+  function ceoPrep(id, i){
+    const rows = ceoRows(), r = rows && rows.find(y => y.id === id); if (!r) return;
+    const per = state.filter.period === "month" ? "month" : "week", x = ceoActions(r.a, per)[i]; if (!x) return;
+    const key = ceoKey(r, x);
+    if (INTERNAL.includes(x.k)) { ceoSend(r, x, { subject: x.text, body: "", needsReply: false, due: "" }, true); return; }
+    if (state.ceoDraft && state.ceoDraft.key === key) { state.ceoDraft = null; render(); return; }
+    const l = ceoLetter(x, r.a, ceoCtx(per)); if (!l) return;
+    state.ceoDraft = { key, ...l }; render();
+  }
+  async function ceoSend(r, x, l, internal){
+    const per = state.filter.period === "month" ? "month" : "week", perLabel = ceoCtx(per).perLabel, key = ceoKey(r, x);
+    try {
+      let res;
+      if (internal) res = await api.saveAction(auth(), { unit: r.id, source: "Group Strategy", issue: `${r.a.band.label} (${r.a.score}%) for ${perLabel}.`, action: x.text, owner: "", due: "", status: "Open", taskTitle: "", notes: "", week: state.week, taskRef: "" });
+      else {
+        res = await api.saveFeedback(auth(), { unit: r.id, from: isAppr() ? "Group Strategy" : (auth().title || "CEO"), week: state.week, body: `${l.subject}\n\n${l.body}`, taskRef: "", toLead: true });
+        if (!(res && res.error) && l.needsReply && isAppr()) res = await api.saveAction(auth(), { unit: r.id, source: "Group Strategy", issue: l.subject, action: `Written reply required from the head of ${r.a.name}.`, owner: "", due: l.due || "", status: "Open", taskTitle: "", notes: "", week: state.week, taskRef: "" });
+      }
+      if (res && res.error) { toast(errText(res)); return; }
+      state.ceoSent.add(key); state.ceoDraft = null;
+      toast(internal ? "Logged for follow-up" : (l.needsReply && isAppr() ? "Sent to the head of " + r.a.name + ". Reply tracked." : "Sent to the head of " + r.a.name));
+    } catch (e) { toast(errText(e)); }
+    render();
+  }
   function renderTasks(){
     const f = state.filter, month = f.period === "month";
     if (month && !state.monthData) return `<div class="panel"><div class="empty"><b>Collecting the weeks of ${esc(ETH_M[state.eth.m - 1])}…</b></div></div>`;
@@ -578,9 +645,9 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   function unitName(id){ const u = state.units.find(x => x.id===id); return u ? u.name : id; }
   function sortedUnits(){ return [...state.units].sort((a,b) => (a.type||"").localeCompare(b.type||"") || (a.order??99)-(b.order??99) || a.name.localeCompare(b.name)); }
 
-  const GROUPS = { dashboard: ["dashboard"], plans: ["update", "plan", "mplan", "approvals"], delivery: ["support", "fb"], reports: ["tasks", "monthly"] };
-  const SUB_LABEL = { update: "Progress update", plan: "Next plan", mplan: "Monthly plan", approvals: "Approvals", support: "Business support", fb: "Feedback", tasks: "Weekly report", monthly: "Monthly report" };
-  const PAGE_TITLE = { dashboard: ["Dashboards", "How every unit and function is doing this week."], update: ["Plans", "Update progress on this week's tasks."], plan: ["Plans", "Plan the tasks for next week."], mplan: ["Plans", "Plan the month once and split it across its weeks."], approvals: ["Plans", "Changes waiting for approval."], support: ["Delivery", "Support requested from group functions."], fb: ["Delivery", "Feedback and corrective actions."], tasks: ["Reports", "Every task, filtered and downloadable."], monthly: ["Reports", "Consolidated by Ethiopian calendar month."], follow: ["Follow-up", ""], activity: ["Activity log", "Who changed what, and when."], units: ["Settings · Units", "Group Strategy only."], people: ["Settings · People", "Group Strategy only."] };
+  const GROUPS = { dashboard: ["dashboard"], plans: ["update", "plan", "mplan", "approvals"], delivery: ["support", "fb"], reports: ["tasks", "monthly", "ceo"] };
+  const SUB_LABEL = { update: "Progress update", plan: "Next plan", mplan: "Monthly plan", approvals: "Approvals", support: "Business support", fb: "Feedback", tasks: "Weekly report", monthly: "Monthly report", ceo: "Actions for the CEO" };
+  const PAGE_TITLE = { dashboard: ["Dashboards", "How every unit and function is doing this week."], update: ["Plans", "Update progress on this week's tasks."], plan: ["Plans", "Plan the tasks for next week."], mplan: ["Plans", "Plan the month once and split it across its weeks."], approvals: ["Plans", "Changes waiting for approval."], support: ["Delivery", "Support requested from group functions."], fb: ["Delivery", "Feedback and corrective actions."], tasks: ["Reports", "Every task, filtered and downloadable."], monthly: ["Reports", "Consolidated by Ethiopian calendar month."], ceo: ["Reports", "What the CEO should do about each unit."], follow: ["Follow-up", ""], activity: ["Activity log", "Who changed what, and when."], units: ["Settings · Units", "Group Strategy only."], people: ["Settings · People", "Group Strategy only."] };
   const groupOf = t => Object.keys(GROUPS).find(g => GROUPS[g].includes(t)) || "";
   const SM = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   const weekShort = w => { const a = parse(w), b = parse(weekEndOf(w)); return a.getMonth() === b.getMonth() ? `${SM[a.getMonth()]} ${a.getDate()} – ${b.getDate()}` : `${SM[a.getMonth()]} ${a.getDate()} – ${SM[b.getMonth()]} ${b.getDate()}`; };
@@ -608,7 +675,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     $("#unitsTabBtn").hidden = !isAppr(); $("#peopleTabBtn").hidden = !isAppr();
     renderNav();
     const nb = X.badgeCount(), fbb = $("#fbCount"); if (fbb) { fbb.textContent = nb; fbb.hidden = !nb; }
-    const np = canDecideAny() ? toDecide().length : pendingFor().length, ab = $("#apprCount"); const nm = (state.mentions || []).length, nr = (state.rr ? state.rr.count + state.rr.access : 0) + (typeof unseenDecided === "function" ? unseenDecided().length : 0) + fyiForMe().length, bb = $("#bellBtn"); if (ab) { ab.textContent = np + nm + nr > 9 ? "9+" : np + nm + nr; ab.hidden = !(np + nm + nr); } if (bb) { bb.classList.toggle("has", !!(np + nm + nr)); bb.title = np + nm + nr ? [nm ? nm + " mention" + (nm === 1 ? "" : "s") : "", np ? np + (canDecideAny() ? " waiting for your approval" : " waiting for approval") : "", nr ? nr + " other update" + (nr === 1 ? "" : "s") : ""].filter(Boolean).join(" · ") : "Notifications"; bb.setAttribute("aria-label", "Notifications: " + bb.title); }
+    const np = canDecideAny() ? toDecide().length : pendingFor().length, ab = $("#apprCount"); const nm = (state.mentions || []).length, nr = (state.rr ? state.rr.count + state.rr.access : 0) + unreadMsgs().length, bb = $("#bellBtn"); if (ab) { ab.textContent = np + nm + nr > 9 ? "9+" : np + nm + nr; ab.hidden = !(np + nm + nr); } if (bb) { bb.classList.toggle("has", !!(np + nm + nr)); bb.title = np + nm + nr ? [nm ? nm + " mention" + (nm === 1 ? "" : "s") : "", np ? np + (canDecideAny() ? " waiting for your approval" : " waiting for approval") : "", nr ? nr + " other update" + (nr === 1 ? "" : "s") : ""].filter(Boolean).join(" · ") : "Notifications"; bb.setAttribute("aria-label", "Notifications: " + bb.title); }
     $("#whoBtn").textContent = me ? ((me.name || me.email || "?").trim().split(/\s+/).slice(0, 2).map(w => w[0]).join("").toUpperCase() || "?") : "?"; $("#whoBtn").title = me ? me.name : "Sign in";
     $("#modeChip").hidden = dataMode !== "local";
   }
@@ -873,6 +940,47 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   const markSeenFyi = ids => { const x = new Set([...seenFyi(), ...ids]); store.set("wp-fyi-seen", JSON.stringify([...x].slice(-80))); };
   // planning heads are told when a chief has approved something in their unit
   const fyiForMe = () => (me && me.role === "planning") ? state.requests.filter(r => r.status === "approved" && r.stage === "chief" && r.unit === me.unit && r.decidedBy && r.decidedBy !== me.name && !seenFyi().includes(r.id) && Date.now() - Date.parse(r.decidedAt || 0) < 7 * 864e5) : [];
+  // ----- notification history: kept on this device, read ones stay in the panel -----
+  const nlogKey = () => "wp-nlog-" + ((me && (me.email || me.id)) || "x");
+  const readLog = () => { try { return JSON.parse(store.get(nlogKey()) || "null"); } catch (e) { return null; } };
+  const msgCandidates = () => {
+    if (!me) return [];
+    const out = [], now = Date.now(), DAY = 864e5;
+    if (me.role === "planning") state.requests.filter(r => r.status === "approved" && r.stage === "chief" && r.unit === me.unit && r.decidedBy && r.decidedBy !== me.name && now - Date.parse(r.decidedAt || 0) < 14 * DAY)
+      .forEach(r => out.push({ id: "fyi:" + r.id, ts: r.decidedAt, n: 1, html: `<b>${esc(r.decidedBy)}</b> approved ${esc((KIND_LABEL[r.kind] || "plan").toLowerCase())} changes for <b>${esc(deptLabel(r))}</b><div class="small muted">${esc(r.summary)} · asked by ${esc(r.by)}</div>`, go: { t: "approvals" } }));
+    (state.myRR || []).filter(x => (x.status === "approved" || x.status === "rejected") && now - Date.parse(x.decidedAt || 0) < 30 * DAY)
+      .forEach(x => out.push({ id: "rr:" + x.id, ts: x.decidedAt, n: 1, html: `Your role request was <b>${x.status === "approved" ? "approved" : "not approved"}</b><div class="small muted">${esc(ROLE_LABEL[x.role] || x.role)}${x.note ? " · “" + esc(x.note) + "”" : ""}</div>`, go: { t: "menu" } }));
+    if (me.role === "leader") (state.fbs || []).filter(f => f.toLead && f.unit === me.unit && now - Date.parse(f.createdAt || 0) < 60 * DAY)
+      .forEach(f => out.push({ id: "fb:" + f.id, ts: f.createdAt, n: 1, html: `<b>${esc(f.from)}</b> sent a letter to the head of <b>${esc(unitName(f.unit))}</b><div class="small muted">${esc((f.body || "").split("\n")[0].slice(0, 110))}</div>`, go: { t: "fb", unit: f.unit } }));
+    // progress updates travel up: staff and managers to their chiefs, chiefs to planning, Group Strategy, the CEO and the DCEO
+    const groups = new Map(), cur = thisMonday();
+    (state.activity || []).forEach(a => {
+      if (a.action !== "save" || !a.role || !a.week || String(a.week).slice(0, 10) > cur || a.by === me.name || now - Date.parse(a.ts || 0) > 7 * DAY) return;
+      const up = a.role === "leader" ? (me.role === "planning" && me.unit === a.unit) || me.role === "super_admin" || me.role === "executive"
+        : ["manager", "staff"].includes(a.role) ? me.role === "leader" && me.unit === a.unit : false;
+      if (!up) return;
+      const day = String(a.ts).slice(0, 10), id = "pu:" + a.by + "|" + a.unit + "|" + day, g = groups.get(id) || { id, by: a.by, role: a.role, unit: a.unit, week: String(a.week).slice(0, 10), ts: a.ts, n: 0 };
+      g.n++; if (a.ts > g.ts) g.ts = a.ts; groups.set(id, g);
+    });
+    groups.forEach(g => out.push({ id: g.id, ts: g.ts, n: g.n, html: `<b>${esc(g.by)}</b> (${g.role === "leader" ? "chief" : g.role}, ${esc(unitName(g.unit))}) updated progress<div class="small muted">${g.n} save${g.n === 1 ? "" : "s"} on ${esc(fmt(String(g.ts).slice(0, 10)))}</div>`, go: { t: "unit", unit: g.unit, week: g.week } }));
+    return out;
+  };
+  function syncMsgs(){
+    const first = readLog() === null, log = readLog() || {}; let ch = first;
+    msgCandidates().forEach(m => {
+      const o = log[m.id];
+      if (!o) { log[m.id] = { ...m, read: first && Date.now() - Date.parse(m.ts || 0) > 864e5 }; ch = true; }
+      else if (m.n > (o.n || 1)) { log[m.id] = { ...m, read: false }; ch = true; }
+      else if (o.html !== m.html) { log[m.id] = { ...o, html: m.html, go: m.go }; ch = true; }
+    });
+    const keys = Object.keys(log).sort((a, b) => (log[b].ts || "") < (log[a].ts || "") ? -1 : 1);
+    if (keys.length > 80) { keys.slice(80).forEach(k => delete log[k]); ch = true; }
+    if (ch) store.set(nlogKey(), JSON.stringify(log));
+    return log;
+  }
+  const msgList = () => Object.values(syncMsgs()).sort((a, b) => (b.ts || "") < (a.ts || "") ? -1 : 1);
+  const unreadMsgs = () => msgList().filter(m => !m.read);
+  function markMsgsRead(ids){ const log = syncMsgs(); (ids || Object.keys(log)).forEach(i => { if (log[i]) log[i].read = true; }); store.set(nlogKey(), JSON.stringify(log)); }
   const KIND_LABEL = { plan: "Plan", actual: "Progress update" };
   const deptLabel = r => (r.dept || "").split(",").filter(Boolean).join(", ") || "Whole unit";
   const reqTitle = r => `${deptLabel(r)} · ${unitName(r.unit)}`;
@@ -881,7 +989,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     if (!db || unsubAct) return;
     unsubAct = db.collection("activity").orderBy("ts","desc").limit(400).onSnapshot(snap => {
       state.activity = snap.docs.map(d => { const a = { id: d.id, ...d.data() }; if (typeof a.details === "string") { try { a.details = JSON.parse(a.details); } catch (e) { a.details = [a.details]; } } if (!Array.isArray(a.details)) a.details = []; return a; }); state.actLoaded = true;
-      if (state.tab === "activity") render();
+      if (state.tab === "activity") render(); else renderHero();
     }, err => { state.actLoaded = true; state.actErr = err.code; unsubAct = null; render(); });
   }
   const ACTIONS = ["save","import","request","approval","restore","lists","unit","evidence","data-load"];
@@ -1247,6 +1355,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     else if (state.tab==="plan") html += renderUpdate() + `<details class="panel imp-det" id="impDet" ${(state.impOpen || state.imp) ? "open" : ""}><summary><b>Import or export with Excel</b> <span class="small muted">download the template, fill it in, upload it</span></summary>${renderImport()}</details>`;
     else if (state.tab==="mplan") html += renderMplan();
     else if (state.tab==="tasks") html += renderTasks();
+    else if (state.tab==="ceo") html += renderCeo();
     else if (state.tab==="follow") html += renderFollow();
     else if (state.tab==="monthly") html += renderMonthly();
     else if (state.tab==="support") html += X.renderSupport();
@@ -1630,9 +1739,20 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     const mm = document.querySelector("details.more[open]"); if (mm && (!e.target.closest("details.more") || e.target.closest(".more-menu button"))) mm.open = false;
     const row = e.target.closest("tr.task-row");
     if (row && !e.target.closest("input, select, textarea, button, label, a, summary") && (state.tab === "update" || state.tab === "plan") && row.dataset.id) { openPanel(row.dataset.u + "|" + row.dataset.id); return; }
-    const t = e.target.closest("button, tr[data-open-unit], tr[data-tgl], .hbar-row[data-open-unit]");
+    const t = e.target.closest("button, tr[data-open-unit], tr[data-tgl], tr[data-ceotgl], .hbar-row[data-open-unit]");
     if (!t) return;
     if (t.id === "pfClear") { state.pf = { q: "", pri: "", st: "", dep: "", lvl: pf().lvl, kind: pf().kind }; render(); return; }
+    if (t.dataset.ceotype !== undefined && t.closest(".seg")) { state.ceoType = t.dataset.ceotype; render(); return; }
+    { const tr = t.closest("[data-ceotgl]"); if (tr && t.tagName === "TR") { const k = tr.dataset.ceotgl; state.ceoOpen.has(k) ? state.ceoOpen.delete(k) : state.ceoOpen.add(k); render(); return; } }
+    if (t.dataset.ceoprep) { ceoPrep(t.dataset.u, Number(t.dataset.ceoprep)); return; }
+    if (t.dataset.ceodo === "cancel") { state.ceoDraft = null; render(); return; }
+    if (t.dataset.ceodo === "send") {
+      const rows = ceoRows(), r = rows && rows.find(y => y.id === t.dataset.u), per = state.filter.period === "month" ? "month" : "week", x = r && ceoActions(r.a, per)[Number(t.dataset.i)], d = state.ceoDraft;
+      if (!r || !x || !d) return;
+      const sub = ($("#ceoSub") || {}).value || d.subject, body = ($("#ceoBody") || {}).value || d.body, due = ($("#ceoDue") || {}).value || d.due;
+      if (!body.trim()) { toast("The letter is empty"); return; }
+      ceoSend(r, x, { subject: sub, body, needsReply: d.needsReply, due }); return;
+    }
     if (t.dataset.acttab) { state.actTab = t.dataset.acttab; render(); return; }
     if (t.dataset.lvl) { pf().lvl = t.dataset.lvl; render(); return; }
     if (t.dataset.kind) { pf().kind = t.dataset.kind; render(); return; }
@@ -1786,6 +1906,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     else if (el.id==="mpFile") { const f = el.files && el.files[0]; el.value = ""; if (f) mpUpload(f); }
     else if (el.id==="impMode") { state.imp.mode = el.value; state.imp.needConfirm = false; state.imp.confirmed = false; render(); }
     else if (el.id==="impDepts") { state.imp.newDepts = el.checked; }
+    else if (el.id==="ceoDue" && state.ceoDraft) { const ta = $("#ceoBody"), old = fmtD(state.ceoDraft.due); state.ceoDraft.due = el.value; if (ta && el.value) ta.value = ta.value.split(old).join(fmtD(el.value)); }
     else if (el.id==="aWeek") { state.actWeek = el.value === thisMonday() ? "" : el.value; render(); }
     else if (el.id==="aUnit") { state.actFilter.unit = el.value; render(); }
     else if (el.id==="aWho") { state.actFilter.who = el.value; render(); }
@@ -1839,7 +1960,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   function renderNav(){
     const g = groupOf(state.tab);
     document.querySelectorAll("#mainNav button").forEach(b => b.setAttribute("aria-current", String(b.dataset.group === g)));
-    const subs = (GROUPS[g] || []).filter(t => t !== "approvals" || isAppr() || pendingFor().length || toDecide().length);
+    const subs = (GROUPS[g] || []).filter(t => (t !== "approvals" || isAppr() || pendingFor().length || toDecide().length) && (t !== "ceo" || canFeedback(me)));
     const nb = X.badgeCount();
     $("#subNav").innerHTML = subs.length > 1 ? subs.map(t => `<button role="tab" data-sub="${t}" aria-selected="${t === state.tab}">${SUB_LABEL[t]}${t === "fb" && nb ? ` <span class="badge">${nb}</span>` : ""}${t === "approvals" && pendingFor().length ? ` <span class="badge">${pendingFor().length}</span>` : ""}</button>`).join("") : "";
     $("#subNav").hidden = !subs.length || subs.length < 2;
@@ -2062,23 +2183,29 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     if (week && week !== state.week) { if (state.dirty) { toast("Save or discard your changes first"); return; } state.pendingOpen = { unit, ref, week }; setWeek(week); return; }
     toast("This task is not in the week you are viewing, or you cannot see it.");
   }
+  function openMsg(g){
+    if (g.t === "approvals") goTab("approvals");
+    else if (g.t === "menu") showMenu();
+    else if (g.t === "fb") { if (state.fbv) { state.fbv.view = "feedback"; state.fbv.unit = g.unit || ""; state.fbv.from = ""; state.fbv.ack = ""; } goTab("fb"); }
+    else if (g.t === "unit") { if (state.dirty) { toast("Save or discard your changes first"); return; } state.editUnit = g.unit; store.set("wp-unit", g.unit); if (g.week && g.week !== state.week) setWeek(g.week); goTab("update"); }
+  }
   function closeBellMenu(){ const m = $("#bellMenu"); if (m) m.remove(); }
   function bellMenu(){
     if ($("#bellMenu")) { closeBellMenu(); return; }
     const np = pendingFor().length, ms = state.mentions;
     const items = ms.map((m, i) => `<button type="button" class="bm-i" data-bm="${i}"><b>${esc(m.by)}</b> mentioned you on <span class="ref">${esc(m.ref)}</span> <span class="small muted">${esc(unitName(m.unit))}</span><div class="small muted">${esc(m.snippet)}</div></button>`).join("");
     const nrr = state.rr ? state.rr.count : 0, nac = state.rr ? state.rr.access : 0, dec = unseenDecided();
-    const rrItems = (isAppr() ? (nrr ? `<button type="button" class="bm-i" data-bm-people="1"><b>${nrr}</b> role request${nrr === 1 ? "" : "s"} waiting for your decision</button>` : "") + (nac ? `<button type="button" class="bm-i" data-bm-people="1"><b>${nac}</b> access request${nac === 1 ? "" : "s"} waiting</button>` : "") : "") + dec.map(x => `<button type="button" class="bm-i" data-bm-prof="${esc(x.id)}">Your role request was <b>${x.status === "approved" ? "approved" : "not approved"}</b><div class="small muted">${esc(ROLE_LABEL[x.role] || x.role)}${x.note ? " · “" + esc(x.note) + "”" : ""}</div></button>`).join("");
+    const rrItems = (isAppr() ? (nrr ? `<button type="button" class="bm-i" data-bm-people="1"><b>${nrr}</b> role request${nrr === 1 ? "" : "s"} waiting for your decision</button>` : "") + (nac ? `<button type="button" class="bm-i" data-bm-people="1"><b>${nac}</b> access request${nac === 1 ? "" : "s"} waiting</button>` : "") : "") + "";
     const groups = new Map(); toDecide().forEach(r => { const k = r.unit + "|" + (r.dept || ""); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(r); });
     const appItems = [...groups.values()].map(g => { const r0 = g[0], kinds = {}; g.forEach(r => kinds[KIND_LABEL[r.kind] || "Plan"] = (kinds[KIND_LABEL[r.kind] || "Plan"] || 0) + 1);
       return `<button type="button" class="bm-i" data-bm-appr="1"><b>${esc(deptLabel(r0))}</b> · ${esc(unitName(r0.unit))} is asking for approval<div class="small muted">${Object.entries(kinds).map(([k, v]) => v + " " + k.toLowerCase() + (v === 1 ? "" : "s")).join(", ")} · from ${esc([...new Set(g.map(r => r.by))].join(", "))}</div></button>`; }).join("");
-    const fyi = fyiForMe();
-    const fyiItems = fyi.map(r => `<button type="button" class="bm-i" data-bm-fyi="${esc(r.id)}"><b>${esc(r.decidedBy)}</b> approved ${esc((KIND_LABEL[r.kind] || "plan").toLowerCase())} changes for <b>${esc(deptLabel(r))}</b><div class="small muted">${esc(r.summary)} · asked by ${esc(r.by)}</div></button>`).join("");
+    const hist = msgList().slice(0, 40), nun = hist.filter(m => !m.read).length;
+    const fyiItems = hist.length ? `<div class="bm-head small muted"><span>History</span>${nun ? `<button type="button" class="lnk" data-bm-allread="1">Mark all as read</button>` : ""}</div>` + hist.map(m => `<button type="button" class="bm-i${m.read ? " bm-read" : " bm-new"}" data-bm-msg="${esc(m.id)}">${m.read ? "" : '<span class="bm-dot" aria-label="New"></span>'}${m.html}<div class="small muted">${esc(fmt(String(m.ts || "").slice(0, 10)))}</div></button>`).join("") : "";
     const m = document.createElement("div"); m.id = "bellMenu"; m.className = "bell-menu";
-    m.innerHTML = `<div class="small muted" style="padding:8px 12px">Notifications</div>${items}${appItems}${fyiItems}${np && !canDecideAny() ? `<button type="button" class="bm-i" data-bm-appr="1"><b>${np}</b> change${np === 1 ? "" : "s"} waiting for approval</button>` : ""}${rrItems}${!items && !np && !rrItems && !fyiItems ? '<div class="small muted" style="padding:10px 12px 14px">Nothing new.</div>' : ""}`;
+    m.innerHTML = `<div class="small muted" style="padding:8px 12px">Notifications</div>${items}${appItems}${fyiItems}${np && !canDecideAny() ? `<button type="button" class="bm-i" data-bm-appr="1"><b>${np}</b> change${np === 1 ? "" : "s"} waiting for approval</button>` : ""}${rrItems}${!items && !np && !rrItems && !appItems && !fyiItems ? '<div class="small muted" style="padding:10px 12px 14px">Nothing new.</div>' : ""}`;
     document.body.appendChild(m);
     const r = $("#bellBtn").getBoundingClientRect(); m.style.top = (r.bottom + 8) + "px"; m.style.right = Math.max(8, innerWidth - r.right) + "px";
-    m.addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; closeBellMenu(); if (b.dataset.bmAppr) goTab("approvals"); else if (b.dataset.bmFyi) { markSeenFyi([b.dataset.bmFyi]); renderHero(); goTab("approvals"); } else if (b.dataset.bmPeople) goTab("people"); else if (b.dataset.bmProf) { markSeenRR([b.dataset.bmProf]); renderHero(); showMenu(); } else { const x = state.mentions[Number(b.dataset.bm)]; if (x) openTaskByRef(x.unit, x.ref, x.week); } });
+    m.addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; if (!b.dataset.bmAllread) closeBellMenu(); if (b.dataset.bmAppr) goTab("approvals"); else if (b.dataset.bmAllread) { markMsgsRead(); renderHero(); closeBellMenu(); bellMenu(); } else if (b.dataset.bmMsg) { const m = syncMsgs()[b.dataset.bmMsg]; markMsgsRead([b.dataset.bmMsg]); renderHero(); if (m) openMsg(m.go || {}); } else if (b.dataset.bmPeople) goTab("people"); else if (b.dataset.bmProf) { markSeenRR([b.dataset.bmProf]); renderHero(); showMenu(); } else { const x = state.mentions[Number(b.dataset.bm)]; if (x) openTaskByRef(x.unit, x.ref, x.week); } });
   }
   document.addEventListener("click", e => { if ($("#bellMenu") && !e.target.closest("#bellMenu") && !e.target.closest("#bellBtn")) closeBellMenu(); });
   const panelRoot = $("#panelRoot");
@@ -2988,7 +3115,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     state.level = store.get("wp-level") || ((isAppr() || me.role === "executive") ? "deliverables" : "tasks");
     if (!state.editUnit || state.editUnit === ALL) { const mu = myUnit(); if (mu) { state.editUnit = mu; store.set("wp-unit", mu); } }
     if (!isAppr() && state.editUnit && !myUnit() && me.role !== "executive" && me.role !== "leader") state.editUnit = null;
-    subscribeRequests(); X.subscribe(); refreshMentions(); refreshRR();
+    subscribeRequests(); X.subscribe(); refreshMentions(); refreshRR(); if (["planning", "leader", "super_admin", "executive"].includes(me.role)) subscribeActivity();
     { const st = store.get("wp-start"); if (st && st !== "dashboard" && !location.hash && document.querySelector(`nav.tabs button[data-tab="${st}"]`) && !(st === "people" && !isAppr())) setTimeout(() => goTab(st), 0); }
     window.addEventListener("offline", () => banner("You are offline. Changes will not save until the connection returns."));
     window.addEventListener("online", () => { bannerMsg = ""; subscribePlans(); render(); });
