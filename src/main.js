@@ -907,7 +907,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   // ---------- version 3: Business support, Feedback and Corrective actions (src/extras.js) ----------
   const X = createExtras({
     state, esc, fmt, th: (...a) => th(...a), sortOrder: (...a) => sortOrder(...a), sortedUnits: () => sortedUnits(), unitName: id => unitName(id), todayIso, toast: (...a) => toast(...a),
-    errText: e => errText(e), render: () => render(), db: () => db, api: () => api, auth: () => auth(), isAppr: () => isAppr(), canEdit: u => canEdit(u), canLead: u => canLead(u), canFeedback: () => canFeedback(me), myUnit: () => myUnit(),
+    errText: e => errText(e), render: () => render(), db: () => db, api: () => api, auth: () => auth(), isAppr: () => isAppr(), canEdit: u => canEdit(u), canLead: u => canLead(u), canFeedback: () => canFeedback(me), myUnit: () => myUnit(), myRole: () => me && me.role,
     downloads: () => downloads, libsReady: k => libsReady(k), sheetFromRows: (...a) => sheetFromRows(...a), writeXlsx: (...a) => writeXlsx(...a), XLSX: () => XLSX,
     newPdf: (...a) => newPdf(...a), pdfStyle: () => pdfStyle(), pdfFooter: (...a) => pdfFooter(...a), save: (...a) => save(...a), goTab: t => goTab(t), weekLabel: w => weekLabel(w),
     weekChoices: () => { const t = thisMonday(); return [nextWeekOf(t), t, prevWeekOf(t), prevWeekOf(prevWeekOf(t)), prevWeekOf(prevWeekOf(prevWeekOf(t)))]; }, thisWeek: () => thisMonday(), ALL,
@@ -950,8 +950,8 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
       .forEach(r => out.push({ id: "fyi:" + r.id, ts: r.decidedAt, n: 1, html: `<b>${esc(r.decidedBy)}</b> approved ${esc((KIND_LABEL[r.kind] || "plan").toLowerCase())} changes for <b>${esc(deptLabel(r))}</b><div class="small muted">${esc(r.summary)} · asked by ${esc(r.by)}</div>`, go: { t: "approvals" } }));
     (state.myRR || []).filter(x => (x.status === "approved" || x.status === "rejected") && now - Date.parse(x.decidedAt || 0) < 30 * DAY)
       .forEach(x => out.push({ id: "rr:" + x.id, ts: x.decidedAt, n: 1, html: `Your role request was <b>${x.status === "approved" ? "approved" : "not approved"}</b><div class="small muted">${esc(ROLE_LABEL[x.role] || x.role)}${x.note ? " · “" + esc(x.note) + "”" : ""}</div>`, go: { t: "menu" } }));
-    if (me.role === "leader") (state.fbs || []).filter(f => f.toLead && f.unit === me.unit && now - Date.parse(f.createdAt || 0) < 60 * DAY)
-      .forEach(f => out.push({ id: "fb:" + f.id, ts: f.createdAt, n: 1, html: `<b>${esc(f.from)}</b> sent a letter to the head of <b>${esc(unitName(f.unit))}</b><div class="small muted">${esc((f.body || "").split("\n")[0].slice(0, 110))}</div>`, go: { t: "fb", unit: f.unit } }));
+    (state.fbs || []).filter(f => f.toLead && f.by !== me.name && ((me.role === "leader" || me.role === "planning") ? f.unit === me.unit : ["super_admin", "executive"].includes(me.role)) && now - Date.parse(f.createdAt || 0) < 60 * DAY)
+      .forEach(f => out.push({ id: "fb:" + f.id, ts: f.createdAt, n: 1, html: `<b>${esc(f.from)}</b> sent a letter ${me.role === "leader" ? "to the head of" : "(copy) to the head of"} <b>${esc(unitName(f.unit))}</b><div class="small muted">${esc((f.body || "").split("\n")[0].slice(0, 110))}</div>`, go: { t: "fb", unit: f.unit } }));
     // progress updates travel up: staff and managers to their chiefs, chiefs to planning, Group Strategy, the CEO and the DCEO
     const groups = new Map(), cur = thisMonday();
     (state.activity || []).forEach(a => {

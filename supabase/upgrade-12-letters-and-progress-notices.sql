@@ -1,7 +1,7 @@
 -- Stage 5d: letters from the CEO / DCEO / Group Strategy reach only the head of the unit, and progress updates can be traced to a role.
 -- Run once in the Supabase SQL Editor, after upgrade-11. Safe to run again.
 --
---   feedback.to_lead   true  -> a letter to the head of the unit: only the unit's chiefs (leader role), Group Strategy, the CEO and the DCEO can read it.
+--   feedback.to_lead   true  -> a letter to the head of the unit: only the unit's chiefs (leader role), the unit's planning head (copied), Group Strategy, the CEO and the DCEO can read it.
 --   activity.by_role   the role of the person who made the change, so progress updates can be passed up the hierarchy.
 
 alter table public.feedback add column if not exists to_lead boolean not null default false;
@@ -10,7 +10,7 @@ alter table public.activity add column if not exists by_role text not null defau
 drop policy if exists "read" on public.feedback;
 create policy "read" on public.feedback for select to authenticated using (
   public.wbg_auth()->>'role' in ('super_admin','executive')
-  or (to_lead and public.wbg_auth()->>'role' = 'leader' and public.wbg_auth()->>'unit' = unit_id)
+  or (to_lead and public.wbg_auth()->>'role' in ('leader','planning') and public.wbg_auth()->>'unit' = unit_id)
   or (not to_lead and public.wbg_unit_read(unit_id))
 );
 
