@@ -2372,10 +2372,15 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     toast("Preparing the dashboard PDF…");
     try {
       const { default: html2canvas } = await import("html2canvas");
-      const WIDTH = 1280, bg = getComputedStyle(document.body).backgroundColor || "#ffffff";
-      let blocks = [], mainW = WIDTH;
-      const canvas = await html2canvas(main, { scale: 2, windowWidth: WIDTH, backgroundColor: bg, useCORS: true, logging: false, onclone: (doc) => {
+      const root = document.documentElement, prevTheme = root.getAttribute("data-theme");
+      root.setAttribute("data-theme", "light");   // the PDF is always light; switched back as soon as the picture is taken
+      await new Promise(r => setTimeout(r, 60));
+      const WIDTH = 1280, bg = "#f6f5ef";   // always the light look, whatever the screen theme is
+      let blocks = [], mainW = WIDTH, canvas;
+      try { canvas = await html2canvas(main, { scale: 2, windowWidth: WIDTH, backgroundColor: bg, useCORS: true, logging: false, onclone: (doc) => {
         const m = doc.getElementById("main"); if (!m) return;
+        doc.documentElement.setAttribute("data-theme", "light"); doc.body.style.background = bg; doc.body.style.color = "#2a2208";
+        doc.documentElement.style.colorScheme = "light"; void doc.documentElement.offsetHeight;
         doc.querySelectorAll(".dash-bar, .seg, .more > summary, .viz-table, .toast, #bellMenu, .tip, .tooltip").forEach(e => { e.style.display = "none"; });
         doc.querySelectorAll(".more").forEach(d => { d.open = true; d.setAttribute("open", ""); });
         m.querySelectorAll("*").forEach(e => { if (e.closest("svg")) return; const cs = doc.defaultView.getComputedStyle(e);
@@ -2392,7 +2397,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
           kids.forEach(k => { const r = k.getBoundingClientRect(); if (r.height > 2) list.push({ top: r.top - top, bottom: r.bottom - top }); });
         });
         blocks = list;
-      } });
+      } }); } finally { if (prevTheme === null) root.removeAttribute("data-theme"); else root.setAttribute("data-theme", prevTheme); }
       const { jsPDF } = window.jspdf;
       const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
       const PW = doc.internal.pageSize.getWidth(), PH = doc.internal.pageSize.getHeight(), ML = 24, TOP = 30, BOT = 26;
