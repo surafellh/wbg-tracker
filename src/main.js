@@ -1130,9 +1130,10 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   function remindersPanel(u){
     const list = alertsFor(u).sort((a, b) => levelRank[a.level] - levelRank[b.level]);
     if (!list.length) return "";
-    const open = state.remOpen === true;
-    return `<div class="reminders" id="remPanel" title="Checked automatically for ${esc(unitName(u))}">
-      <ul>${list.map(a => { const lv = `<span class="pill ${a.level === "bad" ? "s-bad" : a.level === "warn" ? "s-not" : "s-none"}">${a.level === "bad" ? "Act now" : a.level === "warn" ? "Soon" : "Note"}</span>`; return a.tasks.length ? `<li class="${a.level}"><details class="rem-i"><summary>${lv} <span>${esc(a.text)}</span></summary><ol class="rem-t">${a.tasks.map(t => `<li>${esc(short(t.title))}${t.fromUnit ? ` <span class="muted small">(${esc(unitName(t.fromUnit))})</span>` : ""}</li>`).join("")}</ol></details></li>` : `<li class="${a.level}">${lv} <span>${esc(a.text)}</span></li>`; }).join("")}</ul></div>`;
+    const urgent = list.filter(a => a.level === "bad"), soon = list.filter(a => a.level !== "bad");
+    const col = (arr, cls, name) => `<div class="rem-col"><div class="rem-h"><span class="pill ${cls}">${name}</span> <span class="muted small">${arr.length}</span></div>${arr.length ? [...arr.filter(a => a.tasks.length), ...arr.filter(a => !a.tasks.length)].map(a => `<div class="rem-it"><div class="rem-tx">${esc(a.text)}</div>${a.tasks.length ? `<ul class="rem-t">${a.tasks.map(t => `<li>${esc(short(t.title))}${t.fromUnit ? ` <span class="muted small">(${esc(unitName(t.fromUnit))})</span>` : ""}</li>`).join("")}</ul>` : ""}</div>`).join("") : `<div class="muted small">Nothing here.</div>`}</div>`;
+    return `<details class="reminders" id="remPanel"><summary title="Checked automatically for ${esc(unitName(u))}. Click to see the details."><span class="rem-title">Reminders for ${esc(unitName(u))}</span><span class="rem-btns"><span class="pill ${urgent.length ? "s-bad" : "s-none"}">Act now · ${urgent.length}</span><span class="pill ${soon.length ? "s-not" : "s-none"}">Soon · ${soon.length}</span></span></summary>
+      <div class="rem-pop">${col(urgent, "s-bad", "Act now")}${col(soon, "s-not", "Soon")}</div></details>`;
   }
   function requestsPanel(u){
     const list = pendingFor(u, state.week); if (!list.length) return "";
@@ -1738,6 +1739,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     else if (to === "update" && state.week > thisMonday() && !state.dirty) { state.week = thisMonday(); state.draft = null; state.allDrafts = null; subscribePlans(); }
     if ((state.tab==="update"||state.tab==="plan") && !hasDraft()) loadDraft(); if (state.tab==="activity") subscribeActivity(); if (state.tab==="people") loadPeople(); if (state.tab==="monthly" && db && !state.monthLoading && (!state.monthData || state.monthKey !== `${state.eth.y}-${state.eth.m}${state.monthBasis}`)) { render(); loadMonth(); return; } render(); });
 
+  document.addEventListener("click", e => { const rp = document.querySelector("details.reminders[open]"); if (rp && !e.target.closest("details.reminders")) rp.open = false; });
   const main = $("#main");
   main.addEventListener("click", e => {
     const mm = document.querySelector("details.more[open]"); if (mm && (!e.target.closest("details.more") || e.target.closest(".more-menu button"))) mm.open = false;
