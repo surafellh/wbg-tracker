@@ -1982,6 +1982,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   $("#mainNav").addEventListener("click", e => { const b = e.target.closest("button[data-group]"); if (!b) return; const g = b.dataset.group; if (groupOf(state.tab) === g) return; goTab(GROUPS[g][0]); });
   $("#subNav").addEventListener("click", e => { const b = e.target.closest("button[data-sub]"); if (b) goTab(b.dataset.sub); });
   // ---------- View as: Group Strategy tries the app as another role (the screens and buttons change; on the live app nothing can be saved) ----------
+  const canViewAs = p => !!p && p.role === "super_admin" && String(p.email || "").toLowerCase() === "surafel.h@wagwagoelectric.com";
   function showViewAsBar(){
     if (document.getElementById("vaBar") || !viewAs) return;
     const bar = document.createElement("div"); bar.id = "vaBar"; bar.className = "va-bar";
@@ -2030,7 +2031,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
       <button role="menuitem" data-a="profile">Profile and settings</button>
       ${isAppr() ? `<div class="acct-sep">Settings</div><button role="menuitem" data-a="units">Units</button><button role="menuitem" data-a="people">People and roles</button>` : ""}
       <button role="menuitem" data-a="activity">Activity log</button>
-      ${realMe && realMe.role === "super_admin" ? `<div class="acct-sep"></div><button role="menuitem" data-a="viewas">${viewAs ? "Change or exit view as" : "View as another role"}</button>` : ""}
+      ${canViewAs(realMe) ? `<div class="acct-sep"></div><button role="menuitem" data-a="viewas">${viewAs ? "Change or exit view as" : "View as another role"}</button>` : ""}
       <div class="acct-sep"></div><button role="menuitem" data-a="out">Sign out</button>`;
     document.body.append(m);
     m.onclick = async e => { const b = e.target.closest("button[data-a]"); if (!b) return; const a = b.dataset.a; closeAcct(); if (a === "profile") showMenu(); else if (a === "out") { await api.signOut(); location.reload(); } else if (a === "viewas") openViewAs(); else goTab(a); };
@@ -3175,7 +3176,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   function startApp(profile){
     realMe = profile;
     try { viewAs = JSON.parse(sessionStorage.getItem(VIEWAS_KEY) || "null"); } catch (e) { viewAs = null; }
-    if (viewAs && profile.role === "super_admin") { profile = { ...profile, role: viewAs.role, unit: viewAs.unit || "", departments: viewAs.departments || [] }; showViewAsBar(); }
+    if (viewAs && canViewAs(profile)) { profile = { ...profile, role: viewAs.role, unit: viewAs.unit || "", departments: viewAs.departments || [] }; showViewAsBar(); }
     else if (viewAs) { viewAs = null; try { sessionStorage.removeItem(VIEWAS_KEY); } catch (e) {} }
     me = profile; myId = profile.name; api.setProfile && api.setProfile(profile);
     api.onSignedOut(() => location.reload());
