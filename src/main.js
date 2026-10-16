@@ -136,12 +136,15 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   // ---------- saving: direct changes save now, the rest goes to Group Strategy for approval ----------
   const newId = () => `${Date.now().toString(36)}${uid()}`;
   const ERR = {
+    not_allowed: "You can't save changes to this unit with your current sign-in. Sign out and sign in again, then retry. If it keeps happening, ask Group Strategy to check your role and unit.",
+    not_allowed_dept: "One of these tasks is in a department that is not yours (or has no department). Pick one of your own departments for the task, or remove it, then save again.",
+    bad_request: "This plan could not be read. Reload the page and try again.",
     conflict: "Someone saved this plan a moment ago. Their version is now loaded underneath yours: press Save again to add your changes.",
     needs_approval: "This change needs Group Strategy approval.", not_pending: "That request was already decided.",
     too_late: "Undo is only possible for 30 minutes after your own save.", not_found: "Nothing to restore.",
     bad_code: "That approval code is not right.", too_many: "Too many wrong tries. Wait 15 minutes and try again.", code_off: "The approval code is not turned on.", already_pending: "You already have a request waiting. Withdraw it first to send a different one.", no_change: "That is the same as your current role and unit.", reason_needed: "Write a short reason (at least 5 characters).", bad_role: "That role cannot be requested.", quota_exceeded: "Storage is full. Ask the Strategy Office to archive old weeks.", pin_too_short: "A PIN needs at least 4 characters.", code_too_short: "The approver code needs at least 6 characters.",
   };
-  const errText = e => ERR[e && (e.error || e.code || e)] || "Could not save. Check your connection and try again.";
+  const errText = e => { const k = e && (e.error || e.code || e); return ERR[k] || (typeof k === "string" && /^[a-z_]{3,40}$/.test(k) && k !== "error" ? `Could not save (${k}). Reload the page and try again. If it keeps happening, tell Group Strategy this code.` : "Could not reach the server. Check your connection and try again."); };
   function opSummary(ops){
     const add = ops.filter(o => o.op === "add").length, rem = ops.filter(o => o.op === "remove").length;
     const upd = new Set(ops.filter(o => o.op === "set").map(o => o.id)).size, txt = ops.some(o => o.op === "text");
