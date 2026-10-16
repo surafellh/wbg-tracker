@@ -4,7 +4,7 @@
 
 // Once a week has started, these task fields are fixed for unit users. Changing them, or removing a saved
 // task, needs approval. Status, %, notes, owner, dependencies and evidence stay open.
-export const LOCKED = ["title", "kind", "dept", "outcome", "due", "priority"];
+export const LOCKED = ["title", "kind", "dept", "outcome", "priority"];   // the due date can be changed any time (activities get rescheduled)
 // Fields compared when working out what changed (lu / lb are "last updated" stamps, not content).
 export const TASK_FIELDS = ["title", "kind", "dept", "outcome", "owner", "due", "priority", "prevStatus", "prevPct", "status", "pct", "completedAt", "depUnit", "dep", "notes", "ev", "carried", "carriedCount", "blockedSince", "category", "target", "measure", "actual", "lower", "ref", "parent", "weight", "unplanned"];
 export const DEFAULT_APPROVERS = ["Surafel", "Surafel Hailu", "Ataklti", "Ataklti Nega"];

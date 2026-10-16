@@ -235,6 +235,7 @@ function createSupabaseData() {
     adminGetBackup: (day) => rpc("wbg_admin_get_backup", { p_day: day }),
     savePlan: (auth, plan, base, force, activity) => rpc("wbg_save_plan", { p_auth: auth, p_plan: planJson(plan), p_base: base || null, p_force: !!force, p_activity: activity || null }),
     requestChange: (auth, req) => rpc("wbg_request_change", { p_auth: auth, p_req: req }),
+    askUpdate: (auth, req) => rpc("wbg_ask_update", { p_auth: auth, p_req: req }),
     decideRequest: (auth, id, approve, note, plan) => rpc("wbg_decide_request", { p_auth: auth, p_id: id, p_approve: approve, p_note: note || "", p_plan: plan ? planJson(plan) : null }),
     withdrawRequest: (auth, id) => rpc("wbg_withdraw_request", { p_auth: auth, p_id: id }),
     restoreVersion: (auth, hid) => rpc("wbg_restore_version", { p_auth: auth, p_history_id: Number(hid) }),
@@ -342,13 +343,13 @@ function createLocalData() {
     { id: "surafel.h@wagwagoelectric.com", name: "Surafel Hailu", role: "super_admin", title: "Group Strategy", unit: "group-strategy-office", departments: [] },
     { id: "ceo@wagwagoelectric.com", name: "CEO (test)", role: "executive", title: "CEO", unit: null, departments: [] },
     { id: "dceo@wagwagoelectric.com", name: "DCEO (test)", role: "executive", title: "DCEO", unit: null, departments: [] },
-    { id: "gm@wagwagoelectric.com", name: "Wagwago GM (test)", role: "leader", title: "GM", unit: "wagwago-electric", departments: [] },
+    { id: "gm@wagwagoelectric.com", name: "Wagwago GM (test)", role: "gm", title: "GM", unit: "wagwago-electric", departments: [] },
     { id: "planning@wagwagoelectric.com", name: "Tsedenya (Wagwago planning)", role: "planning", title: "Planning", unit: "wagwago-electric", departments: ["Planning"] },
     { id: "hr.manager@wagwagoelectric.com", name: "Eden (Wagwago HR manager)", role: "manager", title: "Manager", unit: "wagwago-electric", departments: ["HR"] },
-    { id: "hr.chief@wagwagoelectric.com", name: "Selam (Wagwago HR chief)", role: "leader", title: "Chief", unit: "wagwago-electric", departments: ["HR"] },
+    { id: "hr.chief@wagwagoelectric.com", name: "Selam (Wagwago HR chief)", role: "chief", title: "Chief", unit: "wagwago-electric", departments: ["HR"] },
     { id: "design@wagwagoelectric.com", name: "Alem (Wagwago Design)", role: "staff", title: "", unit: "wagwago-electric", departments: ["Design and Engineering"] },
     { id: "planning@trucksload.net", name: "Trucksload planning (test)", role: "planning", title: "Planning", unit: "trucksload", departments: ["Planning"] },
-    { id: "chro@wagwagoelectric.com", name: "Group HR chief (test)", role: "leader", title: "Chief", unit: "hrm", departments: [] },
+    { id: "chro@wagwagoelectric.com", name: "Group HR chief (test)", role: "chief", title: "Chief", unit: "hrm", departments: [] },
   ].map((p) => ({ email: p.id, status: "active", setupDone: true, invited: true, ...p }));
   const NEWBIE = { id: "new.person@wagwagoelectric.com", email: "new.person@wagwagoelectric.com", name: "", role: "staff", title: "", unit: null, departments: [], status: "active", setupDone: false, invited: false };
   const people = () => { let p = read("wbg_local_people"); if (!p) { p = [...PEOPLE0, NEWBIE]; write("wbg_local_people", p); } return p; };
@@ -406,7 +407,16 @@ function createLocalData() {
       if (activity) addActivity(auth.name, plan.unit, plan.week, activity);
       return ok({ updatedAt: at, ignored: r.ignored });
     },
+    askUpdate(auth, req) {
+      if (!auth.role || auth.unit !== req.unit || !String(req.text || "").trim()) return err("not_allowed");
+      const r = getStore("requests"), depts = (req.depts || []).filter((d) => (auth.departments || []).includes(d));
+      r.push({ id: req.id, createdAt: new Date().toISOString(), unit: req.unit, week: req.week, planId: planId(req.week, req.unit), by: (auth.name || "").trim(), status: "pending", summary: String(req.text).trim().slice(0, 500), details: [String(req.text).trim().slice(0, 500)], patch: [], decidedBy: null, decidedAt: null, note: "", dept: (depts.length ? depts : (auth.departments || [])).join(","), kind: "ask", stage: "dept" });
+      setStore("requests", r);
+      addActivity(auth.name, req.unit, req.week, { action: "request", summary: "Asked their department head for an update: " + String(req.text).trim().slice(0, 200) });
+      return ok();
+    },
     requestChange(auth, req) {
+      if (auth.role === "staff") return err("view_only_role");
       if (!unitOk(auth, req.unit) && !isAppr(auth)) return err("not_allowed");
       const r = getStore("requests");
       let depts = [...new Set((req.depts || []).filter(Boolean))];
@@ -423,7 +433,7 @@ function createLocalData() {
       if (!q || q.status !== "pending") return err("not_pending");
       if (!canDecide(auth, q)) return err("not_allowed");
       if (!approve && !String(note || "").trim()) return err("reason_needed");
-      if (approve) savePlanRaw(auth, { ...plan, unit: q.unit, week: q.week }, "");
+      if (approve && q.kind !== "ask") savePlanRaw(auth, { ...plan, unit: q.unit, week: q.week }, "");
       Object.assign(q, { status: approve ? "approved" : "rejected", decidedBy: auth.name.trim(), decidedAt: new Date().toISOString(), note: note || "" });
       setStore("requests", r);
       addActivity(auth.name, q.unit, q.week, { action: "approval", summary: `${approve ? "Approved" : "Rejected"} request from ${q.by}: ${q.summary}${note ? " · Note: " + note : ""}`, details: q.details });
