@@ -274,7 +274,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   }
   function carryBanner(){
     const c = state.carryInfo; if (!c || c.key !== `${state.week}|${state.editUnit}` || !state.draft) return "";
-    const have = new Set(state.draft.tasks.map(t => norm(t.title))); const n = c.items.filter(t => !have.has(norm(t.title))).length;
+    const have = new Set(state.draft.tasks.map(t => norm(t.title))), haveRef = new Set(state.draft.tasks.map(t => t.ref).filter(Boolean)); const n = c.items.filter(t => !have.has(norm(t.title)) && !haveRef.has(t.ref)).length;
     return n ? `<div class="slimnote warn">${n} unfinished task${n > 1 ? "s" : ""} from earlier weeks not in this week. <button class="lnk" id="bfBtn2">Review and bring forward</button></div>` : "";
   }
   function fetchCarry(){
@@ -296,8 +296,9 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     if (!db || isAll() || !state.editUnit || !state.draft) { toast("Choose one unit first"); return; }
     let found;
     try { found = await earlierUnfinished(state.editUnit, state.week); } catch (e) { toast("Could not read the earlier weeks"); return; }
-    const have = new Set(state.draft.tasks.map(t => norm(t.title)));
-    const items = found.map(({ t, wk }) => ({ t, wk, dup: have.has(norm(t.title)), checked: !have.has(norm(t.title)) && (t.status === "In progress" || t.status === "Not started" || !t.status) }));
+    const have = new Set(state.draft.tasks.map(t => norm(t.title))), haveRef = new Set(state.draft.tasks.map(t => t.ref).filter(Boolean));
+    const isDup = t => haveRef.has(t.ref) || have.has(norm(t.title));   // the task code decides, even if the wording was changed
+    const items = found.map(({ t, wk }) => ({ t, wk, dup: isDup(t), checked: !isDup(t) && (t.status === "In progress" || t.status === "Not started" || !t.status) }));
     if (!items.length) { toast("Nothing unfinished in the earlier weeks"); return; }
     state.bf = { items, week: prevWeekOf(state.week) }; renderModal();
   }
@@ -641,9 +642,9 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     let upd = 0, add = 0, keep = 0, rem = 0;
     for (const g of groups.values()) {
       let existing = []; try { const s = await db.doc(`plans/${planId(g.week, g.unit.id)}`).get(); existing = s.exists ? (s.data().tasks || []) : []; } catch (e) {}
-      const keys = new Set(existing.map(t => norm(t.title))), seen = new Set();
-      g.rows.forEach(r => { const k = norm(r.row.title); if (keys.has(k)) { upd++; seen.add(k); } else add++; });
-      keep += existing.filter(t => !seen.has(norm(t.title))).length; rem += existing.length;
+      const keys = new Set(existing.map(t => norm(t.title))), codes = new Set(existing.map(t => t.ref).filter(Boolean)), seen = new Set();
+      g.rows.forEach(r => { const k = norm(r.row.title), c = r.row.ref; if (c && codes.has(c)) { upd++; seen.add(c); } else if (keys.has(k) && (!c || !existing.some(t => norm(t.title) === k && t.ref))) { upd++; seen.add(k); } else add++; });
+      keep += existing.filter(t => !seen.has(norm(t.title)) && !seen.has(t.ref)).length; rem += existing.length;
     }
     if (state.imp === imp) { imp.impact = { upd, add, keep, rem, n: imp.rows.filter(r => !r.err.length).length }; render(); }
   }
@@ -2559,9 +2560,9 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   }
 
   function sheetFromRows(rows, widths){ const ws = XLSX.utils.aoa_to_sheet(rows); ws["!cols"] = widths.map(w => ({ wch: w })); return ws; }
-  const taskHead = ["#","Task / deliverable","Department","Owner (name)","Due","Priority","Status","% complete","Notes / next step","Type","Expected outcome","Previous status","Completed on","Depends on (unit)","Dependency details","Evidence files"];
-  const taskWidths = [5,55,18,22,12,10,13,11,50,11,40,14,13,24,30,30];
-  const xlsxTask = (t,i) => [i+1, t.title||"", t.dept||"", t.owner||"", t.due||"", t.priority||"", t.status||"No status", typeof t.pct==="number" ? t.pct/100 : "", t.notes||"", t.kind||"Task", t.outcome||"", t.prevStatus||"", t.completedAt||"", t.depUnit ? unitName(t.depUnit) : "", t.dep||"", (t.ev||[]).map(e => e.name).join(", ")];
+  const taskHead = ["#","Task / deliverable","Department","Owner (name)","Due","Priority","Status","% complete","Notes / next step","Type","Expected outcome","Previous status","Completed on","Depends on (unit)","Dependency details","Evidence files","Task code"];
+  const taskWidths = [5,55,18,22,12,10,13,11,50,11,40,14,13,24,30,30,14];
+  const xlsxTask = (t,i) => [i+1, t.title||"", t.dept||"", t.owner||"", t.due||"", t.priority||"", t.status||"No status", typeof t.pct==="number" ? t.pct/100 : "", t.notes||"", t.kind||"Task", t.outcome||"", t.prevStatus||"", t.completedAt||"", t.depUnit ? unitName(t.depUnit) : "", t.dep||"", (t.ev||[]).map(e => e.name).join(", "), t.ref||""];
   function pctFormat(ws, col, firstRow){ const r = XLSX.utils.decode_range(ws["!ref"]); for (let R = firstRow; R <= r.e.r; R++) { const c = ws[XLSX.utils.encode_cell({ r: R, c: col })]; if (c && typeof c.v === "number") c.z = "0%"; } }
   async function writeXlsx(wb, filename, msg){ const buf = XLSX.write(wb, { bookType: "xlsx", type: "array" }); await save(filename, buf, msg); }
 
@@ -2616,12 +2617,13 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   }
 
   // ---------- template download and import ----------
-  const TCOLS = ["Week starting","Unit","Department","Task / deliverable","Type","Category","Owner","Due date","Priority","Status","Target","Target unit","Actual","Lower is better","% complete","Notes / next step","Expected outcome","Depends on (unit)","Dependency details"];
+  const TCOLS = ["Week starting","Unit","Department","Task code","Task / deliverable","Type","Category","Owner","Due date","Priority","Status","Target","Target unit","Actual","Lower is better","% complete","Notes / next step","Expected outcome","Depends on (unit)","Dependency details"];
   const TCOLS_OLD = ["Week starting","Unit","Department","Task / deliverable","Type","Owner","Due date","Priority","Status","% complete","Notes / next step","Expected outcome","Depends on (unit)","Dependency details"];
   const SCOLS = ["Week starting","Unit","Key results this week","Blockers and issues","Asks to top management or other units"];
-  const TWIDTH = [14,32,22,60,11,13,24,12,10,13,10,12,10,10,11,50,40,26,34];
+  const TWIDTH = [14,32,22,13,60,11,13,24,12,10,13,10,12,10,10,11,50,40,26,34];
   function colKey(h){
     const k = String(h ?? "").toLowerCase().replace(/[^a-z0-9%]+/g, " ").trim(); if (!k) return "";
+    if (/^task code|^code$|^ref$|^reference|^activity code/.test(k)) return "ref";
     if (/^category/.test(k)) return "category";
     if (/target unit|^measure|unit of measure/.test(k)) return "measure";
     if (/^target/.test(k)) return "target";
@@ -2717,7 +2719,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     if (actual === null) { r.warn.push(`Actual "${g("actual")}" is not a number, ignored`); actual = ""; }
     const measure = String(g("measure") ?? "").trim(), lower = /^(y|yes|true|1)/i.test(String(g("lower") ?? "").trim());
     const cp = calcPct({ target, actual, lower }); if (cp !== null) { pct = cp; if (cp === 100 && !status) status = "Done"; }
-    r.row = { category, target, measure, actual, lower, title, dept, owner: String(g("owner") ?? "").trim(), due, priority, status, pct, notes, kind, outcome: String(g("outcome") ?? "").trim(), depUnit: depU ? depU.id : "", dep };
+    r.row = { ref: String(g("ref") ?? "").trim().toUpperCase(), category, target, measure, actual, lower, title, dept, owner: String(g("owner") ?? "").trim(), due, priority, status, pct, notes, kind, outcome: String(g("outcome") ?? "").trim(), depUnit: depU ? depU.id : "", dep };
     return r;
   }
   function findHeader(rows, keyFn, min){
@@ -2746,7 +2748,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   }
   function templateRows(unitId, prefill){
     const units = unitId ? state.units.filter(u => u.id === unitId) : sortedUnits(); const out = [];
-    const row = (u, t) => [state.week, u.name, t.dept || "", t.title || "", t.kind || "Task", t.category || "", t.owner || "", t.due || "", t.priority || "", t.status || "", t.target ?? "", t.measure || "", t.actual ?? "", t.lower ? "Yes" : "", typeof t.pct === "number" ? t.pct / 100 : "", t.notes || "", t.outcome || "", t.depUnit ? unitName(t.depUnit) : "", t.dep || ""];
+    const row = (u, t) => [state.week, u.name, t.dept || "", t.ref || "", t.title || "", t.kind || "Task", t.category || "", t.owner || "", t.due || "", t.priority || "", t.status || "", t.target ?? "", t.measure || "", t.actual ?? "", t.lower ? "Yes" : "", typeof t.pct === "number" ? t.pct / 100 : "", t.notes || "", t.outcome || "", t.depUnit ? unitName(t.depUnit) : "", t.dep || ""];
     if (prefill) units.forEach(u => (state.plans[u.id]?.tasks || []).forEach(t => out.push(row(u, t))));
     else if (unitId) for (let i = 0; i < 15; i++) out.push(row(units[0], {}));
     return out;
@@ -2794,7 +2796,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
       ["5","Target, Target unit and Actual: for measurable work, enter the target (for example 500), its unit (ETB, units, %) and the actual so far. % complete is then calculated for you. Pick 'Yes' under Lower is better when less is better, for example cost or delay."],
       ["6","Without a target, enter % complete yourself (0% to 100%). Done with no % counts as 100%."],
       ["7","Due date: a real date. Priority: High, Medium or Low. Status: Not started, In progress, Done, Blocked or Delayed."],
-      ["8","On import, rows with the same task title as an existing task update it. New titles are added. You see a review first, and rows with a wrong unit or department are held back with a suggestion."],
+      ["8","On import, a row with a Task code updates the task that has that code, even if the wording was changed. A row without a code is matched by its title; new titles are added. Leave Task code empty for new tasks: the app numbers them. Never type a made-up code. You see a review first, and rows with a wrong unit or department are held back with a suggestion."],
       ["9","Once a week has started, saved tasks keep their title, outcome, type, department, due date and priority. Changes to those, and anything for a past week, go to Group Strategy for approval."]].forEach(r => ins.addRow(r));
     ins.getRow(1).font = { bold: true, size: 14 };
     const buf = await wb.xlsx.writeBuffer();
@@ -2819,10 +2821,13 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
         const plan = latest ? clone(latest) : { week: g.week, unit: g.unit.id, tasks: [], wins: "", blockers: "", asks: "" };
         if (imp.mode === "replace" && g.rows.length) plan.tasks = [];
         plan.tasks = plan.tasks || [];
+        if (g.rows.some(r => r.row.ref)) { try { g.earlier = (await earlierUnfinished(g.unit.id, g.week, 12)).map(x => x.t); } catch (e) { g.earlier = []; } }
         g.rows.forEach(r => {
-          const key = norm(r.row.title); const ex = plan.tasks.find(t => norm(t.title) === key);
+          const key = norm(r.row.title), code = r.row.ref;
+          const ex = (code && plan.tasks.find(t => t.ref === code)) || plan.tasks.find(t => norm(t.title) === key && (!code || !t.ref));
+          const prior = !ex && code ? (g.earlier || []).find(t => t.ref === code) : null;   // the same task from an earlier week: keep its code, mark it as carried
           if (ex) { FIELDS.forEach(f => { const v = r.row[f]; if (v !== "" && v !== null && v !== undefined) ex[f] = v; }); if (r.row.status) statusSideEffects(ex); }
-          else { const nt = { id: uid(), category: r.row.category, target: r.row.target, measure: r.row.measure, actual: r.row.actual, lower: r.row.lower, title: r.row.title, outcome: r.row.outcome, dept: r.row.dept, owner: r.row.owner, due: r.row.due, priority: r.row.priority, status: r.row.status, pct: r.row.pct, notes: r.row.notes, kind: r.row.kind, depUnit: r.row.depUnit, dep: r.row.dep, ev: [] }; if (nt.status) statusSideEffects(nt); if (r.row.pct !== null && r.row.pct !== undefined) nt.pct = r.row.pct; plan.tasks.push(nt); }
+          else { const nt = { id: uid(), category: r.row.category, target: r.row.target, measure: r.row.measure, actual: r.row.actual, lower: r.row.lower, title: r.row.title, outcome: r.row.outcome, dept: r.row.dept, owner: r.row.owner, due: r.row.due, priority: r.row.priority, status: r.row.status, pct: r.row.pct, notes: r.row.notes, kind: r.row.kind, depUnit: r.row.depUnit, dep: r.row.dep, ev: [] }; if (nt.status) statusSideEffects(nt); if (r.row.pct !== null && r.row.pct !== undefined) nt.pct = r.row.pct; if (prior) { nt.ref = prior.ref; nt.carried = true; nt.carriedCount = (prior.carriedCount || 0) + 1; nt.prevStatus = prior.status || ""; nt.prevPct = typeof prior.pct === "number" ? prior.pct : null; if (prior.parent) nt.parent = prior.parent; } plan.tasks.push(nt); }
         });
         if (g.sum) { ["wins","blockers","asks"].forEach(f => { if (g.sum[f]) plan[f] = g.sum[f]; }); }
         const res = await persistPlan(g.unit.id, g.week, latest, plan, { latest, source: "Import: " + imp.fileName, action: "import", prefix: `Imported ${imp.fileName}: ` });
