@@ -9,6 +9,9 @@ import { addisWeekStart, addisLockWeek, addisToday } from "./rules.js";
 import { isAdmin, fullRead, unitRead, unitMember, unitLead, canUndo, canFeedback, canEditDepartments, visiblePlan, mergeSave, mergeScope, deptOk, canDecide, routeStage } from "./access.js";
 
 const URL_ = import.meta.env.VITE_SUPABASE_URL;
+export const IS_TEST_ENV = !URL_ || String(URL_).includes("pnipdrnpksaglmesifje");   // the test Supabase project (or no database at all)
+export const VIEWAS_KEY = "wbg-viewas";
+export const viewingAs = () => { try { return !!sessionStorage.getItem(VIEWAS_KEY); } catch (e) { return false; } };
 const KEY_ = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 const isSupabaseConfigured = () => !!(URL_ && KEY_ && !URL_.includes("YOUR-PROJECT-REF") && !KEY_.includes("YOUR-ANON-PUBLIC-KEY"));
@@ -91,6 +94,12 @@ const setRemember = (on) => { try { localStorage.setItem(REMEMBER_KEY, on ? "1" 
 
 function createSupabaseData() {
   const sb = createClient(URL_, KEY_, { auth: { storage: sessionStore, persistSession: true, autoRefreshToken: true, detectSessionInUrl: false }, realtime: { params: { eventsPerSecond: 5 } } });
+  // "View as" (Group Strategy trying other roles): on the live app it is read-only, so nothing can be written while pretending to be another role.
+  if (!IS_TEST_ENV) {
+    const READ_RPC = /^wbg_(me|read_|my_|task_comments|mentionables|public_units|check_email|admin_role_requests|admin_users|admin_backups|admin_get_backup|admin_approval_code_status|reminder_texts)/;
+    const realRpc = sb.rpc.bind(sb);
+    sb.rpc = (fn, args) => (viewingAs() && !READ_RPC.test(fn) ? Promise.resolve({ data: { error: "view_only" }, error: null }) : realRpc(fn, args));
+  }
   let roleNow = "";   // employees read plans through a function that hides other departments
   const live = new Map();
   const bump = (table) => (live.get(table) || new Set()).forEach((f) => f());

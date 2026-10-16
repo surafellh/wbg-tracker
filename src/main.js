@@ -2,7 +2,7 @@ import "./style.css";
 import * as XLSX from "xlsx";
 import { jsPDF } from "jspdf";
 import { applyPlugin } from "jspdf-autotable";
-import { createData, configError, planFromRow, EVIDENCE, fileType } from "./data.js";
+import { createData, configError, planFromRow, EVIDENCE, fileType, IS_TEST_ENV, VIEWAS_KEY } from "./data.js";
 import { startGate } from "./gate.js";
 import { groupTasks, rollupOf, rolledPlan, leafPlan, leafTasks, parentChoices, weightOf } from "./rollup.js";
 import { ROLES, ROLE_LABEL, ROLE_HELP, isAdmin, unitMember, deptOk, canUndo, canFeedback, canEditDepartments, roleText, canDecide, STAGE_LABEL } from "./access.js";
@@ -44,7 +44,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     imp: null, impUnit: "", impPrefill: false, impDefaultUnit: "", importing: false,
     monthBasis: "end", monthByDept: false, monthData: null, monthLoading: false, monthKey: "",
   };
-  let db = null, api = null, downloads = null, myId = null, isOwner = false, me = null, dataMode = "";
+  let db = null, api = null, downloads = null, myId = null, isOwner = false, me = null, dataMode = "", realMe = null, viewAs = null;
   // The signed-in person (from the database). The database checks every save again.
   state.requests = []; state.dash = { type: "", units: [], period: "week", pop: false, range: 8 }; state.dashData = null; state.dashKey = "";
   state.level = "tasks"; state.history = null; state.lastSave = null; state.base = {}; state.unlock = new Set(); state.reqNotes = {}; state.people = null; state.pu = {};
@@ -136,6 +136,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   // ---------- saving: direct changes save now, the rest goes to Group Strategy for approval ----------
   const newId = () => `${Date.now().toString(36)}${uid()}`;
   const ERR = {
+    view_only: "View as is read-only on the live app. Try your edits on the test app.",
     not_allowed: "You can't save changes to this unit with your current sign-in. Sign out and sign in again, then retry. If it keeps happening, ask Group Strategy to check your role and unit.",
     not_allowed_dept: "One of these tasks is in a department that is not yours (or has no department). Pick one of your own departments for the task, or remove it, then save again.",
     bad_request: "This plan could not be read. Reload the page and try again.",
@@ -1980,6 +1981,45 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   }
   $("#mainNav").addEventListener("click", e => { const b = e.target.closest("button[data-group]"); if (!b) return; const g = b.dataset.group; if (groupOf(state.tab) === g) return; goTab(GROUPS[g][0]); });
   $("#subNav").addEventListener("click", e => { const b = e.target.closest("button[data-sub]"); if (b) goTab(b.dataset.sub); });
+  // ---------- View as: Group Strategy tries the app as another role (the screens and buttons change; on the live app nothing can be saved) ----------
+  function showViewAsBar(){
+    if (document.getElementById("vaBar") || !viewAs) return;
+    const bar = document.createElement("div"); bar.id = "vaBar"; bar.className = "va-bar";
+    const where = [ROLE_LABEL[viewAs.role] || viewAs.role, viewAs.unit ? unitName(viewAs.unit) : "", (viewAs.departments || []).join(", ")].filter(Boolean).join(" · ");
+    bar.innerHTML = `<span><b>Viewing as</b> <span id="vaWhere">${esc(where)}</span>${IS_TEST_ENV ? "" : " · read-only"}</span><button type="button" id="vaChange" class="btn small">Change</button><button type="button" id="vaExit" class="btn small primary">Exit</button>`;
+    document.body.append(bar);
+    bar.querySelector("#vaExit").onclick = () => { try { sessionStorage.removeItem(VIEWAS_KEY); } catch (e) {} location.reload(); };
+    bar.querySelector("#vaChange").onclick = openViewAs;
+    setTimeout(() => { const w = document.getElementById("vaWhere"); if (w && viewAs) w.textContent = [ROLE_LABEL[viewAs.role] || viewAs.role, viewAs.unit ? unitName(viewAs.unit) : "", (viewAs.departments || []).join(", ")].filter(Boolean).join(" · "); }, 2500);
+  }
+  function openViewAs(){
+    if (document.getElementById("vaBox")) return;
+    const units = sortedUnits(), cur = viewAs || { role: "manager", unit: units[0] && units[0].id, departments: [] };
+    const box = document.createElement("div"); box.id = "vaBox"; box.className = "va-box"; box.setAttribute("role", "dialog"); box.setAttribute("aria-label", "View as another role");
+    const roles = [["executive", "CEO / D-CEO"], ["leader", "Chief / GM (unit head)"], ["planning", "Planning head"], ["manager", "Manager"], ["staff", "Staff"]];
+    box.innerHTML = `<div class="va-card"><h3 style="margin:0 0 4px">View as another role</h3>
+      <div class="small muted" style="margin-bottom:12px">${IS_TEST_ENV ? "On the test app you can edit while viewing as a role." : "On the live app this is read-only: you can look around but nothing is saved."}</div>
+      <label class="small muted" for="vaRole">Role</label><select id="vaRole">${roles.map(([k, l]) => `<option value="${k}" ${cur.role === k ? "selected" : ""}>${l}</option>`).join("")}</select>
+      <label class="small muted" for="vaUnit">Unit</label><select id="vaUnit">${units.map(u => `<option value="${esc(u.id)}" ${cur.unit === u.id ? "selected" : ""}>${esc(u.name)}</option>`).join("")}</select>
+      <label class="small muted" for="vaDept" id="vaDeptL">Department</label><select id="vaDept"></select>
+      <div class="toolbar" style="justify-content:flex-end;margin-top:14px"><button class="btn" id="vaCancel" type="button">Cancel</button><button class="btn primary" id="vaGo" type="button">View</button></div></div>`;
+    document.body.append(box);
+    const fill = () => {
+      const r = box.querySelector("#vaRole").value, u = unitOf(box.querySelector("#vaUnit").value), ds = u.departments || [];
+      const needs = ["leader", "manager", "staff"].includes(r), sel = box.querySelector("#vaDept");
+      box.querySelector("#vaUnit").disabled = r === "executive"; sel.hidden = box.querySelector("#vaDeptL").hidden = !needs;
+      sel.innerHTML = (r === "leader" ? `<option value="">All departments (whole unit)</option>` : "") + ds.map(d => `<option ${(cur.departments || [])[0] === d ? "selected" : ""}>${esc(d)}</option>`).join("");
+    };
+    box.addEventListener("change", e => { if (e.target.id === "vaRole" || e.target.id === "vaUnit") fill(); });
+    fill();
+    box.querySelector("#vaCancel").onclick = () => box.remove();
+    box.querySelector("#vaGo").onclick = () => {
+      const role = box.querySelector("#vaRole").value, unit = role === "executive" ? "" : box.querySelector("#vaUnit").value, d = box.querySelector("#vaDept").value;
+      if (["manager", "staff"].includes(role) && !d) { toast("This unit has no departments yet. Pick another unit, or add departments first."); return; }
+      try { sessionStorage.setItem(VIEWAS_KEY, JSON.stringify({ role, unit, departments: d ? [d] : [] })); } catch (e) { toast("Could not start View as in this browser."); return; }
+      location.reload();
+    };
+  }
   function closeAcct(){ const m = $("#acctMenu"); if (m) m.remove(); }
   function acctMenu(){
     if ($("#acctMenu")) return closeAcct();
@@ -1990,9 +2030,10 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
       <button role="menuitem" data-a="profile">Profile and settings</button>
       ${isAppr() ? `<div class="acct-sep">Settings</div><button role="menuitem" data-a="units">Units</button><button role="menuitem" data-a="people">People and roles</button>` : ""}
       <button role="menuitem" data-a="activity">Activity log</button>
+      ${realMe && realMe.role === "super_admin" ? `<div class="acct-sep"></div><button role="menuitem" data-a="viewas">${viewAs ? "Change or exit view as" : "View as another role"}</button>` : ""}
       <div class="acct-sep"></div><button role="menuitem" data-a="out">Sign out</button>`;
     document.body.append(m);
-    m.onclick = async e => { const b = e.target.closest("button[data-a]"); if (!b) return; const a = b.dataset.a; closeAcct(); if (a === "profile") showMenu(); else if (a === "out") { await api.signOut(); location.reload(); } else goTab(a); };
+    m.onclick = async e => { const b = e.target.closest("button[data-a]"); if (!b) return; const a = b.dataset.a; closeAcct(); if (a === "profile") showMenu(); else if (a === "out") { await api.signOut(); location.reload(); } else if (a === "viewas") openViewAs(); else goTab(a); };
   }
   document.addEventListener("click", e => { if ($("#acctMenu") && !e.target.closest("#acctMenu") && !e.target.closest("#whoBtn")) closeAcct(); if ($("#calPop") && !e.target.closest("#calPop") && !e.target.closest("#weekBtn")) closeCal(); });
   document.addEventListener("keydown", e => { if (e.key === "Escape") { closeAcct(); closeCal(); closeSearch(); } });
@@ -3132,6 +3173,10 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   // ---------- boot ----------
   render();
   function startApp(profile){
+    realMe = profile;
+    try { viewAs = JSON.parse(sessionStorage.getItem(VIEWAS_KEY) || "null"); } catch (e) { viewAs = null; }
+    if (viewAs && profile.role === "super_admin") { profile = { ...profile, role: viewAs.role, unit: viewAs.unit || "", departments: viewAs.departments || [] }; showViewAsBar(); }
+    else if (viewAs) { viewAs = null; try { sessionStorage.removeItem(VIEWAS_KEY); } catch (e) {} }
     me = profile; myId = profile.name; api.setProfile && api.setProfile(profile);
     api.onSignedOut(() => location.reload());
     state.level = store.get("wp-level") || ((isAppr() || me.role === "executive") ? "deliverables" : "tasks");

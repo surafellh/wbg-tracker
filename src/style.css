@@ -879,3 +879,10 @@ select.st.s-closed{background:var(--neutral-bg);color:var(--muted)}
 .pstrip .rem-t{list-style:disc;margin:4px 0 0;padding-left:18px;color:var(--muted);font-size:12.5px;display:grid;gap:2px;max-height:150px;overflow:auto}
 @media (max-width:900px){.pstrip{grid-template-columns:minmax(0,1fr)!important}.rem-pop{grid-template-columns:1fr}}
 .pstrip .reminders>summary{align-items:flex-start;text-align:left}
+
+.va-bar{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:90;display:flex;gap:10px;align-items:center;background:var(--ink);color:var(--surface);padding:8px 10px 8px 16px;border-radius:999px;box-shadow:0 8px 28px rgba(0,0,0,.35);font-size:13px;max-width:calc(100vw - 24px)}
+.va-bar .btn{color:var(--ink)}
+.va-box{position:fixed;inset:0;z-index:95;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px}
+.va-card{background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:18px;width:min(380px,100%);display:grid;gap:6px;box-shadow:0 20px 50px rgba(0,0,0,.4)}
+.va-card select{width:100%}
+@media print{.va-bar,.va-box{display:none!important}}
