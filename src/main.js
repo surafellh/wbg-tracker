@@ -283,7 +283,8 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     const rows = snap.docs.map(d => d.data()).filter(v => v && v.unit === unit).sort((a, b) => a.week < b.week ? 1 : -1);
     const seen = new Map();
     rows.forEach(p => allRealTasks(p).forEach(t => { const k = t.ref || norm(t.title); if (!seen.has(k)) seen.set(k, { t, wk: p.week }); }));
-    return [...seen.values()].filter(x => x.t.status !== "Done" && x.t.status !== "Closed");
+    const mine = x => !(me && ["manager", "staff"].includes(me.role)) || deptOk(me, unit, x.t.dept || "");   // managers and staff can only carry their own departments' tasks
+    return [...seen.values()].filter(x => x.t.status !== "Done" && x.t.status !== "Closed" && mine(x));
   }
   async function openBf(){
     if (!db || isAll() || !state.editUnit || !state.draft) { toast("Choose one unit first"); return; }
