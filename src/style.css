@@ -895,3 +895,10 @@ select.st.s-closed{background:var(--neutral-bg);color:var(--muted)}
 .pill.role-chief,.pill.role-gm,.pill.role-director,.pill.role-lea{background:var(--good-bg);color:var(--good)}
 .pill.role-divhead{background:var(--neutral-bg);color:var(--muted)}
 @media print{.qm{display:none}}
+
+/* new version notice, floating top right */
+.upd-note{position:fixed;top:14px;right:14px;z-index:300;display:flex;gap:10px;align-items:center;max-width:min(420px,calc(100vw - 28px));padding:12px 14px;border-radius:12px;background:var(--btn);color:var(--btn-ink);box-shadow:0 12px 32px rgba(0,0,0,.32);border:1px solid var(--line)}
+.upd-note .small{opacity:.85;margin-top:2px}
+.upd-note .btn.primary{background:var(--btn-ink);color:var(--btn)}
+.upd-note .btn.ghost{color:var(--btn-ink)}
+@media print{.upd-note{display:none}}

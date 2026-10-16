@@ -134,6 +134,15 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   const planFor = u => isAll() ? state.allDrafts && state.allDrafts[u] : state.draft;
 
   // ---------- saving: direct changes save now, the rest goes to Group Strategy for approval ----------
+  // Confirmation when work goes into another function or unit, or a department that is not the person's own.
+  function crossWarn(unit, depts){
+    if (!me || !unit) return "";
+    const own = me.unit || "", mine = me.departments || [], out = [...new Set((depts || []).map(d => d || "").filter(d => d && mine.length && !mine.includes(d)))];
+    if (unit !== own) return `This goes into ${unitName(unit)}, not your own${own ? " (" + unitName(own) + ")" : " unit"}.`;
+    if (!isAppr() && !["planning", "leader"].includes(me.role)) return "";
+    return out.length ? `Some of these tasks belong to other departments than yours (${out.slice(0, 3).join(", ")}${out.length > 3 ? "…" : ""}).` : "";
+  }
+  const confirmCross = (unit, depts, what) => { const w = crossWarn(unit, depts); return !w || window.confirm(`${w}\n\n${what}\n\nContinue?`); };
   const newId = () => `${Date.now().toString(36)}${uid()}`;
   const qm = txt => `<span class="qm" tabindex="0" role="img" aria-label="${esc(txt)}" data-tip="${esc(txt)}">?</span>`;
   const TIP_BF = "Brings unfinished tasks from earlier weeks into this plan and keeps each task's number, so a task is never counted twice. Done and closed tasks are not listed. Do not retype brought-forward tasks in Excel.";
@@ -204,6 +213,8 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     for (const u of units) {
       if (!canEdit(u)) { toast(ERR.not_allowed); return; }
       const d = isAll() ? state.allDrafts[u] : state.draft;
+      state.okUnits = state.okUnits || new Set();
+      if (u !== (me && me.unit) && !state.okUnits.has(u)) { if (!confirmCross(u, [], `Save your changes to ${unitName(u)}?`)) return; state.okUnits.add(u); }
       let r;
       try { r = await persistPlan(u, state.week, state.base[u], d); } catch (e) { r = { error: e.code || "error" }; }
       if (r.error) { if (r.error === "conflict") state.remoteChanged = true; toast(errText(r)); render(); return; }
@@ -315,6 +326,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   }
   function bfGo(){
     const b = state.bf; if (!b) return; const sel = b.items.filter(x => x.checked && !x.dup);
+    if (sel.length && !confirmCross(state.editUnit, sel.map(x => x.t.dept), `Bring ${sel.length} task${sel.length > 1 ? "s" : ""} forward into ${unitName(state.editUnit)}?`)) return;
     sel.forEach(x => {
       const t = clone(x.t), past = t.due && t.due < todayIso;
       state.draft.tasks.push({ ...t, id: uid(), carried: true, carriedCount: (t.carriedCount || 0) + 1, prevStatus: t.status || "", prevPct: typeof t.pct === "number" ? t.pct : null, completedAt: "",
@@ -688,7 +700,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     $("#unitsTabBtn").hidden = !isAppr(); $("#peopleTabBtn").hidden = !isAppr();
     renderNav();
     const nb = X.badgeCount(), fbb = $("#fbCount"); if (fbb) { fbb.textContent = nb; fbb.hidden = !nb; }
-    const np = canDecideAny() ? toDecide().length : pendingFor().length, ab = $("#apprCount"); const nm = (state.mentions || []).length, nr = (state.rr ? state.rr.count + state.rr.access : 0) + unreadMsgs().length, bb = $("#bellBtn"); if (ab) { ab.textContent = np + nm + nr > 9 ? "9+" : np + nm + nr; ab.hidden = !(np + nm + nr); } if (bb) { bb.classList.toggle("has", !!(np + nm + nr)); bb.title = np + nm + nr ? [nm ? nm + " mention" + (nm === 1 ? "" : "s") : "", np ? np + (canDecideAny() ? " waiting for your approval" : " waiting for approval") : "", nr ? nr + " other update" + (nr === 1 ? "" : "s") : ""].filter(Boolean).join(" · ") : "Notifications"; bb.setAttribute("aria-label", "Notifications: " + bb.title); }
+    const np = canDecideAny() ? toDecide().length : pendingMine().length, ab = $("#apprCount"); const nm = (state.mentions || []).length, nr = (state.rr ? state.rr.count + state.rr.access : 0) + unreadMsgs().length, bb = $("#bellBtn"); if (ab) { ab.textContent = np + nm + nr > 9 ? "9+" : np + nm + nr; ab.hidden = !(np + nm + nr); } if (bb) { bb.classList.toggle("has", !!(np + nm + nr)); bb.title = np + nm + nr ? [nm ? nm + " mention" + (nm === 1 ? "" : "s") : "", np ? np + (canDecideAny() ? " waiting for your approval" : " waiting for approval") : "", nr ? nr + " other update" + (nr === 1 ? "" : "s") : ""].filter(Boolean).join(" · ") : "Notifications"; bb.setAttribute("aria-label", "Notifications: " + bb.title); }
     $("#whoBtn").textContent = me ? ((me.name || me.email || "?").trim().split(/\s+/).slice(0, 2).map(w => w[0]).join("").toUpperCase() || "?") : "?"; $("#whoBtn").title = me ? me.name : "Sign in";
     $("#modeChip").hidden = dataMode !== "local";
   }
@@ -948,6 +960,9 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     }, () => { state.requests = []; });
   }
   const pendingFor = (u, w) => state.requests.filter(r => r.status === "pending" && (!u || r.unit === u) && (!w || r.week === w));
+  // what concerns me: requests I can decide, my own, and my own unit's. Chiefs of other units can read everything, but it is not shown to them.
+  const mineVisible = r => isAppr() || r.unit === (me && me.unit) || (me && r.by === me.name) || (me && canDecide(me, r));
+  const pendingMine = () => pendingFor().filter(mineVisible);
   const canDecideAny = () => !!me && (isAppr() || ["leader", "planning", "manager"].includes(me.role));
   const toDecide = () => canDecideAny() ? state.requests.filter(r => r.status === "pending" && canDecide(me, r)) : [];
   const seenFyi = () => { try { return JSON.parse(store.get("wp-fyi-seen") || "[]"); } catch (e) { return []; } };
@@ -1146,6 +1161,10 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     return `<details class="reminders" id="remPanel"><summary title="Checked automatically for ${esc(unitName(u))}. Click to see the details."><span class="rem-title">Reminders for ${esc(unitName(u))}</span><span class="rem-btns"><span class="pill ${urgent.length ? "s-bad" : "s-none"}">Act now · ${urgent.length}</span><span class="pill ${soon.length ? "s-not" : "s-none"}">Soon · ${soon.length}</span></span></summary>
       <div class="rem-pop">${col(urgent, "s-bad", "Act now")}${col(soon, "s-not", "Soon")}</div></details>`;
   }
+  function foreignNote(u){
+    if (!me || !u || isAll() || !canEdit(u) || u === me.unit) return "";
+    return `<div class="slimnote warn"><b>You are working in ${esc(unitName(u))}</b>, not your own unit. Changes you make here are recorded as yours.</div>`;
+  }
   function askBox(u){
     if (!me || me.role !== "staff" || u !== me.unit) return "";
     const mine = state.requests.filter(r => r.kind === "ask" && r.status === "pending" && r.unit === u && r.week === state.week && r.by === me.name);
@@ -1158,7 +1177,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
       ${list.map(r => `<div class="req-mini"><span>${esc(r.summary)} <span class="muted small">· ${esc(r.by)}${r.dept ? " · " + esc(r.dept) : ""} · ${esc(fmt((r.createdAt || "").slice(0, 10)))}</span></span><button class="btn small" data-askdone="${esc(r.id)}">Mark done</button></div>`).join("")}</div>`;
   }
   function requestsPanel(u){
-    const pre = askBox(u) + asksPanel(u);
+    const pre = foreignNote(u) + askBox(u) + asksPanel(u);
     const list = pendingFor(u, state.week).filter(r => r.kind !== "ask"); if (!list.length) return pre;
     return pre + `<div class="banner warn" style="margin:12px 16px 0"><b>${list.length} change request${list.length === 1 ? "" : "s"} waiting for Group Strategy.</b> They are not part of the plan until approved.
       ${list.map(r => `<div class="req-mini"><span>${esc((r.details || [])[0] || r.summary)}${(r.details || []).length > 1 ? ` <span class="muted small">+${r.details.length - 1} more</span>` : ""} <span class="muted small">· ${esc(r.by)} · ${esc(fmt((r.createdAt || "").slice(0, 10)))}</span></span>${canEdit(u) ? `<button class="btn small" data-withdraw="${esc(r.id)}">Withdraw</button>` : ""}${isAppr() ? `<button class="btn small" data-goto="approvals">Review</button>` : ""}</div>`).join("")}</div>`;
@@ -1283,7 +1302,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     }).join("");
   }
   function renderApprovals(){
-    const pend = state.requests.filter(r => r.status === "pending").sort((x, y) => (x.createdAt || "") < (y.createdAt || "") ? -1 : 1), done = state.requests.filter(r => r.status !== "pending").slice(0, 30);
+    const pend = state.requests.filter(r => r.status === "pending" && mineVisible(r)).sort((x, y) => (x.createdAt || "") < (y.createdAt || "") ? -1 : 1), done = state.requests.filter(r => r.status !== "pending" && mineVisible(r)).slice(0, 30);
     const mine = pend.filter(r => canDecide(me, r)), others = pend.filter(r => !canDecide(me, r));
     const intro = canDecideAny() ? `<div class="banner info">Requests go to the person one step above the one who asked: employees and managers to their chief, chiefs to the planning head (Group Strategy in group functions). Approving applies the change to the plan and records it in the Activity log; rejecting leaves the plan unchanged and needs a written reason. The unit sees your comment.</div>`
       : `<div class="banner info">These changes are waiting for approval. Each one shows who has to decide it.</div>`;
@@ -1998,7 +2017,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   function renderNav(){
     const g = groupOf(state.tab);
     document.querySelectorAll("#mainNav button").forEach(b => b.setAttribute("aria-current", String(b.dataset.group === g)));
-    const subs = (GROUPS[g] || []).filter(t => (t !== "approvals" || isAppr() || pendingFor().length || toDecide().length) && (t !== "ceo" || canFeedback(me)));
+    const subs = (GROUPS[g] || []).filter(t => (t !== "approvals" || isAppr() || pendingMine().length || toDecide().length) && (t !== "ceo" || canFeedback(me)));
     const nb = X.badgeCount();
     $("#subNav").innerHTML = subs.length > 1 ? subs.map(t => `<button role="tab" data-sub="${t}" aria-selected="${t === state.tab}">${SUB_LABEL[t]}${t === "fb" && nb ? ` <span class="badge">${nb}</span>` : ""}${t === "approvals" && pendingFor().length ? ` <span class="badge">${pendingFor().length}</span>` : ""}</button>`).join("") : "";
     $("#subNav").hidden = !subs.length || subs.length < 2;
@@ -2256,6 +2275,24 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     renderHero();
   }
   setInterval(() => { if (me && !document.hidden) refreshMentions(); }, 60000);
+  // ----- a new version of the app was published: tell people to refresh -----
+  const BUILD_ID = typeof __BUILD_ID__ !== "undefined" ? __BUILD_ID__ : "";
+  let updHidden = 0;
+  async function checkVersion(){
+    if (!BUILD_ID || !navigator.onLine || Date.now() < updHidden) return;
+    try {
+      const r = await fetch(`/version.json?t=${Date.now()}`, { cache: "no-store" }); if (!r.ok) return;
+      const v = await r.json(); if (!v || !v.id || String(v.id) === String(BUILD_ID)) return;
+      let n = document.getElementById("updNote");
+      if (!n) { n = document.createElement("div"); n.id = "updNote"; n.className = "upd-note"; n.setAttribute("role", "status"); document.body.appendChild(n); }
+      n.innerHTML = `<div><b>A new version is available.</b><div class="small">${state.dirty ? "Save your changes first, then refresh." : "Refresh to get the latest changes."}</div></div><button class="btn small primary" type="button" id="updGo">Refresh</button><button class="btn small ghost" type="button" id="updLater" aria-label="Remind me later">Later</button>`;
+      n.querySelector("#updGo").onclick = () => location.reload();
+      n.querySelector("#updLater").onclick = () => { updHidden = Date.now() + 10 * 60000; n.remove(); };
+    } catch (e) { /* offline or no version file */ }
+  }
+  setInterval(checkVersion, 3 * 60000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) checkVersion(); });
+  setTimeout(checkVersion, 15000);
   function openTaskByRef(unit, ref, week){
     const hit = ((state.plans[unit] || {}).tasks || []).find(t => t.ref === ref);
     if (hit) { state.pendingOpen = null; state.panel = { u: unit, id: hit.id }; renderPanel(); return; }
@@ -2816,6 +2853,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     try {
       for (const g of groups.values()) {
         if (!canEdit(g.unit.id)) { skipped.push(g.unit.name); continue; }
+        if (!confirmCross(g.unit.id, g.rows.map(r => r.row.dept), `Import ${g.rows.length} row${g.rows.length > 1 ? "s" : ""} into ${unitName(g.unit.id)}?`)) { skipped.push(g.unit.name + " (you cancelled)"); continue; }
         const snap = await db.doc(`plans/${planId(g.week, g.unit.id)}`).get();
         const latest = snap.exists ? snap.data() : null;
         const plan = latest ? clone(latest) : { week: g.week, unit: g.unit.id, tasks: [], wins: "", blockers: "", asks: "" };
