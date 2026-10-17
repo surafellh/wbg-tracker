@@ -34,7 +34,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   const who = t => [t.dept, t.owner].filter(Boolean).join(" · ");
 
   const state = {
-    week: addisWeekStart(),
+    week: addisLockWeek(),
     tab: "dashboard",
     units: [], unitsLoaded: false,
     plans: {}, plansLoaded: false,
@@ -273,7 +273,9 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   state.expanded = new Set(); state.bf = null; state.carryInfo = null; state.carryKey = "";
   const newFilter = () => ({ unit: "", status: "", statuses: [], priority: "", kind: "", dept: "", q: "", period: "week", from: "", group: false, category: "" });
   state.filter = newFilter();
-  const thisMonday = () => weekStartOf(todayIso);   // start of the current week (Saturday from 10 Oct 2026)
+  // The week being worked on. Weeks run Saturday to Friday, but updates and planning happen on Saturday, so until Saturday 12:00 (Addis)
+  // "this week" is still the week that just ended and "next week" is the one that has just started. Same rule as the database.
+  const thisMonday = () => addisLockWeek();
   const nextMonday = () => nextWeekOf(thisMonday());
 
   // ---------- this week's update / next week's plan ----------
@@ -1369,7 +1371,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     const access = !ed
       ? `<div class="banner warn" style="margin:12px 16px 0"><b>View only.</b> To update ${esc(u.name || "this unit")}, sign in with your name and ${esc(u.name || "the unit")}'s PIN. <button class="btn" id="signInBtn" style="margin-left:6px">Sign in</button></div>`
       : past && !isAppr() ? `<div class="banner warn" style="margin:12px 16px 0"><b>This week is closed.</b> Progress for a past week can't be edited directly. Make the change and press <b>Request update</b>: Group Strategy reviews it and it is recorded only when approved.</div>`
-      : state.week < thisMonday() && !isAppr() ? `<div class="slimnote warn">This week has ended. You can still update its progress until Saturday 12:00 noon; after that, changes need approval.</div>`
+      : state.week < addisWeekStart() && !isAppr() ? `<div class="slimnote warn">This week has ended. You can still update its progress until Saturday 12:00 noon; after that, changes need approval.</div>`
       : state.week <= thisMonday() && !isAppr() ? `<div class="slimnote" title="Saved tasks keep their title, expected outcome, type, department, due date and priority (lock icon). Update status, %, notes, owner and evidence freely. To change a fixed field or remove a task, use the pencil or the bin: Group Strategy approves it first.">ⓘ Some fields are locked. Hover for details.</div>` : "";
     const listHint = ed && !(u.departments||[]).length ? `<div class="banner info" style="margin:12px 16px 0">${esc(u.name||"This unit")} has no departments yet. Open the ⋯ menu, choose <b>Departments</b> and add them, then pick one for each task.</div>` : "";
     const rdis = ed ? "" : "disabled";
