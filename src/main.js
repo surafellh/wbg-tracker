@@ -2883,7 +2883,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   }
   function templateRows(unitId, prefill){
     const units = unitId ? state.units.filter(u => u.id === unitId) : sortedUnits(); const out = [];
-    const row = (u, t) => [state.week, u.name, t.dept || "", t.ref || "", t.title || "", t.kind || "Task", t.category || "", t.owner || "", t.due || "", t.priority || "", t.status || "", t.target ?? "", t.measure || "", t.actual ?? "", t.lower ? "Yes" : "", typeof t.pct === "number" ? t.pct / 100 : "", t.notes || "", t.outcome || "", t.depUnit ? unitName(t.depUnit) : "", t.dep || ""];
+    const row = (u, t) => [state.week, u.name, t.dept || "", t.title || "", t.kind || "Task", t.category || "", t.owner || "", t.due || "", t.priority || "", t.status || "", t.target ?? "", t.measure || "", t.actual ?? "", t.lower ? "Yes" : "", typeof t.pct === "number" ? t.pct / 100 : "", t.notes || "", t.outcome || "", t.depUnit ? unitName(t.depUnit) : "", t.dep || ""];
     if (prefill) units.forEach(u => (state.plans[u.id]?.tasks || []).forEach(t => out.push(row(u, t))));
     else if (unitId) for (let i = 0; i < 15; i++) out.push(row(units[0], {}));
     return out;
@@ -2901,11 +2901,12 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     const fixed = { Type: KINDS, Category: CATEGORIES, Priority: PRIORITIES, Status: STATUSES, YesNo: ["Yes", "No"] }; const fcol0 = units.length + 3;
     Object.entries(fixed).forEach(([k, v], j) => { const c = fcol0 + j; lists.getCell(1, c).value = k; v.forEach((x, r) => { lists.getCell(r + 2, c).value = x; }); const L = lists.getColumn(c).letter; wb.definedNames.add(`Lists!$${L}$2:$${L}$${v.length + 1}`, "L_" + k); });
     const ul = lists.getColumn(1).letter; wb.definedNames.add(`Lists!$A$2:$A$${Math.max(2, units.length + 1)}`, "L_Units");
-    ws.columns = TCOLS.map((h, i) => ({ header: h, key: "c" + i, width: TWIDTH[i] }));
+    const TC = TCOLS.filter(h => h !== "Task code"), TW = TWIDTH.filter((_, i) => TCOLS[i] !== "Task code");   // the code is not asked for in the template: the app numbers new tasks
+    ws.columns = TC.map((h, i) => ({ header: h, key: "c" + i, width: TW[i] }));
     const hr = ws.getRow(1); hr.font = { bold: true, color: { argb: "FF2A2208" } }; hr.alignment = { vertical: "middle", wrapText: true }; hr.height = 32;
     hr.eachCell(c => { c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF5C518" } }; });
     templateRows(unitId, prefill).forEach(r => ws.addRow(r));
-    const LAST = 600, col = n => TCOLS.indexOf(n) + 1, colL = n => ws.getColumn(col(n)).letter;
+    const LAST = 600, col = n => TC.indexOf(n) + 1, colL = n => ws.getColumn(col(n)).letter;
     const list = (n, f, msg) => { for (let r = 2; r <= LAST; r++) ws.getCell(r, col(n)).dataValidation = { type: "list", allowBlank: true, formulae: [f(r)], showErrorMessage: true, errorStyle: "stop", errorTitle: n, error: msg, showInputMessage: true, promptTitle: n, prompt: "Pick from the list" }; };
     list("Unit", () => "L_Units", "Pick the unit from the dropdown. Do not type or change the name.");
     list("Department", r => `INDIRECT("D_"&MATCH($${colL("Unit")}${r},L_Units,0))`, "Pick a department from the list for the unit chosen. Choose the Unit first.");
@@ -2931,7 +2932,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
       ["5","Target, Target unit and Actual: for measurable work, enter the target (for example 500), its unit (ETB, units, %) and the actual so far. % complete is then calculated for you. Pick 'Yes' under Lower is better when less is better, for example cost or delay."],
       ["6","Without a target, enter % complete yourself (0% to 100%). Done with no % counts as 100%."],
       ["7","Due date: a real date. Priority: High, Medium or Low. Status: Not started, In progress, Done, Blocked or Delayed."],
-      ["8","On import, a row with a Task code updates the task that has that code, even if the wording was changed. A row without a code is matched by its title; new titles are added. Leave Task code empty for new tasks: the app numbers them. Never type a made-up code. You see a review first, and rows with a wrong unit or department are held back with a suggestion."],
+      ["8","On import, each row is matched to a saved task by its title; new titles are added and the app gives them a task code. To update an existing task even when the wording changed, use the Excel export of the plan (it carries the Task code column) and upload that file. You see a review first, and rows with a wrong unit or department are held back with a suggestion."],
       ["9","Once a week has started, saved tasks keep their title, outcome, type, department, due date and priority. Changes to those, and anything for a past week, go to Group Strategy for approval."]].forEach(r => ins.addRow(r));
     ins.getRow(1).font = { bold: true, size: 14 };
     const buf = await wb.xlsx.writeBuffer();
