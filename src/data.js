@@ -231,6 +231,8 @@ function createSupabaseData() {
     adminDeleteInvite: (email) => rpc("wbg_admin_delete_invite", { p_email: email }),
     adminDecideAccess: (id, approve, data) => rpc("wbg_admin_decide_access", { p_id: id, p_approve: approve, p_data: data || {} }),
     adminSetDomains: (domains) => rpc("wbg_admin_set_domains", { p_domains: domains }),
+    appSettings: () => rpcq("wbg_settings"),
+    adminSetSetting: (key, value) => rpc("wbg_admin_set_setting", { p_key: key, p_value: value }),
     adminBackups: () => rpc("wbg_admin_backups"),
     adminGetBackup: (day) => rpc("wbg_admin_get_backup", { p_day: day }),
     savePlan: (auth, plan, base, force, activity) => rpc("wbg_save_plan", { p_auth: auth, p_plan: planJson(plan), p_base: base || null, p_force: !!force, p_activity: activity || null }),
@@ -679,6 +681,16 @@ function createLocalData() {
       if (approve) { const x = await this.adminInvite({ ...d, email: r.email, name: r.name }); if (x.error) return x; }
       r.status = approve ? "approved" : "rejected"; write("wbg_local_access", l); return ok();
     },
+    async appSettings() { return { graceTime: "14:00", extendUntil: "", allowRename: false, ...(read("wbg_local_settings") || {}) }; },
+    async adminSetSetting(key, value) {
+      if (!isAppr(A())) return err("not_allowed");
+      const cur = { graceTime: "14:00", extendUntil: "", allowRename: false, ...(read("wbg_local_settings") || {}) };
+      if (key === "grace_time") { if (!/^([01]?\d|2[0-3]):[0-5]\d$/.test(String(value))) return err("bad_request"); cur.graceTime = String(value).padStart(5, "0"); }
+      else if (key === "extend_until") cur.extendUntil = String(value || "").slice(0, 16);
+      else if (key === "allow_rename") cur.allowRename = !!value;
+      else return err("bad_request");
+      write("wbg_local_settings", cur); return { ok: true, settings: cur };
+    },
     async adminSetDomains(list) { if (!isAppr(A())) return err("not_allowed"); write("wbg_local_domains", list.map((x) => String(x).trim().toLowerCase()).filter(Boolean)); return ok(); },
     async adminBackups() { if (!isAppr(A())) return err("not_allowed"); return ok({ days: [] }); },
     async adminGetBackup() { return err("not_found"); },
@@ -689,7 +701,7 @@ function createLocalData() {
   };
   // every change runs as the signed-in person, never as what the page says
   for (const k of Object.keys(api)) {
-    if (typeof api[k] !== "function" || /^(session|me|setProfile|setRemember|signInPassword|hasPassword|setPassword|localPeople|localSignIn|checkEmail|sendCode|verifyCode|signOut|onSignedOut|publicUnits|requestAccess|completeSignup|updateProfile|requestRole|myRoleRequests|withdrawRoleRequest|signOutEverywhere|approveRoleWithCode|admin\w+|uploadEvidence|evidenceUrl|evidenceBlob|readAll)$/.test(k)) continue;
+    if (typeof api[k] !== "function" || /^(session|me|appSettings|setProfile|setRemember|signInPassword|hasPassword|setPassword|localPeople|localSignIn|checkEmail|sendCode|verifyCode|signOut|onSignedOut|publicUnits|requestAccess|completeSignup|updateProfile|requestRole|myRoleRequests|withdrawRoleRequest|signOutEverywhere|approveRoleWithCode|admin\w+|uploadEvidence|evidenceUrl|evidenceBlob|readAll)$/.test(k)) continue;
     const f = api[k]; api[k] = (_ignored, ...rest) => f(A(), ...rest);
   }
 

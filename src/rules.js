@@ -5,6 +5,23 @@
 // Once a week has started, these task fields are fixed for unit users. Changing them, or removing a saved
 // task, needs approval. Status, %, notes, owner, dependencies and evidence stay open.
 export const LOCKED = ["title", "kind", "dept", "outcome", "priority"];   // the due date can be changed any time (activities get rescheduled)
+
+// Settings a super admin can change (loaded from the database at start-up, see setSettings):
+//   graceTime   - time on Saturday (Addis Ababa) until which the week that just ended can still be updated directly
+//   extendUntil - optional "YYYY-MM-DDTHH:MM" (Addis Ababa): the week that just ended stays open until then
+//   allowRename - false: a saved task keeps its name once the week has started; true: the name can be changed
+const cfg = { graceTime: "14:00", extendUntil: "", allowRename: false };
+export function setSettings(s) {
+  if (!s || typeof s !== "object") return;
+  if (/^\d{1,2}:\d{2}$/.test(String(s.graceTime || ""))) cfg.graceTime = s.graceTime;
+  if (s.extendUntil !== undefined) cfg.extendUntil = String(s.extendUntil || "");
+  if (s.allowRename !== undefined) cfg.allowRename = !!s.allowRename;
+}
+export const getSettings = () => ({ ...cfg });
+export const lockedFields = () => (cfg.allowRename ? LOCKED.filter((f) => f !== "title") : LOCKED);
+// "14:00" -> "2:00 PM"
+export const timeLabel = (t) => { const [h, m] = String(t || "14:00").split(":").map(Number); return `${((h + 11) % 12) + 1}:${String(m || 0).padStart(2, "0")} ${h >= 12 ? "PM" : "AM"}`; };
+export const graceLabel = () => `Saturday ${timeLabel(cfg.graceTime)}`;
 // Fields compared when working out what changed (lu / lb are "last updated" stamps, not content).
 export const TASK_FIELDS = ["title", "kind", "dept", "outcome", "owner", "due", "priority", "prevStatus", "prevPct", "status", "pct", "completedAt", "depUnit", "dep", "notes", "ev", "carried", "carriedCount", "blockedSince", "category", "target", "measure", "actual", "lower", "ref", "parent", "weight", "unplanned"];
 export const DEFAULT_APPROVERS = ["Surafel", "Surafel Hailu", "Ataklti", "Ataklti Nega"];
@@ -47,14 +64,15 @@ export const weekEndOf = (w) => (w >= WEEK_CUTOVER ? shiftIso(w, 6) : (shiftIso(
 export const nextWeekOf = (w) => (w >= WEEK_CUTOVER ? shiftIso(w, 7) : (shiftIso(w, 7) >= WEEK_CUTOVER ? WEEK_CUTOVER : shiftIso(w, 7)));
 export const prevWeekOf = (w) => (w > WEEK_CUTOVER ? shiftIso(w, -7) : (w === WEEK_CUTOVER ? weekStartOf(shiftIso(WEEK_CUTOVER, -1)) : shiftIso(w, -7)));
 export const addisWeekStart = (now) => weekStartOf(addisToday(now));
-// Grace period: until Saturday 12:00 (Addis time) the week that just ended can still be updated directly.
+// Grace period: until Saturday at the grace time (14:00 unless a super admin changed it) the week that just ended can still be updated directly.
 // Weeks themselves still run Saturday to Friday. Returns the latest week that may be saved without approval.
-export const GRACE_UNTIL_HOUR = 12;
 export function addisLockWeek(now = new Date()) {
   const cur = addisWeekStart(now);
   try {
-    const p = Object.fromEntries(new Intl.DateTimeFormat("en-GB", { timeZone: "Africa/Addis_Ababa", weekday: "short", hour: "2-digit", hour12: false }).formatToParts(now).map((x) => [x.type, x.value]));
-    if (p.weekday === "Sat" && Number(p.hour) % 24 < GRACE_UNTIL_HOUR) return prevWeekOf(cur);
+    const p = Object.fromEntries(new Intl.DateTimeFormat("en-GB", { timeZone: "Africa/Addis_Ababa", weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(now).map((x) => [x.type, x.value]));
+    const mins = (Number(p.hour) % 24) * 60 + Number(p.minute), [gh, gm] = cfg.graceTime.split(":").map(Number);
+    if (p.weekday === "Sat" && mins < gh * 60 + gm) return prevWeekOf(cur);
+    if (cfg.extendUntil && `${addisToday(now)}T${String(Number(p.hour) % 24).padStart(2, "0")}:${p.minute}` < cfg.extendUntil) return prevWeekOf(cur);
   } catch (e) { /* fall through */ }
   return cur;
 }
@@ -108,7 +126,7 @@ export function needsApproval(op, week, monday, today) {
   if (week < monday) return true;
   if (week > monday) return false;
   if (op.op === "remove") return true;
-  if (op.op === "set" && LOCKED.includes(op.f)) return true;
+  if (op.op === "set" && lockedFields().includes(op.f)) return true;
   if (op.op === "set" && op.f === "completedAt" && op.to && op.to !== today) return true;
   return false;
 }
@@ -136,7 +154,7 @@ export function checkUnitSave(old, plan, monday, today) {
     const ids = new Set(plan.tasks.map((t) => t.id));
     if (ot.some((t) => !ids.has(t.id))) return "removed";
     const om = new Map(ot.map((t) => [t.id, t]));
-    if (plan.tasks.some((t) => { const o = om.get(t.id); return o && LOCKED.some((f) => !same(f, o[f], t[f])); })) return "locked";
+    if (plan.tasks.some((t) => { const o = om.get(t.id); return o && lockedFields().some((f) => !same(f, o[f], t[f])); })) return "locked";
   }
   const om = new Map(ot.map((t) => [t.id, t]));
   if (plan.tasks.some((t) => t.completedAt && t.completedAt !== today && t.completedAt !== ((om.get(t.id) || {}).completedAt || ""))) return "completion_date";

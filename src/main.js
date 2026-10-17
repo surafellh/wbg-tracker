@@ -7,7 +7,7 @@ import { startGate } from "./gate.js";
 import { groupTasks, rollupOf, rolledPlan, leafPlan, leafTasks, parentChoices, weightOf } from "./rollup.js";
 import { ROLES, ROLE_LABEL, ROLE_HELP, baseRole, isAdmin, unitMember, deptOk, canUndo, canFeedback, canEditDepartments, roleText, canDecide, STAGE_LABEL } from "./access.js";
 import { assess, actions as ceoActions, letter as ceoLetter, INTERNAL, fmtD, addDaysIso } from "./ceoaction.js";
-import { WEEK_CUTOVER, LOCKED, planOps, needsApproval, applyOps, addisToday, addisWeekStart, addisLockWeek, calcPct, CATEGORIES, weekStartOf, weekEndOf, nextWeekOf, prevWeekOf } from "./rules.js";
+import { WEEK_CUTOVER, LOCKED, lockedFields, setSettings, getSettings, graceLabel, planOps, needsApproval, applyOps, addisToday, addisWeekStart, addisLockWeek, calcPct, CATEGORIES, weekStartOf, weekEndOf, nextWeekOf, prevWeekOf } from "./rules.js";
 import { unitAlerts, levelRank, BLOCKED_DAYS } from "./alerts.js";
 import { renderDashboard } from "./dashboard.js";
 import { FINAL_LABELS, FINAL_CLASS, FINAL_COLOR, weekClosed, finalLabel, finalSummary, pctOf as finalPct } from "./finalstatus.js";
@@ -273,7 +273,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   state.expanded = new Set(); state.bf = null; state.carryInfo = null; state.carryKey = "";
   const newFilter = () => ({ unit: "", status: "", statuses: [], priority: "", kind: "", dept: "", q: "", period: "week", from: "", group: false, category: "" });
   state.filter = newFilter();
-  // The week being worked on. Weeks run Saturday to Friday, but updates and planning happen on Saturday, so until Saturday 12:00 (Addis)
+  // The week being worked on. Weeks run Saturday to Friday, but updates and planning happen on Saturday, so until Saturday 2:00 PM (Addis; a super admin can change this)
   // "this week" is still the week that just ended and "next week" is the one that has just started. Same rule as the database.
   const thisMonday = () => addisLockWeek();
   const nextMonday = () => nextWeekOf(thisMonday());
@@ -563,7 +563,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     const legend = FINAL_LABELS.map(l => `<span><i class="fsw" style="background:#${FINAL_COLOR[l]}"></i>${l} <b>${c.counts[l]}</b></span>`).join("");
     const table = rows.length > 1 ? `<div class="scroll"><table class="fsum"><thead><tr><th>Unit</th><th>Tasks</th>${FINAL_LABELS.map(l => `<th>${l}</th>`).join("")}<th>Average</th></tr></thead><tbody>${rows.sort((a, b) => (b.s.avg ?? -1) - (a.s.avg ?? -1)).map(r => `<tr><td><b>${esc(r.name)}</b></td><td class="num">${r.s.total}</td>${FINAL_LABELS.map(l => `<td class="num" style="${r.s.counts[l] ? "font-weight:700;color:#" + FINAL_COLOR[l] : "color:var(--muted)"}">${r.s.counts[l] || "–"}</td>`).join("")}<td class="num"><b>${r.s.avg === null ? "–" : r.s.avg + "%"}</b></td></tr>`).join("")}</tbody></table></div>` : "";
     return `<div class="panel" style="margin-bottom:14px"><div class="panel-head"><div><h2>Week performance summary</h2><div class="small muted">${esc(scopeName)} · ${esc(perLabel)}</div></div>
-      <span class="pill ${fin ? "s-done" : "s-not"}" title="${fin ? "The update period for this week is over, so tasks show their final status." : "Final status is set after the update period ends (Saturday 12:00, Addis time)."}">${fin ? "Final" : "Updates still open"}</span></div>
+      <span class="pill ${fin ? "s-done" : "s-not"}" title="${fin ? "The update period for this week is over, so tasks show their final status." : "Final status is set after the update period ends (" + graceLabel() + ", Addis time)."}">${fin ? "Final" : "Updates still open"}</span></div>
       <div style="padding:6px 16px 16px"><div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><span class="num" style="font-size:28px;font-weight:700">${c.avg === null ? "–" : c.avg + "%"}</span><span class="small muted">average reached across ${c.counted} task${c.counted === 1 ? "" : "s"}${c.counts["Cancelled"] ? ` · ${c.counts["Cancelled"]} cancelled not counted` : ""}</span></div>
       ${labelBar(c)}<div class="flegend small">${legend}</div>${table}</div></div>`;
   }
@@ -913,12 +913,14 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
       (t.depUnit || t.dep) ? `<span class="mi" title="Depends on ${esc(depText(t))}">${ico(IC.link)}</span>` : "",
       t.notes ? `<span class="mi" title="${esc(t.notes)}">${ico(IC.note)}</span>` : "",
       nEv ? `<span class="mi" title="${nEv} file${nEv === 1 ? "" : "s"} attached">${ico(IC.clip)}${nEv}</span>` : "",
-      lk ? `<span class="mi" title="Saved task: the title, outcome, type, department, due date and priority are fixed. Use the pencil to request a change.">${ico(IC.lock)}</span>` : ""
+      lk ? `<span class="mi" title="Saved task: ${getSettings().allowRename ? "the outcome, type, department and priority are fixed (the title can be changed)" : "the title, outcome, type, department and priority are fixed"}. Use the pencil to request a change.">${ico(IC.lock)}</span>` : ""
     ].filter(Boolean).join("");
     const main = free
       ? `<textarea class="grow title-in" rows="1" id="t-title-${t.id}" data-f="title" placeholder="Task or deliverable" aria-label="Task">${esc(t.title)}</textarea>
          <textarea class="grow out-in" rows="1" id="t-outcome-${t.id}" data-f="outcome" placeholder="Expected outcome: what will exist or change when this is done" aria-label="Expected outcome">${esc(t.outcome || "")}</textarea>`
-      : `<div class="tt" title="${esc(t.title)}">${t.priority === "High" ? '<span class="hi-dot" title="High priority"></span>' : ""}${esc(t.title) || '<span class="muted">(no title)</span>'}</div>${t.outcome ? `<div class="task-out" title="${esc(t.outcome)}">${esc(t.outcome)}</div>` : ""}`;
+      : (ed && lk && getSettings().allowRename)
+        ? `<textarea class="grow title-in" rows="1" id="t-title-${t.id}" data-f="title" placeholder="Task or deliverable" aria-label="Task">${esc(t.title)}</textarea>${t.outcome ? `<div class="task-out" title="${esc(t.outcome)}">${esc(t.outcome)}</div>` : ""}`
+        : `<div class="tt" title="${esc(t.title)}">${t.priority === "High" ? '<span class="hi-dot" title="High priority"></span>' : ""}${esc(t.title) || '<span class="muted">(no title)</span>'}</div>${t.outcome ? `<div class="task-out" title="${esc(t.outcome)}">${esc(t.outcome)}</div>` : ""}`;
     const dueC = free ? `<input type="date" id="t-due-${t.id}" data-f="due" value="${esc(t.due)}" aria-label="Due date">` : `<span class="due ${di.cls}">${esc(di.txt)}</span>${di.sub ? `<div class="small muted">${esc(di.sub)}</div>` : ""}`;
     const deptC = free ? `<select id="t-dept-${t.id}" data-f="dept" aria-label="Department">${deptOptions(u, t)}</select>` : (esc(t.dept) || '<span class="muted">–</span>');
     const priC = free ? `<select id="t-pri-${t.id}" data-f="priority" aria-label="Priority"><option value="" ${sel(!t.priority)}>Not set</option>${PRIORITIES.map(p => `<option ${sel(p === t.priority)}>${p}</option>`).join("")}</select>` : priPill(t.priority);
@@ -946,7 +948,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     const ed = rowEd(u, t), lk = isLocked(u, t), free = ed && !lk, key = `${u}|${i}`;
     const dis = free ? "" : "disabled", fin = t.category === "Revenue";
     const sub = [t.ref ? `<span class="ref">${esc(t.ref)}</span>` : '<span class="pill s-none">New</span>', t.unplanned ? '<span class="pill s-prog">Unplanned</span>' : "", t.carried ? '<span class="pill s-not">Carried</span>' : "", t.parent ? `<span class="pill s-none">↳ ${esc(t.parent)}</span>` : "", t.owner ? `<span class="who">${esc(t.owner)}</span>` : "", lk ? `<span class="mi" title="Fixed task">${ico(IC.lock)}</span>` : ""].filter(Boolean).join("");
-    const main = free ? `<textarea class="grow title-in" rows="1" id="t-title-${t.id}" data-f="title" placeholder="Task or product" aria-label="Task">${esc(t.title)}</textarea>` : `<div class="tt">${esc(t.title) || '<span class="muted">(no title)</span>'}</div>`;
+    const main = (free || (ed && lk && getSettings().allowRename)) ? `<textarea class="grow title-in" rows="1" id="t-title-${t.id}" data-f="title" placeholder="Task or product" aria-label="Task">${esc(t.title)}</textarea>` : `<div class="tt">${esc(t.title) || '<span class="muted">(no title)</span>'}</div>`;
     const act = `<button class="icon-btn ib" type="button" data-open-task="${esc(u)}|${esc(t.id)}" aria-label="Open details" title="Open details">${ico(IC.open)}</button>` + (ed ? (state.confirmDelete === t.id ? `<span class="confirm">Remove? <button class="btn danger small" data-del-yes="${esc(key)}">Yes</button><button class="btn small" data-del-no>No</button></span>` : `<button class="icon-btn ib bad" type="button" data-del="${t.id}" aria-label="Remove task" title="Remove">${ico(IC.trash)}</button>`) : "");
     return `<tr class="task-row" data-u="${esc(u)}" data-i="${i}" data-id="${esc(t.id)}">
       <td class="c-task"><div class="task-main">${main}<div class="sub">${sub}</div></div></td>
@@ -1371,7 +1373,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     const access = !ed
       ? `<div class="banner warn" style="margin:12px 16px 0"><b>View only.</b> To update ${esc(u.name || "this unit")}, sign in with your name and ${esc(u.name || "the unit")}'s PIN. <button class="btn" id="signInBtn" style="margin-left:6px">Sign in</button></div>`
       : past && !isAppr() ? `<div class="banner warn" style="margin:12px 16px 0"><b>This week is closed.</b> Progress for a past week can't be edited directly. Make the change and press <b>Request update</b>: Group Strategy reviews it and it is recorded only when approved.</div>`
-      : state.week < addisWeekStart() && !isAppr() ? `<div class="slimnote warn">This week has ended. You can still update its progress until Saturday 12:00 noon; after that, changes need approval.</div>`
+      : state.week < addisWeekStart() && !isAppr() ? `<div class="slimnote warn">This week has ended. You can still update its progress until ${graceLabel()}; after that, changes need approval.</div>`
       : state.week <= thisMonday() && !isAppr() ? `<div class="slimnote" title="Saved tasks keep their title, expected outcome, type, department, due date and priority (lock icon). Update status, %, notes, owner and evidence freely. To change a fixed field or remove a task, use the pencil or the bin: Group Strategy approves it first.">ⓘ Some fields are locked. Hover for details.</div>` : "";
     const listHint = ed && !(u.departments||[]).length ? `<div class="banner info" style="margin:12px 16px 0">${esc(u.name||"This unit")} has no departments yet. Open the ⋯ menu, choose <b>Departments</b> and add them, then pick one for each task.</div>` : "";
     const rdis = ed ? "" : "disabled";
@@ -1397,7 +1399,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
       if (o.op === "add") return `<tr><td><span class="pill s-done">Add</span></td><td colspan="3">${esc(o.task.title)}</td></tr>`;
       if (o.op === "remove") return `<tr><td><span class="pill s-bad">Remove</span></td><td colspan="3">${esc(o.task.title)}</td></tr>`;
       if (o.op === "text") return `<tr><td><span class="pill s-none">${esc(({ wins: "Key results", blockers: "Blockers", asks: "Asks" })[o.f])}</span></td><td></td><td class="small muted">${esc(o.from || "–")}</td><td class="small">${esc(o.to || "–")}</td></tr>`;
-      return `<tr><td><span class="pill ${LOCKED.includes(o.f) ? "s-not" : "s-none"}">${esc(FLAB[o.f] || o.f)}</span></td><td class="small">${esc(short(o.title))}</td><td class="small muted">${esc(showF(o.f, o.from))}</td><td class="small"><b>${esc(showF(o.f, o.to))}</b></td></tr>`;
+      return `<tr><td><span class="pill ${lockedFields().includes(o.f) ? "s-not" : "s-none"}">${esc(FLAB[o.f] || o.f)}</span></td><td class="small">${esc(short(o.title))}</td><td class="small muted">${esc(showF(o.f, o.from))}</td><td class="small"><b>${esc(showF(o.f, o.to))}</b></td></tr>`;
     }).join("");
   }
   function renderApprovals(){
@@ -2273,7 +2275,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
         <div class="toolbar">${!ed && editable === false && state.tab !== "update" && state.tab !== "plan" && canEdit(u) && state.filter.period !== "month" && !state.panel.ro ? `<button class="btn" id="pnEdit">Edit in this week's update</button>` : ""}<button class="btn" id="pnPrint" type="button">Print</button><button class="icon-btn" id="pnClose" aria-label="Close">×</button></div></div>
       <div class="panel-body">
         ${locked}
-        ${fld("Task", ed && !lk ? `<textarea class="grow" rows="2" id="p-title" data-pf="title">${esc(t.title)}</textarea>` : `<div class="p-val"><b>${esc(t.title) || "(no title)"}</b></div>`)}
+        ${fld("Task", ed && (!lk || getSettings().allowRename) ? `<textarea class="grow" rows="2" id="p-title" data-pf="title">${esc(t.title)}</textarea>` : `<div class="p-val"><b>${esc(t.title) || "(no title)"}</b></div>`)}
         <div class="pgrid2">
           ${fld("Status", `<select id="p-st" data-pf="status" ${dis}><option value="">No status</option>${STATUSES.map(x => `<option ${sel(x === t.status)}>${x}</option>`).join("")}</select>`)}
           ${fld("% complete", `<input type="number" id="p-pct" data-pf="pct" min="0" max="100" step="5" value="${roll ? roll.pct : (t.pct ?? "")}" ${dis} ${auto ? "readonly" : ""}>`)}
@@ -3245,6 +3247,13 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
       <div class="asks"><div class="toolbar"><input type="password" id="ppCodeIn" autocomplete="new-password" placeholder="${c.set ? "New code (at least 6 characters)" : "Choose a code (at least 6 characters)"}" style="min-width:260px"><button class="btn primary" type="button" data-pe="code-save">${c.set ? "Change code" : "Turn on"}</button>${c.set ? '<button class="btn" type="button" data-pe="code-off">Turn off</button>' : ""}</div>
       ${c.set && c.setAt ? `<div class="small muted" style="margin-top:6px">Set ${esc(String(c.setAt).slice(0, 10))}. Keep it to yourself and change it from time to time.</div>` : ""}</div></div>`;
   }
+  function ppSettings(){
+    const c = getSettings();
+    return `<div class="panel pp-set"><div class="panel-head"><div><h2>Update deadline and renaming</h2><div class="small muted">Weeks run Saturday to Friday. The week that just ended can still be updated until the Saturday time below (Addis Ababa time). After that, edits need approval.</div></div></div>
+      <div class="asks"><div class="toolbar" style="flex-wrap:wrap;gap:10px"><label for="setGrace" class="small"><b>Saturday cut-off</b></label><input type="time" id="setGrace" value="${esc(c.graceTime)}"><button class="btn" type="button" data-pe="set-grace">Save time</button><span class="small muted">Now: ${esc(graceLabel())}</span></div>
+      <div class="toolbar" style="flex-wrap:wrap;gap:10px;margin-top:10px"><label for="setExt" class="small"><b>Keep last week open until</b></label><input type="datetime-local" id="setExt" value="${esc(c.extendUntil)}"><button class="btn" type="button" data-pe="set-ext">Save date</button><button class="btn ghost" type="button" data-pe="set-ext-clear">Clear</button><span class="small muted">${c.extendUntil ? "Open until " + esc(c.extendUntil.replace("T", " ")) : "Off"}</span></div>
+      <label class="small" style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" id="setRename" ${c.allowRename ? "checked" : ""}> <span><b>Allow renaming saved tasks</b> <span class="muted">(off by default; turn on for a short time when needed)</span></span></label></div></div>`;
+  }
   function renderPeople(){
     const p = state.people;
     if (!p || p.loading) return `<div class="panel"><div class="empty"><b>Loading people…</b></div></div>`;
@@ -3265,7 +3274,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
         <div class="pf-f"><label for="inv-unit">Unit</label><select id="inv-unit">${UNIT_OPTS("")}</select></div><div class="pf-f"><label>Departments</label>${ddHtml("inv-dept", "", [], "Choose departments")}</div>
         <div class="pf-f" style="align-self:end"><button class="btn primary" type="button" data-pe="invite">Send invite</button></div></div>
       ${invs ? `<div class="scroll"><table><thead><tr><th>Waiting invites</th><th>Role</th><th>Unit</th><th>Departments</th><th></th></tr></thead><tbody>${invs}</tbody></table></div>` : ""}</details>
-    ${ppDepts()}${ppCode()}
+    ${ppDepts()}${ppCode()}${ppSettings()}
     <div class="grid2 even"><div class="panel"><div class="panel-head"><h2>Allowed email domains</h2></div><div class="asks"><p class="small">People with these company email domains can sign themselves up. They start as Staff in the unit they choose and can ask for a different role, which reaches you here and on the bell.</p>
       <div class="toolbar"><input type="text" id="domainsIn" style="min-width:260px" value="${esc((p.domains || []).join(", "))}"><button class="btn" data-pe="domains">Save domains</button></div></div></div>
       <div class="panel"><div class="panel-head"><h2>Daily backups</h2></div><div class="asks"><p class="small">A copy of all units and plans is kept every night. Download one to keep offline.</p><div id="backupList" class="toolbar" style="flex-wrap:wrap"><button class="btn" data-pe="backups">Show available days</button></div></div></div></div>${ppDrawer(p)}`;
@@ -3295,6 +3304,12 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
         const r = await api.adminSetApprovalCode(v); if (r.error) { toast(errText(r)); return; }
         toast(a === "code-off" ? "Approval code turned off" : "Approval code saved");
         const c = await api.adminApprovalCodeStatus(); state.appCode = c && !c.error ? c : {}; render(); return;
+      }
+      if (a === "set-grace" || a === "set-ext" || a === "set-ext-clear") {
+        const key = a === "set-grace" ? "grace_time" : "extend_until", v = a === "set-grace" ? ($("#setGrace").value || "") : a === "set-ext" ? ($("#setExt").value || "") : "";
+        if (a !== "set-ext-clear" && !v) { toast("Pick a time first"); return; }
+        const r = await api.adminSetSetting(key, v); if (r.error) { toast(errText(r)); return; }
+        setSettings(r.settings); toast(a === "set-grace" ? "Saturday cut-off saved" : a === "set-ext" ? "Last week stays open until then" : "Extension cleared"); render(); return;
       }
       if (a === "pp-edit") { state.pp.edit = id; render(); return; }
       if (a === "pp-close") { state.pp.edit = null; render(); return; }
@@ -3327,8 +3342,9 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   }
   // people page: filters, department dropdowns and role helpers
   main.addEventListener("input", e => { const el = e.target; if (el.id === "ppQ") { state.pp.q = el.value; const b = $("#ppBody"); if (b && state.people) b.innerHTML = ppRows(state.people); } });
-  main.addEventListener("change", e => {
+  main.addEventListener("change", async e => {
     const el = e.target;
+    if (el.id === "setRename") { const r = await api.adminSetSetting("allow_rename", el.checked); if (r.error) { toast(errText(r)); el.checked = !el.checked; return; } setSettings(r.settings); toast(el.checked ? "Saved tasks can now be renamed" : "Saved tasks are locked against renaming"); render(); return; }
     if (el.id === "ppUnit" || el.id === "ppRole" || el.id === "ppSt") { state.pp[el.id === "ppUnit" ? "unit" : el.id === "ppRole" ? "role" : "st"] = el.value; const b = $("#ppBody"); if (b && state.people) b.innerHTML = ppRows(state.people); return; }
     if (el.id === "ppDeptUnit") { state.pp.deptUnit = el.value; render(); return; }
     if (el.id === "pp-role") { $("#pp-title-wrap").hidden = el.value !== "executive"; $("#pp-role-help").textContent = ROLE_HELP[el.value] || ""; return; }
@@ -3369,6 +3385,11 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
       if (!(state.tab === "people" && ((state.pp && state.pp.edit) || Date.now() - (state.ddBusy || 0) < 5000))) render();
     }, err => banner(`Could not load units (${err.code}). Reload the page to reconnect.`));
     subscribePlans();
+    loadSettings(); setInterval(loadSettings, 3 * 60000);
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) loadSettings(); });
+  }
+  async function loadSettings(){
+    try { const r = await api.appSettings(); if (r && !r.error && r.graceTime) { const was = JSON.stringify(getSettings()); setSettings(r); if (was !== JSON.stringify(getSettings()) && !state.dirty && state.tab !== "people") render(); } } catch (e) { /* keep defaults */ }
   }
   (async () => {
     const cfgErr = configError();

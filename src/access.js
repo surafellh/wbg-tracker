@@ -1,6 +1,6 @@
 // Who may see and change what. The database enforces the same rules (supabase/upgrade-5-stage2-login.sql);
 // this file is used to hide buttons in the app and to run the same rules in the browser test mode.
-import { LOCKED } from "./rules.js";
+import { lockedFields } from "./rules.js";
 
 // Roles are shown as titles. For permissions chief, GM, director and the lead executive assistant behave exactly like the
 // old "leader" role, and a division head behaves like an employee (the database reports the base role, see upgrade-17).
@@ -72,7 +72,7 @@ export function mergeSave(p, unit, old, plan, ctx) {
       else if (!n) { if (started) return { error: "needs_approval", reason: "removed" }; }
       else {
         if (!deptOk(p, unit, n.dept || "")) return { error: "not_allowed_dept" };
-        if (started && LOCKED.some((f) => !same(f, o[f], n[f]))) return { error: "needs_approval", reason: "locked" };
+        if (started && lockedFields().some((f) => !same(f, o[f], n[f]))) return { error: "needs_approval", reason: "locked" };
         tasks.push(n);
       }
     }
