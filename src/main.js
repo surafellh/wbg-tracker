@@ -10,6 +10,7 @@ import { assess, actions as ceoActions, letter as ceoLetter, INTERNAL, fmtD, add
 import { WEEK_CUTOVER, LOCKED, planOps, needsApproval, applyOps, addisToday, addisWeekStart, addisLockWeek, calcPct, CATEGORIES, weekStartOf, weekEndOf, nextWeekOf, prevWeekOf } from "./rules.js";
 import { unitAlerts, levelRank, BLOCKED_DAYS } from "./alerts.js";
 import { renderDashboard } from "./dashboard.js";
+import { FINAL_LABELS, FINAL_CLASS, FINAL_COLOR, weekClosed, finalLabel, finalSummary, pctOf as finalPct } from "./finalstatus.js";
 import { createExtras } from "./extras.js";
 import { openViewer, canPreview } from "./viewer.js";
 applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
@@ -401,6 +402,8 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   const evLinks = t => (t.ev || []).length ? (t.ev || []).map(e => `<button class="lnk ev-open" type="button" data-evp="${esc(e.path)}" data-evn="${esc(e.name)}" title="${esc(e.name)}">📎${(t.ev || []).length > 1 ? "" : " " + esc(e.name.length > 14 ? e.name.slice(0, 12) + "…" : e.name)}</button>`).join("") : '<span class="muted small">–</span>';
   const refChip = (t, unit) => t.ref ? `<button class="ref" type="button" data-open-task="${esc(unit)}|${esc(t.id)}" title="Open ${esc(t.ref)}">${esc(t.ref)}</button>` : "";
   const soon = d => { if (!d) return false; const n = (new Date(d + "T00:00:00") - new Date(todayIso + "T00:00:00")) / 864e5; return n >= 0 && n <= 3; };
+  // final status labels show on the report once the week's update period is over (weekly view only)
+  const finalOn = () => state.filter.period !== "month" && weekClosed(state.week);
   function readRow(t, sub){
     const late = t.due && t.due < todayIso && t.status !== "Done", lateDone = t.status === "Done" && t.due && t.completedAt && t.completedAt > t.due;
     return `<tr>
@@ -410,7 +413,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
       <td class="num small" style="color:${late ? "var(--bad)" : soon(t.due) && t.status !== "Done" ? "var(--warn)" : "inherit"}" ${late ? 'title="Overdue"' : soon(t.due) && t.status !== "Done" ? 'title="Due within 3 days"' : ""}>${esc(fmt(t.due))}</td>
       <td class="small">${t.priority ? esc(t.priority) : '<span class="muted">–</span>'}</td>
       <td>${t.prevStatus ? `<span class="pill ${statusClass(t.prevStatus)}">${esc(t.prevStatus)}</span>` : '<span class="muted small">–</span>'}</td>
-      <td><span class="pill ${statusClass(t.status)}">${esc(t.status || "No status")}</span></td>
+      <td>${finalOn() ? `<span class="pill ${FINAL_CLASS[finalLabel(t)]}" title="Final status. Progress update showed: ${esc(t.status || "No status")}">${finalLabel(t)}</span>` : `<span class="pill ${statusClass(t.status)}">${esc(t.status || "No status")}</span>`}</td>
       <td>${typeof t.pct === "number" ? `<div class="prog"><div class="bar"><i style="width:${t.pct}%"></i></div><span class="num">${t.pct}%</span></div>` : '<span class="muted small">–</span>'}</td>
       <td class="num small" ${lateDone ? 'style="color:var(--warn)" title="Finished after the due date"' : ""}>${t.completedAt ? esc(fmt(t.completedAt)) : '<span class="muted">–</span>'}</td>
       <td class="small">${t.depUnit ? `<b>${esc(unitName(t.depUnit))}</b>` : ""}${t.dep ? `${t.depUnit ? "<br>" : ""}${esc(t.dep)}` : ""}${!t.depUnit && !t.dep ? '<span class="muted">–</span>' : ""}</td>
@@ -509,6 +512,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     const overall = `<div class="panel overall" style="margin-bottom:14px"><div class="panel-head"><div><h2>Overall progress</h2><div class="small muted">${esc(scopeName)} · ${esc(perLabel)}</div></div></div>
       <div style="padding:6px 16px 16px">${sm.total ? `${progressBar("Average completion across " + sm.total + " task" + (sm.total === 1 ? "" : "s"), sm.avg, "", true)}
       <div class="toolbar small" style="margin-top:10px;gap:14px;flex-wrap:wrap"><span><b>${sm.done}</b> done</span><span><b>${sm.total - sm.done - sm.blocked}</b> in progress or not started</span><span><b>${sm.blocked}</b> blocked</span><span><b>${sm.overdue}</b> overdue</span>${sm.high ? `<span><b>${sm.highDone}</b> of <b>${sm.high}</b> high-priority done</span>` : ""}</div>` : `<div class="muted small">No tasks for this selection yet.</div>`}</div></div>`;
+    const summary = month ? "" : weekSummary(scope, scopeName, perLabel);
     let body = "";
     if (f.group) {
       const byU = new Map(); list.forEach(t => { if (!byU.has(t.unit)) byU.set(t.unit, { name: t.unitName, d: new Map() }); const u = byU.get(t.unit), k = t.dept || ""; if (!u.d.has(k)) u.d.set(k, []); u.d.get(k).push(t); });
@@ -523,7 +527,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
         });
       });
     } else body = list.map(readRows).join("");
-    return `${overall}<div class="panel">
+    return `${overall}${summary}<div class="panel">
       ${f.from === "monthly" ? `<div class="toolbar" style="padding:12px 16px;border-bottom:1px solid var(--line)"><button class="btn" id="backMonthly">‹ Back to monthly report</button><span class="small muted">Showing the tasks behind the number you selected.</span></div>` : ""}
       ${chips.length ? `<div class="chipset" style="padding:12px 16px;border-bottom:1px solid var(--line)">${chips.map(([k, l]) => `<span class="chip">${esc(l)}<button data-chip="${k}" aria-label="Remove filter">×</button></span>`).join("")}</div>` : ""}
       <div class="panel-head">
@@ -539,11 +543,104 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
           <input type="text" id="fQ" placeholder="Search by reference, task, department or owner" value="${esc(f.q)}" aria-label="Search">
           <label class="small"><input type="checkbox" id="fGroup" ${f.group ? "checked" : ""}> Group by department</label>
         </div>
-        <div class="toolbar"><span class="small muted">${list.length} tasks</span><button class="btn" id="printBtn" type="button">Print</button>${downloads ? `<button class="btn" id="tasksPdfBtn">PDF</button><button class="btn" id="tasksXlsxBtn">Excel</button><button class="btn" id="exportBtn">CSV</button>` : ""}</div>
+        <div class="toolbar"><span class="small muted">${list.length} tasks</span><button class="btn" id="printBtn" type="button">Print</button>${downloads ? `<button class="btn primary" id="rdlBtn" title="Choose units and format, including a PowerPoint with charts">Download…</button><button class="btn" id="tasksPdfBtn">PDF</button><button class="btn" id="tasksXlsxBtn">Excel</button><button class="btn" id="exportBtn">CSV</button>` : ""}</div>
       </div>
       ${list.length ? `<div class="scroll"><table><thead><tr>${readHead("tasks")}</tr></thead><tbody>${body}</tbody></table></div>` : `<div class="empty"><b>No tasks match</b>Change the filters, or pick another period.</div>`}
     </div>`;
   }
+
+
+  // ---------- weekly performance summary and selective download ----------
+  const repTasks = ts => leafTasks(ts || []).filter(t => t.kind !== "KPI / OKR");
+  const labelBar = c => { const n = FINAL_LABELS.reduce((a, l) => a + c.counts[l], 0); return n ? `<div class="fstk" role="img" aria-label="Tasks by final status">${FINAL_LABELS.filter(l => c.counts[l]).map(l => `<i style="width:${c.counts[l] / n * 100}%;background:#${FINAL_COLOR[l]}" title="${l}: ${c.counts[l]}"></i>`).join("")}</div>` : ""; };
+  function weekSummary(scope, scopeName, perLabel){
+    const tasks = repTasks(scope), c = finalSummary(tasks), fin = finalOn();
+    if (!c.total) return "";
+    const byU = new Map(); tasks.forEach(t => { if (!byU.has(t.unit)) byU.set(t.unit, { name: t.unitName, tasks: [] }); byU.get(t.unit).tasks.push(t); });
+    const rows = [...byU.values()].map(u => ({ name: u.name, s: finalSummary(u.tasks) }));
+    const legend = FINAL_LABELS.map(l => `<span><i class="fsw" style="background:#${FINAL_COLOR[l]}"></i>${l} <b>${c.counts[l]}</b></span>`).join("");
+    const table = rows.length > 1 ? `<div class="scroll"><table class="fsum"><thead><tr><th>Unit</th><th>Tasks</th>${FINAL_LABELS.map(l => `<th>${l}</th>`).join("")}<th>Average</th></tr></thead><tbody>${rows.sort((a, b) => (b.s.avg ?? -1) - (a.s.avg ?? -1)).map(r => `<tr><td><b>${esc(r.name)}</b></td><td class="num">${r.s.total}</td>${FINAL_LABELS.map(l => `<td class="num" style="${r.s.counts[l] ? "font-weight:700;color:#" + FINAL_COLOR[l] : "color:var(--muted)"}">${r.s.counts[l] || "–"}</td>`).join("")}<td class="num"><b>${r.s.avg === null ? "–" : r.s.avg + "%"}</b></td></tr>`).join("")}</tbody></table></div>` : "";
+    return `<div class="panel" style="margin-bottom:14px"><div class="panel-head"><div><h2>Week performance summary</h2><div class="small muted">${esc(scopeName)} · ${esc(perLabel)}</div></div>
+      <span class="pill ${fin ? "s-done" : "s-not"}" title="${fin ? "The update period for this week is over, so tasks show their final status." : "Final status is set after the update period ends (Saturday 12:00, Addis time)."}">${fin ? "Final" : "Updates still open"}</span></div>
+      <div style="padding:6px 16px 16px"><div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><span class="num" style="font-size:28px;font-weight:700">${c.avg === null ? "–" : c.avg + "%"}</span><span class="small muted">average reached across ${c.counted} task${c.counted === 1 ? "" : "s"}${c.counts["Cancelled"] ? ` · ${c.counts["Cancelled"]} cancelled not counted` : ""}</span></div>
+      ${labelBar(c)}<div class="flegend small">${legend}</div>${table}</div></div>`;
+  }
+
+  state.rdl = null;   // { sel:Set(unit ids), fmt:"pptx"|"xlsx"|"pdf" }
+  function openRdl(){
+    const us = sortedUnits().filter(u => repTasks((state.plans[u.id] && state.plans[u.id].tasks) || []).length);
+    state.rdl = { sel: new Set(state.filter.unit ? [state.filter.unit] : us.map(u => u.id)), fmt: "pptx" }; renderRdl();
+  }
+  function renderRdl(){
+    const root = $("#modalRoot"), d = state.rdl; if (!d) { if (!state.bf && !state.history) root.innerHTML = ""; return; }
+    const us = sortedUnits().filter(u => repTasks((state.plans[u.id] && state.plans[u.id].tasks) || []).length);
+    const grp = (type, label) => { const l = us.filter(u => (u.type || "") === type); return l.length ? `<div class="group-h2"><span>${label}</span><span><button class="btn small" type="button" data-rdlgrp="${esc(type)}">Select all</button></span></div>${l.map(u => `<label class="rdl-row"><input type="checkbox" data-rdlu="${esc(u.id)}" ${d.sel.has(u.id) ? "checked" : ""}> ${esc(u.name)}</label>`).join("")}` : ""; };
+    const other = us.filter(u => !["Business unit", "Corporate function"].includes(u.type || ""));
+    root.innerHTML = `<div class="overlay"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="rdlTitle">
+      <div class="panel-head"><div><h2 id="rdlTitle">Download the weekly report</h2><div class="small muted">${esc(weekLabel(state.week))} · ${finalOn() ? "final status" : "status so far (updates still open)"}</div></div></div>
+      <div style="padding:0 16px 8px"><div class="toolbar" style="margin:6px 0"><button class="btn" type="button" id="rdlAll">All units</button><button class="btn" type="button" id="rdlNone">None</button><span class="small muted" id="rdlCount">${d.sel.size} selected</span></div>
+        ${grp("Business unit", "Business units")}${grp("Corporate function", "Corporate functions")}${other.length ? `<div class="group-h2"><span>Other</span></div>${other.map(u => `<label class="rdl-row"><input type="checkbox" data-rdlu="${esc(u.id)}" ${d.sel.has(u.id) ? "checked" : ""}> ${esc(u.name)}</label>`).join("")}` : ""}
+        <div class="group-h2"><span>Format</span></div>
+        ${[["pptx", "PowerPoint summary", "Slides with charts: week at a glance, unit comparison, one slide per unit, tasks to follow up"], ["xlsx", "Excel", "Summary sheet plus all tasks, with final status"], ["pdf", "PDF", "Summary table plus the task list"]].map(([v, l, h]) => `<label class="rdl-row"><input type="radio" name="rdlfmt" data-rdlf="${v}" ${d.fmt === v ? "checked" : ""}> <span><b>${l}</b><br><span class="small muted">${h}</span></span></label>`).join("")}</div>
+      <div class="save-bar"><span class="small muted">Only the units you tick are included.</span><div class="toolbar"><button class="btn" type="button" id="rdlCancel">Cancel</button><button class="btn primary" type="button" id="rdlGo">Download</button></div></div></div></div>`;
+  }
+  function rdlUnits(){
+    return sortedUnits().filter(u => state.rdl.sel.has(u.id)).map(u => { const p = state.plans[u.id]; return { id: u.id, name: u.name, type: u.type || "", tasks: repTasks((p && p.tasks) || []), wins: (p && p.wins) || "", blockers: (p && p.blockers) || "", asks: (p && p.asks) || "" }; }).filter(u => u.tasks.length);
+  }
+  async function rdlGo(){
+    const d = state.rdl; if (!d) return;
+    const units = rdlUnits(); if (!units.length) { toast("Tick at least one unit that has tasks"); return; }
+    const fin = weekClosed(state.week), scope = units.length === 1 ? units[0].name : `${units.length} units`, stamp = `${state.week}${units.length === 1 ? " " + safeName(units[0].name) : ""}`;
+    const stOf = t => fin ? finalLabel(t) : (t.status || "No status");
+    try {
+      if (d.fmt === "pptx") {
+        if (!downloads) { toast("Downloads are not available here"); return; }
+        toast("Building the PowerPoint…");
+        const { buildDeck } = await import("./pptdeck.js");
+        const pptx = await buildDeck(units, { weekLabel: weekLabel(state.week), final: fin, scope });
+        const data = await pptx.write({ outputType: "arraybuffer" });
+        await save(`Wagwago weekly performance ${stamp}.pptx`, data, "PowerPoint saved");
+      } else if (d.fmt === "xlsx") {
+        if (!libsReady("xlsx")) return;
+        const wb = XLSX.utils.book_new();
+        const sum = [[`Weekly performance · ${weekLabel(state.week)}`], [fin ? "Final status (update period closed)" : "Status so far (updates still open)"], [], ["Unit", "Type", "Tasks", ...FINAL_LABELS, "Average % reached"],
+          ...units.map(u => { const s = finalSummary(u.tasks); return [u.name, u.type, s.total, ...FINAL_LABELS.map(l => s.counts[l]), s.avg === null ? "" : s.avg / 100]; })];
+        const all = finalSummary(units.flatMap(u => u.tasks)); sum.push(["Total", "", all.total, ...FINAL_LABELS.map(l => all.counts[l]), all.avg === null ? "" : all.avg / 100]);
+        const ws = sheetFromRows(sum, [34, 18, 8, 12, 14, 18, 16, 12, 18]); pctFormat(ws, 8, 4); XLSX.utils.book_append_sheet(wb, ws, "Summary");
+        const head = ["Unit", ...taskHead.slice(1)]; head[6] = fin ? "Final status" : "Status";
+        const rows = units.flatMap(u => u.tasks.map((t, i) => [u.name, ...xlsxTask({ ...t, status: stOf(t) }, i).slice(1)]));
+        const wt = sheetFromRows([head, ...rows], [30, ...taskWidths.slice(1)]); pctFormat(wt, 7, 1); XLSX.utils.book_append_sheet(wb, wt, "Tasks");
+        await writeXlsx(wb, `Wagwago weekly performance ${stamp}.xlsx`, "Excel saved");
+      } else {
+        if (!libsReady("pdf")) return;
+        const doc = newPdf("Weekly performance", `Week of ${weekLabel(state.week)}  ·  ${scope}  ·  ${fin ? "final status" : "status so far"}`);
+        const all = finalSummary(units.flatMap(u => u.tasks));
+        doc.autoTable({ startY: 92, margin: { left: 30, right: 30 }, head: [["Unit", "Tasks", ...FINAL_LABELS, "Average"]],
+          body: [...units.map(u => { const s = finalSummary(u.tasks); return [u.name, s.total, ...FINAL_LABELS.map(l => s.counts[l]), s.avg === null ? "–" : s.avg + "%"]; }), ["Total", all.total, ...FINAL_LABELS.map(l => all.counts[l]), all.avg === null ? "–" : all.avg + "%"]], ...tableStyle() });
+        const list = units.flatMap(u => u.tasks.map(t => ({ ...t, unitName: u.name, status: stOf(t) })));
+        let y = sectionTitle(doc, "Tasks", doc.lastAutoTable.finalY + 26);
+        doc.autoTable({ startY: y, margin: { left: 30, right: 30 }, head: [pdfHead(true)], body: list.map((t, i) => pdfTask({ ...t, prevStatus: "" }, i, t.unitName)),
+          columnStyles: { 0: { cellWidth: 62, fontStyle: "bold" }, 1: { cellWidth: 104, fontStyle: "bold" }, 2: { cellWidth: 90 }, 3: { cellWidth: 48 }, 4: { cellWidth: 50 }, 5: { cellWidth: 38 }, 6: { cellWidth: 34 }, 7: { cellWidth: 48 }, 8: { cellWidth: 24 }, 9: { cellWidth: 46 }, 10: { cellWidth: 56 } }, ...pdfStyle() });
+        pdfFooter(doc, "Weekly performance");
+        await save(`Wagwago weekly performance ${stamp}.pdf`, doc.output("arraybuffer"), "PDF saved. Open it to print.");
+      }
+      state.rdl = null; renderRdl();
+    } catch (e) { toast("Could not build the file: " + (e && e.message ? e.message : "unknown error")); }
+  }
+  $("#modalRoot").addEventListener("click", e => {
+    const t = e.target.closest("button"); if (!t || !state.rdl) return;
+    const d = state.rdl, setAll = fn => { sortedUnits().forEach(u => { if (document.querySelector(`[data-rdlu="${CSS.escape(u.id)}"]`)) fn(u); }); renderRdl(); };
+    if (t.id === "rdlCancel") { state.rdl = null; renderRdl(); }
+    else if (t.id === "rdlGo") rdlGo();
+    else if (t.id === "rdlAll") setAll(u => d.sel.add(u.id));
+    else if (t.id === "rdlNone") { d.sel.clear(); renderRdl(); }
+    else if (t.dataset.rdlgrp !== undefined) { sortedUnits().filter(u => (u.type || "") === t.dataset.rdlgrp).forEach(u => { if (document.querySelector(`[data-rdlu="${CSS.escape(u.id)}"]`)) d.sel.add(u.id); }); renderRdl(); }
+  });
+  $("#modalRoot").addEventListener("change", e => {
+    const c = e.target, d = state.rdl; if (!d) return;
+    if (c.dataset.rdlu !== undefined) { c.checked ? d.sel.add(c.dataset.rdlu) : d.sel.delete(c.dataset.rdlu); const n = $("#rdlCount"); if (n) n.textContent = `${d.sel.size} selected`; }
+    else if (c.dataset.rdlf) d.fmt = c.dataset.rdlf;
+  });
 
   // ---------- monthly consolidation (Ethiopian calendar) ----------
   function monthWeeks(e, basis){
@@ -1896,6 +1993,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     else if (t.id==="xlsxAllBtn") exportXlsxAll();
     else if (t.id==="unitPdfBtn") exportUnitPdf();
     else if (t.id==="unitXlsxBtn") exportUnitXlsx();
+    else if (t.id==="rdlBtn") openRdl();
     else if (t.id==="tasksPdfBtn") exportTasksPdf();
     else if (t.id==="tasksXlsxBtn") exportTasksXlsx();
     else if (t.dataset.copy) copyReminder(t.dataset.copy, t);
@@ -2614,7 +2712,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
 
   async function exportTasksPdf(){
     if (!libsReady("pdf")) return;
-    const list = filteredTasks(), f = state.filter;
+    const list = filteredTasks().map(t => finalOn() ? { ...t, status: finalLabel(t) } : t), f = state.filter;
     const filt = [f.unit && unitName(f.unit), f.status && (f.status==="none"?"No status":f.status), f.priority, f.q && `"${f.q}"`].filter(Boolean).join(", ");
     const doc = newPdf("Weekly Tasks", `Week of ${weekLabel(state.week)}  ·  ${list.length} tasks${filt ? "  ·  Filter: " + filt : ""}`);
     doc.autoTable({ startY: 92, margin: { left: 30, right: 30 }, head: [pdfHead(true)],
@@ -2626,7 +2724,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
 
   async function exportTasksXlsx(){
     if (!libsReady("xlsx")) return;
-    const list = filteredTasks();
+    const list = filteredTasks().map(t => finalOn() ? { ...t, status: finalLabel(t) } : t);
     const rows = [["Unit", ...taskHead.slice(1)], ...list.map((t,i) => [t.unitName, ...xlsxTask(t,i).slice(1)])];
     const ws = sheetFromRows(rows, [30, ...taskWidths.slice(1)]); pctFormat(ws, 7, 1);
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Tasks");

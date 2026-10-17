@@ -902,3 +902,12 @@ select.st.s-closed{background:var(--neutral-bg);color:var(--muted)}
 .upd-note .btn.primary{background:var(--btn-ink);color:var(--btn)}
 .upd-note .btn.ghost{color:var(--btn-ink)}
 @media print{.upd-note{display:none}}
+
+/* report: final status and weekly summary */
+.pill.s-well{background:color-mix(in srgb,var(--good) 16%,var(--warn-bg));color:color-mix(in srgb,var(--good) 70%,var(--ink))}
+.fstk{display:flex;height:14px;border-radius:7px;overflow:hidden;gap:2px;margin:10px 0 6px}.fstk i{display:block;height:100%}
+.flegend{display:flex;flex-wrap:wrap;gap:4px 16px;color:var(--muted);margin-bottom:10px}
+.fsw{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+table.fsum th,table.fsum td{text-align:center}table.fsum th:first-child,table.fsum td:first-child{text-align:left}
+.rdl-row{display:flex;align-items:flex-start;gap:9px;padding:6px 8px;border-radius:8px;cursor:pointer}.rdl-row:hover{background:var(--hover,rgba(0,0,0,.04))}
+.group-h2{display:flex;justify-content:space-between;align-items:center;margin:12px 8px 2px;font-size:11px;text-transform:uppercase;letter-spacing:.07em;font-weight:700;color:var(--muted)}
