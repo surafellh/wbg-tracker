@@ -1876,6 +1876,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   $("#thisWeek").onclick = () => { if (monthTab()) { state.eth = toEth(todayIso); loadMonth(); } else setWeek(state.tab === "plan" ? nextMonday() : thisMonday()); };
   document.querySelectorAll("nav.tabs button").forEach(b => b.onclick = () => { const to = b.dataset.tab; if (state.dirty && (to === "plan" || to === "update") && to !== state.tab) { const w = to === "plan" ? nextMonday() : thisMonday(); if (w !== state.week) { toast("Save or discard your changes first"); return; } }
     if (state.tab === "mplan" && to !== "mplan" && !state.mp.dirty) state.mp.key = "";
+    if ((to === "plan" || to === "update") && to !== state.tab && state.pf) { const f = state.pf; f.q = f.pri = f.st = f.dep = ""; }   // filters do not carry from Progress update to Next plan
     state.tab = to; state.confirmDelete = null;
     if (to === "plan" && state.week < nextMonday() && !state.dirty) { state.week = nextMonday(); state.draft = null; state.allDrafts = null; subscribePlans(); }
     else if (to === "update" && state.week > thisMonday() && !state.dirty) { state.week = thisMonday(); state.draft = null; state.allDrafts = null; subscribePlans(); }
@@ -1952,7 +1953,10 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     if (t.dataset.openTask) { openPanel(t.dataset.openTask); return; }
     if (t.dataset.kids) { const k = "kid:" + t.dataset.kids; state.expanded.has(k) ? state.expanded.delete(k) : state.expanded.add(k); render(); return; }
     if (t.id==="addUnplanned") { const nt = makeTask(state.editUnit, { unplanned: true }); render(); const el = document.getElementById("t-title-"+nt.id); el && el.focus(); return; }
-    if (t.id==="addTask" || t.dataset.addUnit) { const u = t.dataset.addUnit || state.editUnit, nt = makeTask(u); render(); const el = document.getElementById("t-title-"+nt.id); el && el.focus(); }
+    if (t.id==="addTask" || t.dataset.addUnit) { const u = t.dataset.addUnit || state.editUnit, nt = makeTask(u);
+      // a leftover filter (status, priority, department, search) would hide the blank new row: clear it so the row shows
+      if (!isAll()) { const dd = planFor(u).tasks; if (!visibleRows(dd).some(r => dd[r.i] === nt)) { const f = pf(); f.q = f.pri = f.st = f.dep = ""; toast("Filters cleared so the new task shows"); } }
+      render(); const el = document.getElementById("t-title-"+nt.id); el && el.focus(); }
     else if (t.id==="listsBtn") { state.showLists = !state.showLists; render(); }
     else if (t.id==="listsCancel") { state.showLists = false; render(); }
     else if (t.id==="addDeptBtn") addDept();
