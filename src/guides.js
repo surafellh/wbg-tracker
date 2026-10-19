@@ -3,11 +3,14 @@
 // Each guide:  { id, g: group, pages: [tab ids it belongs to], roles?: [roles it is for], title, kw: "extra search words",
 //                intro, steps: [...], why: [...], fix: [[problem, answer], ...], go: [[label, tab], ...],
 //                pin?: tabs where it is also shown in the main list (otherwise only guides of the page's own group are, the rest are "Related") }
-// Text may use **bold**. These words are replaced with the live setting when shown:
-//   {grace}  the Saturday cut-off, for example "Saturday 2:00 PM"      {rename}  the renaming rule, in a sentence
+// Text may use **bold**. These words are replaced with live facts when shown (main.js helpFacts() reads them from the app's own code, so they cannot go stale):
+//   {grace} {fixed} {rename}  the Saturday cut-off and renaming rule (settings)
+//   {cutover} {statuses} {priorities} {columns} {templateRows} {evidence}  facts from the code
+//   A step or "why" entry can be {fact: "ratings" | "finals" | "roles"} to insert a generated list.
+// Run  npm run check-help  after changing the app or this file: it lists guide wording that no longer matches the app.
 // "pages" uses the app's tab ids: dashboard, update, plan, mplan, approvals, support, fb, tasks, monthly, ceo, follow, activity, units, people.
 // Keep sentences short and name the buttons exactly as they appear on screen.
-export const GUIDES_VERSION = "2026-10-19";
+export const GUIDES_VERSION = "2026-10-19.2";
 
 export const GROUPS = [
   { id: "start", title: "Getting started", icon: "🚀", blurb: "Signing in, weeks, roles and finding your way around" },
@@ -60,7 +63,7 @@ export const GUIDES = [
   {
     id: "weeks", g: "start", pages: ["*"], title: "How weeks work (Saturday to Friday) and the Saturday cut-off",
     kw: "week saturday friday monday cutoff cut-off deadline calendar ethiopian this week next week arrows today",
-    intro: "Every week runs from **Saturday to Friday**. A week is named after its Saturday. Weeks before 10 Oct 2026 are older Monday-to-Friday weeks and keep their old dates.",
+    intro: "Every week runs from **Saturday to Friday**. A week is named after its Saturday. Weeks before {cutover} are older Monday-to-Friday weeks and keep their old dates.",
     steps: [
       "Use the **‹ ›** arrows at the top, or click the week name to pick a date from a calendar.",
       "Press **This week** to jump back to the current week at any time.",
@@ -107,6 +110,8 @@ export const GUIDES = [
     why: [
       "Departments matter: a Department head can only change tasks tagged with a department they belong to. A Finance head cannot edit HR tasks, but the unit's chief or planning head can edit both.",
       "If you need a different role, ask for it in your profile (see 'Asking for a different role').",
+      "The exact role descriptions used by the app:",
+      { fact: "roles" },
     ],
     fix: [
       ["Everything is greyed out", "You are probably view-only (Employee/Division head), or you are looking at a unit that is not yours, or the task belongs to a department you are not in."],
@@ -214,7 +219,7 @@ export const GUIDES = [
       "In the **Unit** box choose your function or unit (it is chosen for you if you only have one).",
       "Press **Add task**. A blank line appears at the top of the table.",
       "Write the **Task or product** (what will be done) and, if the line shows it, the **expected outcome** (what will exist or change when it is done).",
-      "Choose **Category** (Operational, or Financial for money targets), **Due** date, **Department** and **Priority** (High, Medium, Low).",
+      "Choose **Category** (Operational, or Financial for money targets), **Due** date, **Department** and **Priority** ({priorities}).",
       "If the task has a number to reach (for example sales), fill **Target** and the unit (ETB, visits, %...). The % will be worked out later from the actual figure.",
       "Press **Save plan** at the bottom. The message 'Plan saved' appears.",
       "When the plan is ready, press **Submit for approval** at the top.",
@@ -231,13 +236,13 @@ export const GUIDES = [
     go: [["Next plan", "plan"]],
   },
   {
-    id: "plan-excel", g: "plan", pages: ["plan", "update", "mplan"], title: "Plan with the Excel template: download, fill, upload",
+    id: "plan-excel", g: "plan", pages: ["plan", "mplan"], title: "Plan with the Excel template: download, fill, upload",
     kw: "excel template upload import download xlsx csv columns file spreadsheet bulk many tasks error warning merge replace",
     intro: "The template lets you write many tasks offline and load them in one go.",
     steps: [
       "Go to **Next plan**, pick your unit and make sure the week is next week.",
-      "Press **Download template**. You get an Excel file with 15 empty rows. The week, unit and type are already filled in.",
-      "Fill one task per row. Columns: Week starting, Unit, Department, Task / deliverable, Type, Category, Owner, Due date, Priority, Status, Target, Target unit, Actual, Lower is better, % complete, Notes / next step, Expected outcome, Depends on (unit), Dependency details. Only the task title is essential.",
+      "Press **Download template**. You get an Excel file with {templateRows} empty rows. The week, unit and type are already filled in.",
+      "Fill one task per row. Columns: {columns}. Only the task title is essential.",
       "Do **not** change the header row or the unit and week columns. Do not retype tasks that were brought forward. **Always download a fresh template**: an old one carries last week's dates and old department lists.",
       "Back in the app press **Upload Excel** and choose your file. A preview opens.",
       "Read the preview: green 'ready' rows will be imported, rows with notices are imported with a fix applied, and 'will be skipped' rows have an error (for example an unknown department).",
@@ -260,39 +265,33 @@ export const GUIDES = [
     go: [["Next plan", "plan"]],
   },
   {
-    id: "upd-excel", g: "upd", pages: ["update", "plan"], pin: ["plan"], title: "Update progress of existing tasks with Excel (use the export, not the blank template)",
-    kw: "update progress excel import export existing tasks status percent actual bulk many tasks template blank duplicate task code plan excel download edit reupload",
-    intro: "The blank template is only for **new** tasks. To update tasks that are already saved, start from the plan itself: it contains every task with its task code, so each row finds its task again.",
+    id: "upd-fast", g: "upd", pages: ["update"], title: "Updating many tasks quickly on screen (and why there is no Excel upload here)",
+    kw: "update progress many tasks quickly fast bulk long list tedious excel import upload not available status percent keyboard filter sort",
+    intro: "Progress is updated directly in the app, not through Excel. That keeps the status, the %, the notes and the evidence together, and the update takes effect the moment you save. Excel upload exists only for planning new tasks.",
     steps: [
-      "Open **Progress update**, choose your **unit** and check the week at the top is the week you are reporting.",
-      "Open the **⋯ menu** and press **Plan (Excel)**. You get a file with all the tasks of that week.",
-      "Open it and change only what moved: **Status**, **% complete**, **Actual** and **Notes / next step**. Do not rename the task, do not change the Task code, and do not delete or move the header row.",
-      "Save the file, go back to the app and press **Upload Excel** (or open **Import or export with Excel**).",
-      "In the preview, check the **Week** column shows the week you meant, then leave 'If a task title already exists' on **Update it and add new ones**.",
-      "Press **Import N rows**. The message says how many rows were imported and how many changes were sent for approval.",
+      "Open **Progress update**, choose your **unit** and check the week at the top.",
+      "Use the **Status** filter (for example **No status**) to see the tasks you have not touched yet, and work down the list.",
+      "For each task pick the **Status**. Choosing **Done** fills in 100% for you, so only the tasks that are partly done need a % typed.",
+      "Click a column title such as **Due** or **Priority** to sort, so the urgent tasks come first.",
+      "Press **Save plan** now and then (the bottom bar shows when something is unsaved), and once more at the end.",
+      "Finish with the **Key results**, **Blockers** and **Asks** boxes at the bottom.",
     ],
     why: [
-      "Each row is matched to a saved task by its **Task code**. If there is no code, the app falls back to the **exact title**, so a title with even a small change becomes a **new duplicate task** instead of an update.",
-      "Only the fields you fill are changed. Empty cells leave the saved value untouched.",
-      "Changes to locked fields (title, outcome, type, department, priority), and anything for a closed week, are not applied directly: they are sent to the approver and the message tells you how many.",
-      "If you only have a few tasks to update, it is often quicker to change them on screen.",
-    ],
-    fix: [
-      ["I used the blank template and got duplicates", "The blank template has no saved tasks, so rows are treated as new. Remove the duplicates (bin icon) and use **Plan (Excel)** next time."],
-      ["The rows went to the wrong week", "The week comes from the **Week starting** column, or from the week selected on the page if that column is empty. Open the right week first, download a fresh file, or clear that column."],
+      "There is no Excel import on this page on purpose: an update made in a file can silently miss a task or a locked field, while on screen the app checks each change as you make it.",
+      "If your list is very long, filter by department and update one department at a time.",
     ],
     go: [["Progress update", "update"]],
   },
   {
-    id: "imp-trouble", g: "fix", pages: ["update", "plan", "mplan"], pin: ["update", "plan"], title: "My Excel import does not work: what to check",
+    id: "imp-trouble", g: "fix", pages: ["plan", "mplan"], pin: ["plan"], title: "My Excel import does not work: what to check",
     kw: "import not working upload excel fail error rows skipped no rows found could not read file old template last week column order changed header renamed department not found unit not found wrong week duplicate approval sent warning nothing imported",
     intro: "Imports fail for a handful of reasons. Go through this list from the top, it covers almost every case.",
     steps: [
-      "**1. Use a fresh file, never an old one.** Download a new template (new tasks) or **Plan (Excel)** (existing tasks) every time. An old file keeps last week's dates and last week's lists of units and departments.",
-      "**2. Check the week.** Each row goes to the week in its **Week starting** column. A file from last week sends the rows to last week, which is closed, so changes become approval requests or are refused. Fix: open the right week, download again, or empty that column so the page's week is used.",
+      "**1. Use a fresh file, never an old one.** Download a new template every time you plan. An old file keeps last week's dates and the unit and department lists of the day it was made. If you downloaded it twice, make sure you upload the one you filled in (look at the file name, the one with (1) or a later time is usually the second download).",
+      "**2. Check the week.** Each row goes to the week in its **Week starting** column. A file from last week sends the rows to last week, which is closed, so changes become approval requests or are refused. Fix: download a fresh template, or in the File check choose **Put every row in the week I am on**.",
       "**3. Do not change the header row.** Keep every column title as downloaded. Column order does not matter, but a renamed or deleted title may not be recognised, and the title row must be in the first 15 rows.",
       "**4. Pick from the dropdowns.** Unit, Department, Type, Category, Priority and Status are dropdowns. A typed or edited unit name is not found. A department must already exist in the unit (the import never creates one).",
-      "**5. Read the preview before pressing Import.** Rows in red will be skipped and the Notice column says why. Rows in amber are imported with a small fix.",
+      "**5. Read the File check and the preview before pressing Import.** The File check says which template the file came from, which week and unit the rows will go to, and what could not be read. Rows in red will be skipped and the Notice column says why. Rows in amber are imported with a small fix.",
       "**6. Look at the message after Import.** It says how many rows were imported, and how many changes were **sent for approval** instead of applied. Open **Approvals** to see them.",
       "**7. Make sure you are allowed to change those rows.** Department heads can only import rows for their own departments, and view-only roles cannot import at all.",
       "**8. Refresh the page.** An old version of the app open in the browser can behave differently. Press F5, then try again.",
@@ -307,7 +306,8 @@ export const GUIDES = [
       ["'Could not read that file'", "Save it as .xlsx or .csv. A file open in another program, or one downloaded from email in Protected View, can fail: save a copy first."],
       ["Department not found ('Did you mean...')", "Fix the spelling to the suggested name, or ask the chief/planning head to add the department under **⋯ → Departments**, then download a new template."],
       ["Unit not found", "Pick the unit from the dropdown. If the unit was renamed, download a new template."],
-      ["Rows were imported but tasks look duplicated", "The title in the file was not exactly the same as the saved one and there was no task code. Use **Plan (Excel)** (it carries the code) to update existing tasks."],
+      ["Rows were imported but tasks look duplicated", "The title in the file was not exactly the same as a saved one. Import is meant for adding new tasks; to change existing tasks, edit them on screen."],
+      ["'This file has no tasks filled in'", "You uploaded a blank template. Check which of your downloaded files you filled in and upload that one."],
       ["'N changes sent for approval'", "Those rows touched locked fields or a closed week. The approver decides them on the **Approvals** page."],
     ],
     go: [["Approvals", "approvals"]],
@@ -490,7 +490,7 @@ export const GUIDES = [
   {
     id: "upd-status", g: "upd", pages: ["update", "tasks"], title: "What each status means, and what it changes automatically",
     kw: "status meaning not started in progress done blocked delayed closed no status percent automatic completed date stuck cancelled",
-    intro: "Pick the status that is true today.",
+    intro: "Pick the status that is true today. The statuses are: {statuses}.",
     steps: [
       "**Not started:** planned but nothing done yet (0%).",
       "**In progress:** work has begun. Set the % you have reached.",
@@ -512,7 +512,7 @@ export const GUIDES = [
     kw: "week score rating outstanding very high high satisfactory needs improvement low percent average indicative colour bar",
     intro: "At the top of Progress update the **Week score** shows the average % complete of all your tasks.",
     steps: [
-      "**95% and above:** Outstanding.  **90-94:** Very high.  **80-89:** High.  **75-79:** Satisfactory.  **50-74:** Needs improvement.  **Below 50:** Low.",
+      { fact: "ratings" },
       "The coloured bar splits your tasks into Done, In progress, Blocked or delayed, and Not started.",
     ],
     why: [
@@ -539,16 +539,16 @@ export const GUIDES = [
     intro: "Evidence proves the work was done: a report, a photo, a signed letter.",
     steps: [
       "Open the task (the open icon on its row).",
-      "Under **Evidence** press **📎 Attach** and choose up to 3 files.",
+      "Under **Evidence** press **📎 Attach** and choose the files from your computer.",
       "The message 'Attached. Save the plan to keep the evidence with the task.' appears. Press **Save plan**.",
       "Click a file name to view it. Use the remove icon to detach it.",
     ],
     why: [
-      "Limits: **3 files** per task and **5 MB** in total. Accepted types: PDF, images (PNG, JPG, GIF, WEBP), text, CSV, Word, Excel and PowerPoint.",
+      "Limits: {evidence}",
       "A paperclip with a number on the task row shows how many files are attached.",
     ],
     fix: [
-      ["Upload failed", "Check the size (5 MB total) and the type. Shrink big photos or save a PDF instead."],
+      ["Upload failed", "Check the number of files, their total size and their type (see Good to know). Shrink big photos or save a PDF instead. You can attach more files in a second round."],
       ["The file disappeared after I left", "You did not press **Save plan** after attaching. Attach it again and save."],
     ],
   },
@@ -615,12 +615,12 @@ export const GUIDES = [
     why: [
       "Nothing reaches the weekly plans until you press **Create weekly plans**. Rows on screen before that are only a draft ('Not created yet').",
       "Each week's piece lands in that week's Next plan as a normal task linked to the monthly result, so weekly updates roll up into the result's %.",
-      "A week belongs to the month holding most of its days (at least 4 of 7). Only Saturday-to-Friday weeks from 10 Oct 2026 can be planned here.",
+      "A week belongs to the month holding most of its days (at least 4 of 7). Only Saturday-to-Friday weeks from {cutover} can be planned here.",
     ],
     fix: [
       ["'Short by' or 'Over by'", "The weekly figures do not add up to the monthly target. Adjust a week or choose a split."],
       ["'Create the weekly plans first'", "You have results not created yet. Press **Create weekly plans** or **Cancel** before submitting."],
-      ["The month is greyed out", "Weeks before 10 Oct 2026 use the old Monday weeks and cannot be planned here."],
+      ["The month is greyed out", "Weeks before {cutover} use the old Monday weeks and cannot be planned here."],
     ],
     go: [["Monthly plan", "mplan"]],
   },
@@ -730,11 +730,7 @@ export const GUIDES = [
     kw: "final status achieved well performed partially achieved under performed cancelled bands percent label closed week",
     intro: "Once a week's update period is over, the report stops showing In progress / Done and shows a final label based on the % reached.",
     steps: [
-      "**Achieved:** 100% (or Done).",
-      "**Well performed:** 75% to 99%.",
-      "**Partially achieved:** 40% to 74%.",
-      "**Under performed:** 0% to 39%. This also covers tasks that were not started, blocked or delayed.",
-      "**Cancelled:** tasks marked Closed. They stay out of the score.",
+      { fact: "finals" },
     ],
     why: [
       "Labels only appear for the weekly view, after {grace} following the end of the week. While the week is still open the report shows live statuses and a note 'Updates still open'.",

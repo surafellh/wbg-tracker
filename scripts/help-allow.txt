@@ -1,0 +1,18 @@
+# Bold phrases in guides.js that are emphasis, not button or menu names. One per line, any case.
+magnifier
+open icon
+actual ÷ target
+indication
+no status counts as 0%
+requires a written reason
+always download a fresh template
+week arrows
+to remove a task
+follow-up = yes
+chief/director/gm
+department head or employee request
+chief/director/gm request
+planning head request
+view-only employee 'ask to update'
+tasks forward
+giving feedback

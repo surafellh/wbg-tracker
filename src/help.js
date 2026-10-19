@@ -46,11 +46,11 @@ const INDEX = GUIDES.map((g) => ({
   g,
   title: new Set(tokens(g.title)), kw: new Set(tokens(g.kw)),
   fixQ: new Set(tokens((g.fix || []).map((f) => f[0]).join(" "))),
-  body: new Set(tokens([g.intro, ...(g.steps || []), ...(g.why || []), ...(g.fix || []).map((f) => f[1])].join(" "))),
+  body: new Set(tokens([g.intro, ...(g.steps || []), ...(g.why || []), ...(g.fix || []).map((f) => f[1])].filter((x) => typeof x === "string").join(" "))),
   titleText: norm(g.title),
 }));
 
-export function createHelp({ esc, getTab, getMe, goTab, openProfile }) {
+export function createHelp({ esc, getTab, getMe, goTab, getFacts, getReport, toast }) {
   const st = { open: false, q: "", topic: null, groups: new Set(), tab: "", pageOpen: true, moreOpen: false };
   let fab, panel, started = false;
 
@@ -66,8 +66,13 @@ export function createHelp({ esc, getTab, getMe, goTab, openProfile }) {
     const fixed = cfg.allowRename ? "outcome, type, department and priority (the title can still be edited, because Group Strategy has switched renaming on)" : "title, expected outcome, type, department and priority";
     const rename = cfg.allowRename ? "Group Strategy has switched renaming ON right now, so task titles can be edited after the week starts. It may be switched off again later." : "Renaming saved tasks is currently OFF (the default).";
     let h = esc(s).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
-    return h.split("{grace}").join(esc(graceLabel())).split("{fixed}").join(esc(fixed)).split("{rename}").join(esc(rename));
+    h = h.split("{grace}").join(esc(graceLabel())).split("{fixed}").join(esc(fixed)).split("{rename}").join(esc(rename));
+    const F = (getFacts && getFacts().text) || {};
+    Object.keys(F).forEach((k) => { h = h.split("{" + k + "}").join(esc(F[k])); });
+    return h;
   }
+  // A step can be a text or { fact: "name" }, which expands to a generated list taken from the app's code.
+  const expand = (arr) => (arr || []).flatMap((x) => typeof x === "string" ? [x] : (((getFacts && getFacts().lists) || {})[x.fact] || []));
 
   function score(rec, qt, qraw, tab) {
     let sc = 0, hit = 0;
@@ -94,8 +99,8 @@ export function createHelp({ esc, getTab, getMe, goTab, openProfile }) {
     let body = "";
     if (open) {
       body = `<div class="hp-body">${g.intro ? `<p class="hp-intro">${words(g.intro)}</p>` : ""}
-        ${(g.steps || []).length ? `<div class="hp-h">Step by step</div><ol class="hp-steps">${g.steps.map((x) => `<li>${words(x)}</li>`).join("")}</ol>` : ""}
-        ${(g.why || []).length ? `<div class="hp-h">Good to know (how it works)</div><ul class="hp-why">${g.why.map((x) => `<li>${words(x)}</li>`).join("")}</ul>` : ""}
+        ${(g.steps || []).length ? `<div class="hp-h">Step by step</div><ol class="hp-steps">${expand(g.steps).map((x) => `<li>${words(x)}</li>`).join("")}</ol>` : ""}
+        ${(g.why || []).length ? `<div class="hp-h">Good to know (how it works)</div><ul class="hp-why">${expand(g.why).map((x) => `<li>${words(x)}</li>`).join("")}</ul>` : ""}
         ${(g.fix || []).length ? `<div class="hp-h">If something goes wrong</div>${g.fix.map((f) => `<details class="hp-fix"><summary>${words(f[0])}</summary><div>${words(f[1])}</div></details>`).join("")}` : ""}
         ${(g.go || []).filter((x) => x[1]).length ? `<div class="hp-go">${g.go.filter((x) => x[1]).map((x) => `<button type="button" class="btn small" data-hgo="${esc(x[1])}">Open ${esc(x[0])} →</button>`).join("")}</div>` : ""}
         <div class="hp-fb small muted">Still stuck? Tell Group Strategy which page you were on and what you saw.</div></div>`;
@@ -143,7 +148,7 @@ export function createHelp({ esc, getTab, getMe, goTab, openProfile }) {
     if (!panel) return;
     const sc = panel.querySelector(".hp-scroll"), top = sc ? sc.scrollTop : 0;
     const q = panel.querySelector("#hpQ"), had = q && document.activeElement === q, pos = q ? q.selectionStart : 0;
-    panel.innerHTML = `<div class="hp-head"><div><b>Help assistant</b><span class="small muted">Step-by-step guides · updated ${esc(GUIDES_VERSION)}</span></div><button type="button" class="hp-x" id="hpClose" aria-label="Close help">×</button></div><div class="hp-scroll">${bodyHtml()}</div>`;
+    panel.innerHTML = `<div class="hp-head"><div><b>Help assistant</b><span class="small muted">Step-by-step guides · updated ${esc(GUIDES_VERSION)}</span></div><button type="button" class="hp-x" id="hpClose" aria-label="Close help">×</button></div><div class="hp-scroll">${bodyHtml()}</div>${getReport ? `<div class="hp-foot"><span class="small muted">Still stuck, or the guide does not match what you see?</span><button type="button" class="btn small" id="hpReport">Copy problem details</button></div>` : ""}`;
     const sc2 = panel.querySelector(".hp-scroll"); if (sc2 && keepScroll) sc2.scrollTop = top;
     if (had) { const n = panel.querySelector("#hpQ"); if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch (e) { /* ignore */ } } }
   }
@@ -159,6 +164,7 @@ export function createHelp({ esc, getTab, getMe, goTab, openProfile }) {
     fab.onclick = () => toggle();
     panel.addEventListener("click", (e) => {
       if (e.target.closest("#hpClose")) { toggle(false); return; }
+      if (e.target.closest("#hpReport")) { copyReport(); return; }
       const go = e.target.closest("[data-hgo]");
       if (go) { const t = go.dataset.hgo; if (window.matchMedia("(max-width: 700px)").matches) toggle(false); goTab(t); return; }
       const th = e.target.closest("[data-htopic]");
@@ -183,6 +189,15 @@ export function createHelp({ esc, getTab, getMe, goTab, openProfile }) {
     document.addEventListener("keydown", (e) => { if (e.key === "Escape" && st.open) toggle(false); });
   }
 
+  async function copyReport() {
+    let text = ""; try { text = getReport(); } catch (e) { text = "Could not build the details: " + (e && e.message); }
+    let ok = false;
+    try { await navigator.clipboard.writeText(text); ok = true; } catch (e) {
+      try { const t = document.createElement("textarea"); t.value = text; t.style.position = "fixed"; t.style.opacity = "0"; document.body.append(t); t.select(); ok = document.execCommand("copy"); t.remove(); } catch (x) { ok = false; }
+    }
+    if (ok) toast && toast("Problem details copied. Paste them into your message to Group Strategy.");
+    else { const sc = panel.querySelector(".hp-scroll"); if (sc) sc.insertAdjacentHTML("beforeend", `<div class="hp-sec">Select and copy this</div><textarea class="hp-rep" readonly rows="10">${esc(text)}</textarea>`); }
+  }
   function toggle(on) {
     mount();
     st.open = on === undefined ? !st.open : !!on;

@@ -964,3 +964,12 @@ table.fsum th,table.fsum td{text-align:center}table.fsum th:first-child,table.fs
   .help-fab{right:12px;bottom:calc(76px + env(safe-area-inset-bottom,0px));height:42px}
 }
 @media print{.help-fab,.help-panel{display:none!important}}
+.hp-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px calc(10px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--line);background:var(--surface-2)}
+.hp-rep{width:100%;font:12px/1.4 var(--f-mono);padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink)}
+.fcheck{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--surface-2)}
+.fcheck .fc-h{font-weight:700;margin-bottom:6px}
+.fcheck ul{list-style:none;margin:0;padding:0;display:grid;gap:4px;font-size:13px}
+.fcheck li{display:flex;gap:8px;align-items:flex-start}
+.fcheck li>span:first-child{flex:none;width:16px;text-align:center;font-weight:700}
+.fc-ok>span:first-child{color:var(--good)}.fc-warn>span:first-child{color:var(--warn)}.fc-bad>span:first-child{color:var(--bad)}.fc-info>span:first-child{color:var(--muted)}
+.fc-bad>span:last-child{color:var(--bad)}

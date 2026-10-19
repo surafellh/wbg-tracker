@@ -8,10 +8,11 @@ import { groupTasks, rollupOf, rolledPlan, leafPlan, leafTasks, parentChoices, w
 import { ROLES, ROLE_LABEL, ROLE_HELP, baseRole, isAdmin, unitMember, deptOk, canUndo, canFeedback, canEditDepartments, roleText, canDecide, STAGE_LABEL } from "./access.js";
 import { assess, actions as ceoActions, letter as ceoLetter, INTERNAL, fmtD, addDaysIso } from "./ceoaction.js";
 import { createHelp } from "./help.js";
+import { GUIDES_VERSION } from "./guides.js";
 import { WEEK_CUTOVER, LOCKED, lockedFields, setSettings, getSettings, graceLabel, planOps, needsApproval, applyOps, addisToday, addisWeekStart, addisLockWeek, calcPct, CATEGORIES, weekStartOf, weekEndOf, nextWeekOf, prevWeekOf } from "./rules.js";
 import { unitAlerts, levelRank, BLOCKED_DAYS } from "./alerts.js";
 import { renderDashboard } from "./dashboard.js";
-import { FINAL_LABELS, FINAL_CLASS, FINAL_COLOR, weekClosed, finalLabel, finalSummary, pctOf as finalPct } from "./finalstatus.js";
+import { FINAL_LABELS, FINAL_CLASS, FINAL_COLOR, FINAL_BANDS, RATING_BANDS, ratingOf, weekClosed, finalLabel, finalSummary, pctOf as finalPct } from "./finalstatus.js";
 import { createExtras } from "./extras.js";
 import { openViewer, canPreview } from "./viewer.js";
 applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
@@ -63,7 +64,12 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   const store = { get(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }, set(k,v){ try { localStorage.setItem(k,v); } catch(e){} } };
   const savedUnit = store.get("wp-unit"); if (savedUnit) state.editUnit = savedUnit;
 
+  const toastLog = [], errLog = [];   // kept for the help panel's "Copy problem details"
+  const stamp_ = () => new Date().toISOString().slice(11, 19);
+  window.addEventListener("error", e => { errLog.push(`${stamp_()} ${e.message || "error"}`); if (errLog.length > 6) errLog.shift(); });
+  window.addEventListener("unhandledrejection", e => { errLog.push(`${stamp_()} ${(e.reason && e.reason.message) || e.reason || "promise rejected"}`); if (errLog.length > 6) errLog.shift(); });
   function toast(msg, action){
+    toastLog.push(`${stamp_()} ${msg}`); if (toastLog.length > 8) toastLog.shift();
     const t = $("#toast"); t.innerHTML = ""; t.append(document.createTextNode(msg));
     const acts = (Array.isArray(action) ? action : [action]).filter(Boolean);
     acts.forEach(a => { const b = document.createElement("button"); b.className = "toast-act"; b.type = "button"; b.textContent = a.label; b.onclick = () => { t.hidden = true; a.fn(); }; t.append(b); });
@@ -984,7 +990,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     set("finTotA", A.toLocaleString()); set("finTotP", tp + "%"); const tb = document.getElementById("finTotB"); if (tb) tb.style.width = tp + "%";
   }
   // Indicative score for the week (shown to the unit, official rating comes later)
-  const RATE = p => p >= 95 ? ["Outstanding", "s-done"] : p >= 90 ? ["Very high", "s-done"] : p >= 80 ? ["High", "s-done"] : p >= 75 ? ["Satisfactory", "s-prog"] : p >= 50 ? ["Needs improvement", "s-not"] : ["Low", "s-bad"];
+  const RATE = ratingOf;
   function weekScore(all){
     const tasks = all.filter(t => t.status !== "Closed"), closed = all.length - tasks.length;
     const n = tasks.length; if (!n) return null;
@@ -1974,6 +1980,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     else if (t.id==="impConfirm") { state.imp.confirmed = true; state.imp.needConfirm = false; commitImport(); }
     else if (t.id==="impNoConfirm") { state.imp.needConfirm = false; render(); }
     else if (t.id==="impClear") { state.imp = null; render(); }
+    else if (t.id==="impUsePage") { state.imp.weekMode = "page"; applyWeekMode(state.imp); computeImpact(); render(); }
     else if (t.id==="actXlsx") exportActivityXlsx();
     else if (t.dataset.drill) drill(t.dataset.drill);
     else if (t.id==="goNext") setWeek(nextMonday());
@@ -2069,6 +2076,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     else if (el.id==="impFile") { if (el.files && el.files[0]) readImportFile(el.files[0]); }
     else if (el.id==="impFileTop") { const f = el.files && el.files[0]; el.value = ""; if (f) { state.impUnit = state.editUnit || state.impUnit; state.impDefaultUnit = state.editUnit ? unitName(state.editUnit) : ""; readImportFile(f).then(() => { const d = document.getElementById("impDet"); d && d.scrollIntoView({ behavior: "smooth", block: "start" }); }); } }
     else if (el.id==="mpFile") { const f = el.files && el.files[0]; el.value = ""; if (f) mpUpload(f); }
+    else if (el.id==="impWeekMode") { state.imp.weekMode = el.value; applyWeekMode(state.imp); computeImpact(); render(); }
     else if (el.id==="impMode") { state.imp.mode = el.value; state.imp.needConfirm = false; state.imp.confirmed = false; render(); }
     else if (el.id==="impDepts") { state.imp.newDepts = el.checked; }
     else if (el.id==="ceoDue" && state.ceoDraft) { const ta = $("#ceoBody"), old = fmtD(state.ceoDraft.due); state.ceoDraft.due = el.value; if (ta && el.value) ta.value = ta.value.split(old).join(fmtD(el.value)); }
@@ -2762,6 +2770,8 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   }
 
   // ---------- template download and import ----------
+  const TEMPLATE_VERSION = "2026-10-19.1";   // change when the template columns or rules change: older downloaded files are then flagged on upload
+  const TEMPLATE_ROWS = 15;   // empty rows in a downloaded template
   const TCOLS = ["Week starting","Unit","Department","Task code","Task / deliverable","Type","Category","Owner","Due date","Priority","Status","Target","Target unit","Actual","Lower is better","% complete","Notes / next step","Expected outcome","Depends on (unit)","Dependency details"];
   const TCOLS_OLD = ["Week starting","Unit","Department","Task / deliverable","Type","Owner","Due date","Priority","Status","% complete","Notes / next step","Expected outcome","Depends on (unit)","Dependency details"];
   const SCOLS = ["Week starting","Unit","Key results this week","Blockers and issues","Asks to top management or other units"];
@@ -2833,7 +2843,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     r.unit = unit; r.unitTxt = unitTxt;
     const wv = g("week"); let week = state.week;
     if (wv !== "" && wv != null) { const w = toIso(wv, ctx.year); if (w) week = weekStartOf(w); else r.warn.push("Week not understood, used the selected week"); }
-    r.week = week;
+    r.week = week; r.fileWeek = week;
     const kindTxt = norm(g("kind")); const kind = /kpi|okr|indicator/.test(kindTxt) ? "KPI / OKR" : "Task";
     let status = ""; const extra = [];
     const st = String(g("status") ?? "").trim();
@@ -2871,6 +2881,69 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     for (let i = 0; i < Math.min(rows.length, 15); i++) { const map = {}; rows[i].forEach((h, c) => { const k = keyFn(h); if (k && map[k] == null) map[k] = c; }); if (Object.keys(map).length >= min) return { i, map }; }
     return null;
   }
+  // ----- template stamp and the "File check" shown before an import -----
+  function readTemplateStamp(wb){
+    const n = wb.SheetNames.find(x => x === "Info"); if (!n) return null;
+    try {
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: true, defval: "" }), o = {};
+      rows.forEach(r => { if (r[0] !== "" && r[1] !== undefined) o[String(r[0])] = r[1]; });
+      if (!o.week) return null;
+      let depts = {}; try { depts = JSON.parse(o.departments || "{}"); } catch (e) { depts = {}; }
+      return { version: String(o.version || ""), week: String(o.week), unit: String(o.unit || ""), unitName: String(o.unitName || ""), at: String(o.madeAt || ""), depts };
+    } catch (e) { return null; }
+  }
+  const whenTxt = iso => { try { return new Intl.DateTimeFormat("en-GB", { timeZone: "Africa/Addis_Ababa", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso)); } catch (e) { return iso; } };
+  function emptyFileMessage(meta, file){
+    const unchanged = meta && meta.at && file && file.lastModified && Math.abs(file.lastModified - Date.parse(meta.at)) < 3 * 60000;
+    if (meta) return `This file has no tasks filled in. It is a blank template made on ${whenTxt(meta.at)} for the week of ${weekLabel(meta.week)}${meta.unitName ? " (" + meta.unitName + ")" : ""}${unchanged ? " and it has not been changed since it was downloaded" : ""}. If you downloaded the template more than once, upload the copy you filled in (check the file name and the saved time).`;
+    return "The file has no task rows. If you downloaded the template more than once, upload the copy you filled in.";
+  }
+  function importChecks({ meta, h, rows, parsed, file }){
+    const c = [], add = (level, text) => c.push({ level, text });
+    const lock = addisLockWeek();
+    if (file && file.lastModified) add("info", `File "${file.name}", saved ${whenTxt(new Date(file.lastModified).toISOString())}.`);
+    if (!meta) add("info", "No template stamp in this file: it is an older template, an export or another file. The rows are checked one by one below. For the safest result download a fresh template.");
+    else {
+      add("ok", `Template made ${whenTxt(meta.at)} for the week of ${weekLabel(meta.week)}${meta.unitName ? ", unit " + meta.unitName : ""}.`);
+      if (meta.version !== TEMPLATE_VERSION) add("warn", "This template comes from an older version of the app. Download a new one so every column and dropdown is up to date.");
+      if (meta.week !== state.week) add("warn", `It was made for the week of ${weekLabel(meta.week)}, but you are on ${weekLabel(state.week)}. Check the week the rows will go to below.`);
+      if (meta.week < lock) add("bad", `That template's week (${weekLabel(meta.week)}) is already closed. Rows with that week would need approval.`);
+      const u = state.units.find(x => x.id === meta.unit);
+      if (u && meta.depts && meta.depts[u.name]) {
+        const was = new Set(meta.depts[u.name]), now = new Set(u.departments || []);
+        const added = [...now].filter(d => !was.has(d)), gone = [...was].filter(d => !now.has(d));
+        if (added.length || gone.length) add("warn", `The department list of ${u.name} changed after this template was made${added.length ? ". New: " + added.join(", ") : ""}${gone.length ? ". Removed: " + gone.join(", ") : ""}. Download a new template to get the current list.`);
+      }
+      if (Date.now() - Date.parse(meta.at) > 3 * 864e5) add("info", "This template is more than 3 days old.");
+    }
+    const labelOf = {}; TCOLS.filter(x => x !== "Task code").forEach(x => { labelOf[colKey(x)] = x; });
+    const missing = Object.keys(labelOf).filter(k => h.map[k] == null).map(k => labelOf[k]);
+    const unknown = (rows[h.i] || []).map(x => String(x ?? "").trim()).filter(x => x && !colKey(x));
+    add(missing.length ? "info" : "ok", missing.length ? `Columns not found (those fields stay empty): ${missing.join(", ")}.` : "All template columns were found.");
+    if (unknown.length) add("info", `Columns that are not used: ${unknown.join(", ")}.`);
+    const bad = parsed.filter(r => r.err.length);
+    if (bad.length) {
+      const by = new Map(); bad.forEach(r => r.err.forEach(m => { const k = m.replace(/"[^"]*"/g, "…").replace(/\. Did you mean.*$/, "").replace(/\. Pick it.*$/, ""); by.set(k, (by.get(k) || 0) + 1); }));
+      add("bad", `${bad.length} row${bad.length === 1 ? "" : "s"} will be skipped: ` + [...by.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k, n]) => `${k} (${n})`).join("; ") + ".");
+    }
+    return c;
+  }
+  function applyWeekMode(imp){
+    imp.rows.forEach(r => { r.week = imp.weekMode === "page" ? imp.pageWeek : r.fileWeek; });
+    imp.sums.forEach(x => { x.week = imp.weekMode === "page" ? imp.pageWeek : x.fileWeek; });
+  }
+  function fileCheckHtml(imp, ok){
+    const ic = { ok: "✔", warn: "⚠", bad: "✖", info: "ℹ" }, li = (lv, t) => `<li class="fc-${lv}"><span aria-hidden="true">${ic[lv]}</span><span>${esc(t)}</span></li>`;
+    const lock = addisLockWeek(), nxt = nextWeekOf(lock);
+    const groups = new Map(); ok.forEach(r => { const k = r.week + "|" + r.unit.id; if (!groups.has(k)) groups.set(k, { week: r.week, unit: r.unit, n: 0 }); groups.get(k).n++; });
+    const dest = [...groups.values()].sort((a, b) => a.week < b.week ? -1 : 1).map(g => {
+      const closed = g.week < lock, rel = closed ? "closed week" : g.week === lock ? "this week" : g.week === nxt ? "next week" : "later week";
+      return li(closed ? "bad" : "ok", `${g.n} row${g.n === 1 ? " goes" : "s go"} to ${g.unit.name}, ${weekLabel(g.week)} (${rel})${closed ? ". The week is closed, so changes to it are sent for approval" : ""}.`);
+    }).join("");
+    const other = ok.some(r => r.week !== imp.pageWeek);
+    const pick = ok.length ? `<div class="toolbar" style="margin-top:8px"><label class="small" for="impWeekMode">Which week should the rows go to?</label><select id="impWeekMode"><option value="file" ${imp.weekMode === "file" ? "selected" : ""}>The week written in each row (Week starting column)</option><option value="page" ${imp.weekMode === "page" ? "selected" : ""}>Put every row in the week I am on: ${esc(weekLabel(imp.pageWeek))}</option></select>${other && imp.weekMode === "file" ? `<button class="btn small" type="button" id="impUsePage">Use ${esc(weekLabel(imp.pageWeek))} for all rows</button>` : ""}</div>` : "";
+    return `<div class="fcheck"><div class="fc-h">File check</div><ul>${(imp.checks || []).map(x => li(x.level, x.text)).join("")}${dest}</ul>${pick}</div>`;
+  }
   async function readImportFile(file){
     if (!window.XLSX) { toast("The Excel tool did not load. Reload the page and try again."); return; }
     try {
@@ -2885,9 +2958,11 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
       const sums = []; const ss = wb.SheetNames.find(n => /summary/i.test(n));
       if (ss) { const sr = XLSX.utils.sheet_to_json(wb.Sheets[ss], { header: 1, raw: true, defval: "" }); const sh = findHeader(sr, sumKey, 2);
         if (sh) for (let i = sh.i + 1; i < sr.length; i++) { const row = sr[i]; const u = matchUnit(row[sh.map.unit]); const txt = f => String(sh.map[f] != null ? row[sh.map[f]] ?? "" : "").trim(); if (!u || !(txt("wins") || txt("blockers") || txt("asks"))) continue;
-          const wv = sh.map.week != null ? toIso(row[sh.map.week], year) : ""; sums.push({ unit: u, week: wv ? weekStartOf(wv) : state.week, wins: txt("wins"), blockers: txt("blockers"), asks: txt("asks") }); } }
-      state.imp = { fileName: file.name, rows: parsed, sums, mode: state.imp && state.imp.mode || "merge", newDepts: false };
-      if (!parsed.length && !sums.length) state.imp.error = "The file has no task rows."; else setTimeout(computeImpact, 0);
+          const wv = sh.map.week != null ? toIso(row[sh.map.week], year) : ""; sums.push({ unit: u, week: wv ? weekStartOf(wv) : state.week, fileWeek: wv ? weekStartOf(wv) : state.week, wins: txt("wins"), blockers: txt("blockers"), asks: txt("asks") }); } }
+      const meta = readTemplateStamp(wb);
+      const checks = importChecks({ meta, h, rows, parsed, file });
+      state.imp = { fileName: file.name, rows: parsed, sums, mode: state.imp && state.imp.mode || "merge", newDepts: false, meta, checks, weekMode: "file", pageWeek: state.week };
+      if (!parsed.length && !sums.length) state.imp.error = emptyFileMessage(meta, file); else setTimeout(computeImpact, 0);
     } catch (e) { state.imp = { error: "Could not read this file. Save it as .xlsx or .csv and try again." }; }
     render();
   }
@@ -2895,7 +2970,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     const units = unitId ? state.units.filter(u => u.id === unitId) : sortedUnits(); const out = [];
     const row = (u, t) => [state.week, u.name, t.dept || "", t.title || "", t.kind || "Task", t.category || "", t.owner || "", t.due || "", t.priority || "", t.status || "", t.target ?? "", t.measure || "", t.actual ?? "", t.lower ? "Yes" : "", typeof t.pct === "number" ? t.pct / 100 : "", t.notes || "", t.outcome || "", t.depUnit ? unitName(t.depUnit) : "", t.dep || ""];
     if (prefill) units.forEach(u => (state.plans[u.id]?.tasks || []).forEach(t => out.push(row(u, t))));
-    else if (unitId) for (let i = 0; i < 15; i++) out.push(row(units[0], {}));
+    else if (unitId) for (let i = 0; i < TEMPLATE_ROWS; i++) out.push(row(units[0], {}));
     return out;
   }
   async function downloadTemplate(){
@@ -2945,6 +3020,9 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
       ["8","On import, each row is matched to a saved task by its title; new titles are added and the app gives them a task code. To update an existing task even when the wording changed, use the Excel export of the plan (it carries the Task code column) and upload that file. You see a review first, and rows with a wrong unit or department are held back with a suggestion."],
       ["9","Once a week has started, saved tasks keep their title, outcome, type, department, due date and priority. Changes to those, and anything for a past week, go to Group Strategy for approval."]].forEach(r => ins.addRow(r));
     ins.getRow(1).font = { bold: true, size: 14 };
+    const info = wb.addWorksheet("Info", { state: "veryHidden" });   // the stamp read back on upload
+    const dmap = {}; units.forEach(u => { dmap[u.name] = u.departments || []; });
+    [["WBG weekly plan template"], ["version", TEMPLATE_VERSION], ["week", state.week], ["unit", unitId || ""], ["unitName", unitId ? unitName(unitId) : "All units"], ["madeAt", new Date().toISOString()], ["departments", JSON.stringify(dmap)]].forEach(r => info.addRow(r));
     const buf = await wb.xlsx.writeBuffer();
     const nm = unitId ? safeName(unitName(unitId)) : "all units";
     await save(`Weekly plan template ${nm} ${state.week}.xlsx`, buf, "Template saved");
@@ -2991,13 +3069,14 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     const imp = state.imp;
     const unitOpts = `<option value="">All units</option>` + sortedUnits().map(u => `<option value="${esc(u.id)}" ${state.impUnit === u.id ? "selected" : ""}>${esc(u.name)}</option>`).join("");
     let prev = "";
-    if (imp && imp.error) prev = `<div class="banner warn" style="margin:16px">${esc(imp.error)}</div>`;
+    if (imp && imp.error) prev = `<div class="banner warn" style="margin:16px">${esc(imp.error)}</div><div style="padding:0 16px 16px">${imp.checks ? fileCheckHtml(imp, []) : ""}</div>`;
     else if (imp) {
       const ok = imp.rows.filter(r => !r.err.length), bad = imp.rows.length - ok.length, warn = ok.filter(r => r.warn.length).length;
       const gs = new Map(); ok.forEach(r => { const k = `${r.week}|${r.unit.id}`; gs.set(k, (gs.get(k) || 0) + 1); });
       const newD = new Set(); ok.forEach(r => { if (r.row.dept && !(r.unit.departments || []).some(d => d.toLowerCase() === r.row.dept.toLowerCase())) newD.add(`${r.unit.name}: ${r.row.dept}`); });
       const shown = imp.rows.slice(0, 150).map(r => `<tr class="${r.err.length ? "row-err" : r.warn.length ? "row-warn" : ""}"><td class="num small">${r.line}</td><td class="small">${esc(r.unit ? r.unit.name : r.unitTxt)}</td><td class="small num">${esc(fmt(r.week))}</td><td>${esc(r.row.title)}</td><td class="small">${esc(r.row.dept)}</td><td class="small">${esc(r.row.owner)}</td><td class="small num">${esc(fmt(r.row.due))}</td><td class="small">${esc(r.row.priority)}</td><td class="small">${esc(r.row.status)}</td><td class="small num">${r.row.pct ?? ""}</td><td class="small">${esc([...r.err, ...r.warn].join("; "))}</td></tr>`).join("");
       prev = `<div style="padding:16px;display:grid;gap:12px">
+        ${fileCheckHtml(imp, ok)}
         <div class="toolbar"><span class="pill s-done">${ok.length} ready</span>${warn ? `<span class="pill s-not">${warn} with notices</span>` : ""}${bad ? `<span class="pill s-bad">${bad} will be skipped</span>` : ""}${imp.sums.length ? `<span class="pill s-prog">${imp.sums.length} summary row${imp.sums.length > 1 ? "s" : ""}</span>` : ""}<span class="muted small">${esc(imp.fileName)} · goes to ${gs.size} plan${gs.size === 1 ? "" : "s"}</span></div>
         ${newD.size ? `<div class="banner info" style="margin:0">New departments found: ${[...newD].map(esc).join(", ")}</div>` : ""}
         ${imp.impact ? `<div class="banner info" style="margin:0"><b>What this import will do:</b> ${imp.mode === "replace" ? `remove the ${imp.impact.rem} task${imp.impact.rem === 1 ? "" : "s"} now saved in these plan weeks and save the ${imp.impact.n} from the file.` : `update ${imp.impact.upd} existing task${imp.impact.upd === 1 ? "" : "s"} (blank cells in the file never erase saved values), add ${imp.impact.add} new, and leave ${imp.impact.keep} saved task${imp.impact.keep === 1 ? "" : "s"} untouched. Nothing is deleted.`}</div>` : ""}
@@ -3012,7 +3091,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     return `<div class="grid2" style="grid-template-columns:minmax(0,1fr);gap:16px">
       <div class="panel"><div class="panel-head"><h2>1 · Download the template</h2><span class="muted small">Week: ${esc(weekLabel(state.week))}</span></div>
         <div class="reports"><div><label for="impUnit">Unit</label><select id="impUnit" style="width:100%">${unitOpts}</select></div>
-          <div><label>Starting rows</label><div class="small muted">15 empty rows with the week, unit and type filled in.${qm(TIP_TPL)}</div></div>
+          <div><label>Starting rows</label><div class="small muted">${TEMPLATE_ROWS} empty rows with the week, unit and type filled in.${qm(TIP_TPL)}</div></div>
           <div style="display:flex;align-items:flex-end"><button class="btn primary" id="tplBtn" ${downloads ? "" : "disabled"}>Download template (Excel)</button></div></div>
         <div class="small muted" style="padding:0 16px 14px">Next week: move to the new week with the arrows above, then download. Pick one unit to get 15 empty rows already carrying its name, week and type. Tasks already in the plan are not included, so brought-forward tasks never get duplicated: fill in only the new ones.</div></div>
       <div class="panel"><div class="panel-head"><h2>2 · Import the filled file</h2></div>
@@ -3362,7 +3441,46 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   });
 
   // ---------- boot ----------
-  const help = createHelp({ esc, getTab: () => state.tab, getMe: () => me, goTab: (t) => goTab(t) });
+  // Facts the help guides read, taken from the app's own code so the guides cannot drift from it.
+  const helpFacts = () => {
+    const or = a => a.length > 1 ? a.slice(0, -1).join(", ") + " or " + a[a.length - 1] : a.join("");
+    const band = (arr, i, lab) => { const hi = i ? arr[i - 1][0] - 1 : 100, lo = arr[i][0]; return `**${lab}:** ${i === 0 && lo > 0 ? lo + "% and above" : lo + "% to " + hi + "%"}`; };
+    const FNOTE = { "Achieved": " (or a task marked Done)", "Under performed": ". This also covers tasks that were not started, blocked or delayed" };
+    const mb = Math.round(EVIDENCE.maxTotal / 1048576);
+    return {
+      text: {
+        cutover: `${fmt(WEEK_CUTOVER)} ${parse(WEEK_CUTOVER).getFullYear()}`,
+        statuses: or(STATUSES), priorities: or(PRIORITIES),
+        columns: TCOLS.filter(h => h !== "Task code").join(", "), templateRows: String(TEMPLATE_ROWS),
+        evidence: `each time you press Attach you can choose up to ${EVIDENCE.maxFiles} files, no more than ${mb} MB together (you can attach more in another round). Accepted: ${EVIDENCE.accept.split(",").join(" ")}.`,
+      },
+      lists: {
+        ratings: RATING_BANDS.map((b, i) => band(RATING_BANDS, i, b[1])),
+        finals: [...FINAL_BANDS.map((b, i) => (i === 0 ? `**${b[1]}:** ${b[0]}%` : band(FINAL_BANDS, i, b[1])) + (FNOTE[b[1]] || "") + "."), "**Cancelled:** tasks marked Closed. They stay out of the score."],
+        roles: ROLES.map(r => `**${ROLE_LABEL[r] || r}:** ${ROLE_HELP[r] || ""}`),
+      },
+    };
+  };
+  const problemReport = () => {
+    const m = me || {}, rm = realMe || m, cfg = getSettings();
+    const imp = state.imp, lines = [
+      "WBG Tracker problem details",
+      `Time (Addis): ${new Intl.DateTimeFormat("en-GB", { timeZone: "Africa/Addis_Ababa", dateStyle: "medium", timeStyle: "medium" }).format(new Date())}`,
+      `Page: ${state.tab}${state.tab === "plan" || state.tab === "update" ? " · unit " + (state.editUnit ? unitName(state.editUnit) : "none chosen") : ""}`,
+      `Week shown: ${state.week} (${weekLabel(state.week)})  ·  lock week: ${addisLockWeek()}  ·  closed: ${weekClosed(state.week) ? "yes" : "no"}`,
+      `Person: ${m.name || "?"} <${m.email || ""}>  ·  role ${rm.roleRaw || rm.role || "?"}${viewAs ? " (viewing as " + viewAs.role + ")" : ""}  ·  unit ${m.unit ? unitName(m.unit) : "none"}  ·  departments ${(m.departments || []).join(", ") || "none"}`,
+      `Unsaved changes: ${state.dirty ? "yes" : "no"}  ·  online: ${navigator.onLine ? "yes" : "no"}`,
+      `Settings: cut-off ${cfg.graceTime}${cfg.extendUntil ? ", last week kept open until " + cfg.extendUntil : ""}, renaming ${cfg.allowRename ? "on" : "off"}`,
+      `App version: ${BUILD_ID || "dev"}  ·  help guides ${GUIDES_VERSION}`,
+      `Browser: ${navigator.userAgent}  ·  window ${window.innerWidth}x${window.innerHeight}`,
+    ];
+    if (imp) lines.push(imp.error ? `Last import: ${imp.fileName || "file"}: ${imp.error}` : `Last import: ${imp.fileName || "file"}: ${imp.rows ? imp.rows.filter(r => !r.err.length).length + " ready, " + imp.rows.filter(r => r.err.length).length + " skipped" : ""}${imp.meta ? "; template for week " + imp.meta.week + " made " + imp.meta.at : "; no template stamp"}${(imp.checks || []).length ? "; notes: " + imp.checks.map(c => c.text).join(" | ") : ""}`);
+    if (toastLog.length) lines.push("Recent messages (UTC time):", ...toastLog.map(x => "  " + x));
+    if (errLog.length) lines.push("Recent errors (UTC time):", ...errLog.map(x => "  " + x));
+    lines.push("", "What I was trying to do, and what I saw:", "");
+    return lines.join("\n");
+  };
+  const help = createHelp({ esc, getTab: () => state.tab, getMe: () => me, goTab: (t) => goTab(t), getFacts: helpFacts, getReport: problemReport, toast: (m) => toast(m) });
   render();
   function startApp(profile){
     profile = { ...profile, roleRaw: profile.roleRaw || profile.role, role: baseRole(profile.role) };   // chief / GM / director / LEA act as leader, division head as employee

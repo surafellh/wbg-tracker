@@ -12,10 +12,16 @@ export const weekClosed = (week, now = new Date()) => !!week && week < addisLock
 
 export const pctOf = (t) => (t.status === "Done" ? 100 : typeof t.pct === "number" ? t.pct : 0);
 
+// Lowest % that earns each label (checked from the top). The help guides read these, so change them here only.
+export const FINAL_BANDS = [[100, "Achieved"], [75, "Well performed"], [40, "Partially achieved"], [0, "Under performed"]];
+// The indicative "Week score" words on the Progress update page: [lowest %, word, colour class].
+export const RATING_BANDS = [[95, "Outstanding", "s-done"], [90, "Very high", "s-done"], [80, "High", "s-done"], [75, "Satisfactory", "s-prog"], [50, "Needs improvement", "s-not"], [0, "Low", "s-bad"]];
+export const ratingOf = (p) => { const b = RATING_BANDS.find((x) => p >= x[0]) || RATING_BANDS[RATING_BANDS.length - 1]; return [b[1], b[2]]; };
+
 export function finalLabel(t) {
   if (t.status === "Closed") return "Cancelled";
   const p = pctOf(t);
-  return p >= 100 ? "Achieved" : p >= 75 ? "Well performed" : p >= 40 ? "Partially achieved" : "Under performed";
+  return (FINAL_BANDS.find((b) => p >= b[0]) || FINAL_BANDS[FINAL_BANDS.length - 1])[1];
 }
 
 // Counts per label and the average % (cancelled tasks are not counted in the average).
