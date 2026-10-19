@@ -7,6 +7,7 @@ import { startGate } from "./gate.js";
 import { groupTasks, rollupOf, rolledPlan, leafPlan, leafTasks, parentChoices, weightOf } from "./rollup.js";
 import { ROLES, ROLE_LABEL, ROLE_HELP, baseRole, isAdmin, unitMember, deptOk, canUndo, canFeedback, canEditDepartments, roleText, canDecide, STAGE_LABEL } from "./access.js";
 import { assess, actions as ceoActions, letter as ceoLetter, INTERNAL, fmtD, addDaysIso } from "./ceoaction.js";
+import { createHelp } from "./help.js";
 import { WEEK_CUTOVER, LOCKED, lockedFields, setSettings, getSettings, graceLabel, planOps, needsApproval, applyOps, addisToday, addisWeekStart, addisLockWeek, calcPct, CATEGORIES, weekStartOf, weekEndOf, nextWeekOf, prevWeekOf } from "./rules.js";
 import { unitAlerts, levelRank, BLOCKED_DAYS } from "./alerts.js";
 import { renderDashboard } from "./dashboard.js";
@@ -1494,6 +1495,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
 
   function render(){
     renderHero();
+    help.refresh();
     const main = $("#main");
     const active = document.activeElement && document.activeElement.id;
     let html = bannerMsg ? `<div class="banner warn">${esc(bannerMsg)}</div>` : "";
@@ -3309,7 +3311,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
         const key = a === "set-grace" ? "grace_time" : "extend_until", v = a === "set-grace" ? ($("#setGrace").value || "") : a === "set-ext" ? ($("#setExt").value || "") : "";
         if (a !== "set-ext-clear" && !v) { toast("Pick a time first"); return; }
         const r = await api.adminSetSetting(key, v); if (r.error) { toast(errText(r)); return; }
-        setSettings(r.settings); toast(a === "set-grace" ? "Saturday cut-off saved" : a === "set-ext" ? "Last week stays open until then" : "Extension cleared"); render(); return;
+        setSettings(r.settings); help.redraw(); toast(a === "set-grace" ? "Saturday cut-off saved" : a === "set-ext" ? "Last week stays open until then" : "Extension cleared"); render(); return;
       }
       if (a === "pp-edit") { state.pp.edit = id; render(); return; }
       if (a === "pp-close") { state.pp.edit = null; render(); return; }
@@ -3344,7 +3346,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   main.addEventListener("input", e => { const el = e.target; if (el.id === "ppQ") { state.pp.q = el.value; const b = $("#ppBody"); if (b && state.people) b.innerHTML = ppRows(state.people); } });
   main.addEventListener("change", async e => {
     const el = e.target;
-    if (el.id === "setRename") { const r = await api.adminSetSetting("allow_rename", el.checked); if (r.error) { toast(errText(r)); el.checked = !el.checked; return; } setSettings(r.settings); toast(el.checked ? "Saved tasks can now be renamed" : "Saved tasks are locked against renaming"); render(); return; }
+    if (el.id === "setRename") { const r = await api.adminSetSetting("allow_rename", el.checked); if (r.error) { toast(errText(r)); el.checked = !el.checked; return; } setSettings(r.settings); help.redraw(); toast(el.checked ? "Saved tasks can now be renamed" : "Saved tasks are locked against renaming"); render(); return; }
     if (el.id === "ppUnit" || el.id === "ppRole" || el.id === "ppSt") { state.pp[el.id === "ppUnit" ? "unit" : el.id === "ppRole" ? "role" : "st"] = el.value; const b = $("#ppBody"); if (b && state.people) b.innerHTML = ppRows(state.people); return; }
     if (el.id === "ppDeptUnit") { state.pp.deptUnit = el.value; render(); return; }
     if (el.id === "pp-role") { $("#pp-title-wrap").hidden = el.value !== "executive"; $("#pp-role-help").textContent = ROLE_HELP[el.value] || ""; return; }
@@ -3360,6 +3362,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   });
 
   // ---------- boot ----------
+  const help = createHelp({ esc, getTab: () => state.tab, getMe: () => me, goTab: (t) => goTab(t) });
   render();
   function startApp(profile){
     profile = { ...profile, roleRaw: profile.roleRaw || profile.role, role: baseRole(profile.role) };   // chief / GM / director / LEA act as leader, division head as employee
@@ -3385,11 +3388,12 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
       if (!(state.tab === "people" && ((state.pp && state.pp.edit) || Date.now() - (state.ddBusy || 0) < 5000))) render();
     }, err => banner(`Could not load units (${err.code}). Reload the page to reconnect.`));
     subscribePlans();
+    help.start();
     loadSettings(); setInterval(loadSettings, 3 * 60000);
     document.addEventListener("visibilitychange", () => { if (!document.hidden) loadSettings(); });
   }
   async function loadSettings(){
-    try { const r = await api.appSettings(); if (r && !r.error && r.graceTime) { const was = JSON.stringify(getSettings()); setSettings(r); if (was !== JSON.stringify(getSettings()) && !state.dirty && state.tab !== "people") render(); } } catch (e) { /* keep defaults */ }
+    try { const r = await api.appSettings(); if (r && !r.error && r.graceTime) { const was = JSON.stringify(getSettings()); setSettings(r); if (was !== JSON.stringify(getSettings())) { help.redraw(); if (!state.dirty && state.tab !== "people") render(); } } } catch (e) { /* keep defaults */ }
   }
   (async () => {
     const cfgErr = configError();
