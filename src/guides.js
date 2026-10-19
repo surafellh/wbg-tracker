@@ -10,7 +10,7 @@
 // Run  npm run check-help  after changing the app or this file: it lists guide wording that no longer matches the app.
 // "pages" uses the app's tab ids: dashboard, update, plan, mplan, approvals, support, fb, tasks, monthly, ceo, follow, activity, units, people.
 // Keep sentences short and name the buttons exactly as they appear on screen.
-export const GUIDES_VERSION = "2026-10-19.3";
+export const GUIDES_VERSION = "2026-10-19.4";
 
 export const GROUPS = [
   { id: "start", title: "Getting started", icon: "🚀", blurb: "Signing in, weeks, roles and finding your way around" },
@@ -354,6 +354,28 @@ export const GUIDES = [
       ["Who is my approver?", "Open **Approvals**. Each waiting request shows 'Waiting for: Chief / Planning head / Group Strategy'."],
     ],
     go: [["Approvals", "approvals"]],
+  },
+  {
+    id: "duedate", g: "plan", pages: ["plan", "update"], pin: ["plan", "update"], title: "Changing a due date",
+    kw: "due date deadline change reschedule move postpone calendar next week later date outside this week does not accept reverts",
+    intro: "A due date has to fall **inside the week the task belongs to** (Saturday to Friday). You can change it any time, even after the week has started.",
+    steps: [
+      "Click the **Due** date of the task, or open the task with **Open details** and use **Due**.",
+      "Pick a day from the calendar. The calendar only accepts days in this week, and the week is shown at the top of the page.",
+      "Press **Save plan** (or **Save**) to keep it.",
+      "If you need a date **after** this week, do not type it here. Go to **Next plan**, press **Bring forward**, tick the task, and set the new date there. The task keeps its number, so it is never counted twice.",
+    ],
+    why: [
+      "Every task belongs to one week, and the weekly numbers count it in that week. A due date in another week would make the task show as 'due this week' or 'overdue' in the wrong week.",
+      "If you type or pick a date outside the week, the date goes back to what it was and a message tells you why. Nothing is lost.",
+      "A task that is already late keeps its old date until you change it. Changing it to a day inside this week is fine, but it will still show in the lists for earlier weeks if it was carried.",
+    ],
+    fix: [
+      ["The date I picked disappeared", "It was outside this week. Pick a day from this week, or bring the task into next week's plan."],
+      ["The year looks wrong (for example 0202)", "Type all four digits of the year, or pick from the calendar. A wrong year is outside the week and is not accepted."],
+      ["I cannot change the date at all", "You may be viewing the task read-only (another unit, or a role that cannot edit). Open your own unit, or ask your department head."],
+    ],
+    go: [["Next plan", "plan"], ["Progress update", "update"]],
   },
   {
     id: "plan-notnext", g: "plan", pages: ["plan"], title: "The pill says 'NOT NEXT WEEK'",

@@ -981,3 +981,6 @@ table.fsum th,table.fsum td{text-align:center}table.fsum th:first-child,table.fs
 .esc-more summary:hover{color:var(--accent)}
 .esc-more ul{margin:4px 0 0;padding-left:16px;color:var(--muted)}
 .sub-scope{margin:0 2px 0 8px}
+
+/* keep the Help button off the Save plan bar at the foot of a plan */
+body:has(.save-bar:not([hidden])) .help-fab{bottom:calc(84px + env(safe-area-inset-bottom,0px))}
