@@ -10,7 +10,7 @@
 // Run  npm run check-help  after changing the app or this file: it lists guide wording that no longer matches the app.
 // "pages" uses the app's tab ids: dashboard, update, plan, mplan, approvals, support, fb, tasks, monthly, ceo, follow, activity, units, people.
 // Keep sentences short and name the buttons exactly as they appear on screen.
-export const GUIDES_VERSION = "2026-10-19.2";
+export const GUIDES_VERSION = "2026-10-19.3";
 
 export const GROUPS = [
   { id: "start", title: "Getting started", icon: "🚀", blurb: "Signing in, weeks, roles and finding your way around" },
@@ -341,10 +341,11 @@ export const GUIDES = [
       "Your approver opens it from the bell or **Approvals**, reviews it with **Open the plan**, and approves or rejects.",
       "If it is sent back, the pill shows **Sent back** with the written reason. Fix the plan and press **Submit again**.",
       "The pill beside the week always tells you where it stands: **Draft, not submitted**, **Waiting for approval**, **Approved** or **Sent back**.",
+      "A department head or employee submits their own departments only, and sees only their own departments' status. One department being submitted or approved does not change the others. A chief or planning head sees one status per department.",
     ],
     why: [
       "While the plan is waiting you can keep editing, and your colleagues (for example a Finance head for the Finance rows) can keep adding their tasks or uploading their Excel. What each person may change still depends on their role and department.",
-      "Approving accepts the plan as it stands at that moment. If more changes are made afterwards, press **Submit again** so the approver sees the final version.",
+      "Approving accepts the plan as it stands at that moment. After approval the button reads **Approved** and stays off. If you change one of your tasks afterwards the pill turns **Approved, changed since** and the button becomes **Submit changes**, so the approver sees the final version. Changes by other departments do not count.",
       "Who approves: a department head's plan goes to the chief; a chief's goes to the planning head (or Group Strategy in corporate functions); the planning head approves their own. Nobody approves their own request otherwise.",
       "Once the week starts, tasks become partly locked. See 'Locked fields'.",
     ],
@@ -698,7 +699,7 @@ export const GUIDES = [
       "Choose which units to include (all, business units only, corporate functions only, or pick specific ones).",
       "Switch **Weekly / Monthly / Quarterly** to change the period of the trend charts.",
       "**Completion by unit**, **Task status** and **Tasks done against planned** compare units this week.",
-      "**Needs attention** lists blocked and overdue work.",
+      "**Needs attention** lists blocked and overdue work. The CEO, DCEO and Group Strategy see every unit. Everyone else sees only their own unit, whatever they filter the charts by, so it is a list they can act on. If there are more than four, press **+ more** to see them all.",
       "**Weekly trend**, **Completed by week** and **Status mix by unit** show the direction over time.",
       "**Blockers and asks** shows what units wrote in their weekly report so management can act. Click a unit to open its plan.",
     ],

@@ -118,7 +118,7 @@ export function renderDashboard(c) {
   const asksPanel = (() => {
     const items = [];
     units.forEach((u) => { for (let i = winWeeks.length - 1; i >= 0; i--) { const p = (c.byWeek[winWeeks[i]] || {})[u.id]; if (p && (p.blockers || p.asks)) { if (p.blockers) items.push({ k: "Blocker", t: p.blockers, u }); if (p.asks) items.push({ k: "Ask", t: p.asks, u }); break; } } });
-    return `<div class="panel"><div class="panel-head"><h2>Blockers and asks</h2><span class="small muted">Latest from each unit</span></div>${items.length ? `<ul class="ba">${items.slice(0, 8).map((x) => `<li><span class="pill ${x.k === "Blocker" ? "s-bad" : "s-prog"}">${x.k}</span><div><div class="ba-t">${esc(x.t.length > 160 ? x.t.slice(0, 157) + "…" : x.t)}</div><button class="lnk unit-name small muted" data-open-unit="${esc(x.u.id)}">${esc(x.u.name)}</button></div></li>`).join("")}</ul>${items.length > 8 ? `<div class="small muted" style="padding:0 16px 12px">+${items.length - 8} more</div>` : ""}` : `<div class="empty" style="padding:20px 16px"><b>None right now</b></div>`}</div>`;
+    return `<div class="panel"><div class="panel-head"><h2>Blockers and asks</h2><span class="small muted">Latest from each unit</span></div>${items.length ? `<ul class="ba">${items.slice(0, c.filter.asksAll ? items.length : 8).map((x) => `<li><span class="pill ${x.k === "Blocker" ? "s-bad" : "s-prog"}">${x.k}</span><div><div class="ba-t">${esc(x.t.length > 160 ? x.t.slice(0, 157) + "…" : x.t)}</div><button class="lnk unit-name small muted" data-open-unit="${esc(x.u.id)}">${esc(x.u.name)}</button></div></li>`).join("")}</ul>${items.length > 8 ? `<div style="padding:0 16px 12px"><button class="lnk small" type="button" data-dasks="1">${c.filter.asksAll ? "Show fewer" : "+" + (items.length - 8) + " more"}</button></div>` : ""}` : `<div class="empty" style="padding:20px 16px"><b>None right now</b></div>`}</div>`;
   })();
 
   const { nowList, oldList } = splitAlerts(c);
@@ -131,7 +131,7 @@ export function renderDashboard(c) {
       <div class="panel"><div class="panel-head"><h2>Task status</h2><span class="small muted">${perLabel}</span></div><div class="pad">${donut}</div></div>
       <div class="panel"><div class="panel-head"><h2>Tasks done against planned</h2><span class="small muted">Last 8 weeks</span></div><div class="pad">${planned}</div></div></div>
     <div class="dgrid dgrid-b"><div class="panel"><div class="panel-head" style="border:0;padding-bottom:0"><h2>${single ? "Tasks" : "Units"}</h2><span class="small muted">${single ? "Blocked and in-progress first" : "Click a row to drill into that unit"}</span></div>${single ? taskTbl() : tbl}</div>
-      <div class="dstack"><div class="panel"><div class="panel-head" style="border:0;padding-bottom:0"><h2>Needs attention</h2><span class="small muted">Found automatically</span></div>${escalations(c, nowN, oldN)}</div>${asksPanel}</div></div>
+      <div class="dstack"><div class="panel"><div class="panel-head" style="border:0;padding-bottom:0"><h2>Needs attention</h2><span class="small muted">${c.attScope ? "Your unit: " + esc(c.attScope) : "Found automatically"}</span></div>${escalations(c, nowN, oldN)}</div>${asksPanel}</div></div>
     <details class="more"><summary>More charts</summary>
       <div class="grid2" style="margin-top:12px"><div class="panel"><div class="panel-head"><h2>Weekly trend</h2><span class="small muted">% done and average % complete</span></div>${trendChart(series, c)}</div>
       <div class="panel"><div class="panel-head"><h2>Completed by week</h2><span class="small muted">By completion date</span></div>${completedChart(units, c)}</div></div>
@@ -239,11 +239,11 @@ function splitAlerts(c) {
   return { nowList, oldList };
 }
 function escalations(c, nowN, oldN) {
-  const { esc } = c.h, tab = c.filter.att || "now", { nowList, oldList } = splitAlerts(c), list = (tab === "old" ? oldList : nowList).slice(0, 4), more = (tab === "old" ? oldList : nowList).length - list.length;
+  const { esc } = c.h, tab = c.filter.att || "now", { nowList, oldList } = splitAlerts(c), all = tab === "old" ? oldList : nowList, open = !!c.filter.attAll, list = open ? all : all.slice(0, 4), more = all.length - 4;
   const tabs = `<div class="seg" role="tablist" style="margin:8px 16px 4px"><button role="tab" data-datt="now" aria-selected="${tab !== "old"}">This week${nowN ? ` · ${nowN}` : ""}</button><button role="tab" data-datt="old" aria-selected="${tab === "old"}">Earlier weeks${oldN ? ` · ${oldN}` : ""}</button></div>`;
   if (!list.length) return `${tabs}<div class="empty" style="padding:24px 16px"><b>${tab === "old" ? "Nothing left over" : "Nothing to act on"}</b>${tab === "old" ? "No overdue or long-carried tasks." : "Nothing needs attention in this week."}</div>`;
   return `${tabs}<ul class="esc-list">${list.map((a) => `<li class="esc ${a.level}"><span class="pill ${a.level === "bad" ? "s-bad" : a.level === "warn" ? "s-not" : "s-none"}">${a.level === "bad" ? "Act now" : a.level === "warn" ? "Watch" : "Note"}</span>
     <div><button class="lnk unit-name" data-open-unit="${esc(a.unit)}">${esc(c.unitName(a.unit))}</button><div class="small">${esc(a.text)}</div>
-    ${a.tasks.length ? `<div class="small muted">${a.tasks.slice(0, 2).map((t) => esc(t.title.length > 80 ? t.title.slice(0, 77) + "…" : t.title)).join(" · ")}${a.tasks.length > 2 ? ` · +${a.tasks.length - 2} more` : ""}</div>` : ""}</div></li>`).join("")}</ul>
-    ${more > 0 ? `<div class="small muted" style="padding:0 16px 12px">+${more} more</div>` : ""}`;
+    ${a.tasks.length ? `<div class="small muted">${a.tasks.slice(0, 2).map((t) => esc(t.title.length > 80 ? t.title.slice(0, 77) + "…" : t.title)).join(" · ")}${a.tasks.length > 2 ? `<details class="esc-more"><summary>+${a.tasks.length - 2} more</summary><ul>${a.tasks.slice(2).map((t) => `<li>${esc(t.title.length > 80 ? t.title.slice(0, 77) + "…" : t.title)}</li>`).join("")}</ul></details>` : ""}</div>` : ""}</div></li>`).join("")}</ul>
+    ${more > 0 ? `<div style="padding:0 16px 12px"><button class="lnk small" type="button" data-dattall="1">${open ? "Show fewer" : "+" + more + " more"}</button></div>` : ""}`;
 }

@@ -973,3 +973,11 @@ table.fsum th,table.fsum td{text-align:center}table.fsum th:first-child,table.fs
 .fcheck li>span:first-child{flex:none;width:16px;text-align:center;font-weight:700}
 .fc-ok>span:first-child{color:var(--good)}.fc-warn>span:first-child{color:var(--warn)}.fc-bad>span:first-child{color:var(--bad)}.fc-info>span:first-child{color:var(--muted)}
 .fc-bad>span:last-child{color:var(--bad)}
+
+/* Needs attention: expandable "+N more", and the department label next to each submit status */
+.esc-more{margin-top:2px;font-size:12.5px}
+.esc-more summary{cursor:pointer;color:var(--muted);list-style:none;display:inline}
+.esc-more summary::-webkit-details-marker{display:none}
+.esc-more summary:hover{color:var(--accent)}
+.esc-more ul{margin:4px 0 0;padding-left:16px;color:var(--muted)}
+.sub-scope{margin:0 2px 0 8px}

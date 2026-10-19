@@ -232,8 +232,8 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     loadDraft(); render();
     const msg = [saved && (isAll() ? `Saved ${saved} plan${saved === 1 ? "" : "s"}` : "Plan saved"), requested && `${requested} change${requested === 1 ? "" : "s"} sent to Group Strategy for approval`].filter(Boolean).join(" · ") || "Nothing to save";
     const undoAct = saved && !isAll() && state.lastSave && mayUndo() ? { label: "Undo", fn: undoLast } : null;
-    const sb = saved && !isAll() && state.tab === "plan" && state.week === nextMonday() ? subOf(state.editUnit, "week", state.week) : null;
-    const askSubmit = saved && !isAll() && state.tab === "plan" && state.week === nextMonday() && !(sb && sb.status === "pending") && (((state.plans[state.editUnit] || {}).tasks) || []).length;
+    const sb = saved && !isAll() && state.tab === "plan" && state.week === nextMonday() ? subInfo(state.editUnit, "week", state.week, weekFp(state.editUnit)) : null;
+    const askSubmit = sb && !sb.off && subTasks(state.editUnit, sb.depts).length;
     if (askSubmit) toast("Plan saved. Click Submit for approval, at the top of the page, to send it.", [{ label: "Submit for approval", fn: submitWeek, ms: 10000 }, undoAct]);
     else toast(msg, undoAct);
   }
@@ -1313,7 +1313,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   }
   function weekBan(){
     const w = state.week, planTab = state.tab === "plan", next = w === nextMonday(), tm = thisMonday();
-    const sb = planTab && state.editUnit && !isAll() ? subPill(subOf(state.editUnit, "week", w)) : "";
+    const sb = planTab && state.editUnit && !isAll() ? subPills(state.editUnit, "week", w, weekFp(state.editUnit)) : "";
     const pill = planTab ? (next ? '<span class="pill out">PLAN FOR NEXT WEEK</span>' : '<span class="pill s-not">NOT NEXT WEEK</span>') + sb : '<span class="pill tag-actual">ACTUAL</span>';
     const rel = w === tm ? "This week" : w < tm ? "Past week" : next ? "Next week" : "Later week";
     const hint = planTab ? (next ? "Add next week's tasks by hand, bring forward unfinished work, or fill in the Excel template and upload it. Press Submit for approval when the plan is ready." : `This is not next week. <button class="lnk" id="goNext">Go to next week (${esc(weekLabel(nextMonday()))})</button>`)
@@ -1335,9 +1335,9 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
       if (mayUndo()) menu.push(`<button type="button" id="histBtn" title="Every saved version of this plan">${ico(IC.clock)}History</button>`);
       if (downloads) menu.push(`<button type="button" id="unitPdfBtn">${ico(IC.down)}Plan (PDF)</button>`, `<button type="button" id="unitXlsxBtn">${ico(IC.down)}Plan (Excel)</button>`);
     } else if (isAll() && downloads) menu.push(`<button type="button" id="pdfBtn">${ico(IC.down)}Performance report (PDF)</button>`, `<button type="button" id="xlsxAllBtn">${ico(IC.down)}All plans (Excel)</button>`);
-    const planM = state.tab === "plan", sub = planM && single ? subOf(state.editUnit, "week", state.week) : null, subbed = sub && sub.status === "pending";
+    const planM = state.tab === "plan", si = planM && single ? subInfo(state.editUnit, "week", state.week, weekFp(state.editUnit)) : null;
     const planTop = planM && single ? `<button class="btn" type="button" id="tplTop">${ico(IC.down)}Download template</button>${qm(TIP_TPL)}${ed ? `<label class="btn" title="Fill the template, then upload it here">${ico(IC.fwd)}Upload Excel<input type="file" id="impFileTop" accept=".xlsx,.xls,.csv" hidden></label>` : ""}` : "";
-    const submitBtn = planM && single && ed ? `<button class="btn primary" type="button" id="submitPlan" ${state.dirty || !d0 || !d0.tasks.length || subbed ? "disabled" : ""} title="${state.dirty ? "Save the plan first" : subbed ? "Already waiting for approval" : "Send next week's plan to Group Strategy"}">${sub && sub.status !== "withdrawn" && sub.status !== "pending" ? "Submit again" : "Submit for approval"}</button>` : "";
+    const submitBtn = planM && single && ed ? `<button class="btn primary" type="button" id="submitPlan" ${state.dirty || !d0 || !d0.tasks.length || (si && si.off) ? "disabled" : ""} title="${state.dirty ? "Save the plan first" : esc(si ? si.tip : "")}">${si ? si.label : "Submit for approval"}</button>` : "";
     const acts = `<div class="toolbar plan-acts">${planTop}${single && ed && canLead(state.editUnit) && planM ? `<button class="btn" type="button" id="carryBtn">${ico(IC.fwd)}Bring forward</button>${qm(TIP_BF)}` : ""}${moreMenu(menu)}${single && ed ? (!planM && state.week === thisMonday() ? `<details class="more add-menu"><summary class="btn primary">${ico(IC.plus)}Add task <span aria-hidden="true">▾</span></summary><div class="more-menu"><button type="button" id="addTask">Add task</button><button type="button" id="addUnplanned" title="A task that came up during the week and was not in the plan">Add unplanned task</button></div></details>` : `<button class="btn${planM ? "" : " primary"}" type="button" id="addTask">${ico(IC.plus)}Add task</button>`) : ""}${submitBtn}</div>`;
     const topRow = `<div class="plan-top"><div class="plan-wk">${weekBan()}</div>${acts}</div>`;
     const lvlSeg = `<div class="seg" role="tablist" aria-label="List level"><button type="button" role="tab" data-lvl="tasks" aria-selected="${pf().lvl !== "deliv"}">All tasks</button><button type="button" role="tab" data-lvl="deliv" aria-selected="${pf().lvl === "deliv"}">By deliverable</button></div>`;
@@ -1559,25 +1559,70 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     const byAll = Object.fromEntries(Object.entries({ ...state.dashData.by, [state.week]: state.plans }).map(([w, ps]) => [w, lvl(ps)])), cat = state.dash.category || "";
     const by = !cat ? byAll : Object.fromEntries(Object.entries(byAll).map(([w, ps]) => [w, Object.fromEntries(Object.entries(ps || {}).map(([k, p]) => [k, p ? { ...p, tasks: (p.tasks || []).filter(t => (t.category || "") === cat) } : p]))]));
     const alerts = sortedUnits().flatMap(u => unitAlerts({ unit: u, plan: state.plans[u.id], weekPlans: state.plans, week: state.week, thisMonday: thisMonday(), today: todayIso, requests: [] })).sort((a, b) => levelRank[a.level] - levelRank[b.level]);
+    // Needs attention is for the people who can act on it: the CEO, DCEO and Group Strategy see every unit,
+    // everyone else sees their own unit only, whatever they filter the charts by.
+    const attScope = me && me.unit && !["executive", "super_admin"].includes(me.role) ? me.unit : "";
+    const attList = attScope ? alerts.filter(a => a.unit === attScope)
+      : alerts.filter(a => (!state.dash.type || unitOf(a.unit).type === state.dash.type) && (!state.dash.units.length || state.dash.units.includes(a.unit)));
     const w = ($("#main").clientWidth || 1000);
     return renderDashboard({ weeks: state.dashData.weeks, byWeek: by, byWeekAll: byAll, units: sortedUnits(), week: state.week, today: todayIso, filter: { ...state.dash, level: state.level },
-      alerts: alerts.filter(a => (!state.dash.type || unitOf(a.unit).type === state.dash.type) && (!state.dash.units.length || state.dash.units.includes(a.unit))), pending: pendingFor().length, downloads, canUpdate: !!(me && !["executive"].includes(me.role)),
+      alerts: attList, attScope: attScope ? unitName(attScope) : "", pending: pendingFor().length, downloads, canUpdate: !!(me && !["executive"].includes(me.role)),
       width: w > 900 ? Math.floor((w - 16) * 2 / 3) - 34 : w - 34, unitName, h: { esc, fmt, weekLabel, toEth, ethMonth: w => ethName(toEth(w)), ethWeek: w => ethWeekLabel(w) } });
   }
 
   // ---------- plan submissions (a request to Group Strategy with a "submit" marker) ----------
-  const subOf = (u, kind, key) => state.requests.filter(r => r.unit === u && (r.patch || []).some(o => o.op === "submit" && o.kind === kind && o.key === key)).sort((a, b) => (a.createdAt || "") < (b.createdAt || "") ? 1 : -1)[0] || null;
-  const subPill = r => !r || r.status === "withdrawn" ? '<span class="pill s-none">Draft, not submitted</span>' : r.status === "pending" ? '<span class="pill s-not">Waiting for approval</span>' : r.status === "approved" ? '<span class="pill s-done">Approved</span>' : `<span class="pill s-bad" title="${esc(r.note || "")}">Sent back${r.note ? ": " + esc(r.note.length > 40 ? r.note.slice(0, 38) + "…" : r.note) : ""}</span>`;
-  async function sendSubmit(u, week, kind, key, n, summary){
-    try { const r = await api.requestChange(auth(), { id: newId(), unit: u, week, summary, details: [summary], patch: [{ op: "submit", kind, key, n }] }); toast(r.error ? errText(r) : "Submitted. Group Strategy will review it"); }
+  // A submission belongs to the departments it was sent for. A department head or employee sees only their own
+  // departments' submissions; a chief or the planning head sees one pill per group of departments.
+  const subDeptList = r => String((r && r.dept) || "").split(",").map(x => x.trim()).filter(Boolean);
+  const mySubDepts = () => me && ["manager", "staff"].includes(me.role) ? (me.departments || []) : [];
+  const subAll = (u, kind, key) => state.requests.filter(r => r.unit === u && (r.patch || []).some(o => o.op === "submit" && o.kind === kind && o.key === key));
+  const subNewest = (a, b) => (a.createdAt || "") < (b.createdAt || "") ? 1 : -1;
+  const subOf = (u, kind, key, depts = mySubDepts()) => {
+    let l = subAll(u, kind, key);
+    if (depts.length) l = l.filter(r => { const d = subDeptList(r); return !d.length || d.some(x => depts.includes(x)); });
+    return l.sort(subNewest)[0] || null;
+  };
+  const subTasks = (u, depts) => (((state.plans[u] || {}).tasks) || []).filter(t => !depts.length || depts.includes(t.dept || ""));
+  // A short fingerprint of the planned work of these departments, so "changed since approval" can be told apart from "other departments changed".
+  const subFp = (u, depts) => {
+    const l = subTasks(u, depts), s = l.map(t => [t.id, t.title, t.dept, t.owner, t.due, t.priority, t.outcome, t.kind, t.target, t.measure].map(x => x ?? "").join("\u0001")).sort().join("\u0002");
+    let h = 5381; for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
+    return h.toString(36) + ":" + l.length;
+  };
+  const subPill = (r, changed) => !r || r.status === "withdrawn" ? '<span class="pill s-none">Draft, not submitted</span>' : r.status === "pending" ? '<span class="pill s-not">Waiting for approval</span>' : r.status === "approved" ? (changed ? '<span class="pill s-not" title="Tasks were changed after the approval. Submit the changes to have them approved">Approved, changed since</span>' : '<span class="pill s-done">Approved</span>') : `<span class="pill s-bad" title="${esc(r.note || "")}">Sent back${r.note ? ": " + esc(r.note.length > 40 ? r.note.slice(0, 38) + "…" : r.note) : ""}</span>`;
+  // What this person's Submit button should do. nowFp(depts) gives the fingerprint of what is saved now.
+  function subInfo(u, kind, key, nowFp){
+    const depts = mySubDepts();
+    const r = depts.length ? subOf(u, kind, key, depts) : (subAll(u, kind, key).filter(x => !subDeptList(x).length).sort(subNewest)[0] || null);
+    const o = r && (r.patch || []).find(x => x.op === "submit");
+    const changed = !!(r && r.status === "approved" && o && o.fp && nowFp(subDeptList(r)) !== o.fp);
+    const live = !r || r.status === "withdrawn" ? "none" : r.status === "pending" ? "pending" : r.status === "approved" ? (changed ? "changed" : "approved") : "back";
+    const label = live === "back" ? "Submit again" : live === "changed" ? "Submit changes" : live === "approved" ? "Approved" : "Submit for approval";
+    const off = live === "pending" || live === "approved";
+    const tip = live === "pending" ? "Already waiting for approval" : live === "approved" ? "Approved. Change a task to submit it again" : live === "changed" ? "Send the changes made since the approval" : live === "back" ? "Send it again after fixing what was asked" : "Send this plan to the approver";
+    return { r, changed, live, label, off, tip, depts };
+  }
+  // The status pill(s) shown next to the week or month heading.
+  function subPills(u, kind, key, nowFp){
+    const mine = mySubDepts();
+    if (mine.length) { const i = subInfo(u, kind, key, nowFp); return subPill(i.r, i.changed); }
+    const by = new Map(); subAll(u, kind, key).sort(subNewest).forEach(r => { const k = subDeptList(r).join(","); if (!by.has(k)) by.set(k, r); });
+    const rs = [...by.values()];
+    if (rs.length <= 1) { const i = subInfo(u, kind, key, nowFp); return subPill(i.r || rs[0] || null, i.changed); }
+    return rs.map(r => { const o = (r.patch || []).find(x => x.op === "submit"); return `<span class="sub-scope small muted">${esc(subDeptList(r).join(", ") || "Whole unit")}</span>${subPill(r, r.status === "approved" && o && o.fp && nowFp(subDeptList(r)) !== o.fp)}`; }).join(" ");
+  }
+  const weekFp = u => d => subFp(u, d);
+  async function sendSubmit(u, week, kind, key, n, summary, fp){
+    const depts = mySubDepts();
+    try { const r = await api.requestChange(auth(), { id: newId(), unit: u, week, summary, details: [summary], patch: [{ op: "submit", kind, key, n, fp }], depts }); toast(r.error ? errText(r) : "Submitted. Group Strategy will review it"); }
     catch (e) { toast(errText(e)); }
   }
   async function submitWeek(){
     const u = state.editUnit, w = state.week;
     if (!u || isAll() || !canEdit(u)) { toast("Sign in with this unit's PIN first"); return; }
     if (state.dirty) { toast("Save the plan first, then submit it"); return; }
-    const n = (((state.plans[u] || {}).tasks) || []).length; if (!n) { toast("Add and save tasks before submitting"); return; }
-    await sendSubmit(u, w, "week", w, n, `Plan for ${weekLabel(w)} submitted for approval (${n} task${n === 1 ? "" : "s"})`);
+    const depts = mySubDepts(), n = subTasks(u, depts).length; if (!n) { toast(depts.length ? "Add and save tasks for your department before submitting" : "Add and save tasks before submitting"); return; }
+    await sendSubmit(u, w, "week", w, n, `Plan for ${weekLabel(w)} submitted for approval (${n} task${n === 1 ? "" : "s"}${depts.length ? ", " + depts.join(", ") : ""})`, subFp(u, depts));
   }
   function reviewSubmission(id){
     const r = state.requests.find(x => x.id === id); if (!r) return; const o = (r.patch || []).find(x => x.op === "submit"); if (!o) return;
@@ -1685,12 +1730,12 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     const pick = `<div class="toolbar"><label for="unitPick" class="small muted">Unit</label><select id="unitPick"><option value="">Choose your function or unit…</option>${opts}</select></div>`;
     const months = `<div class="seg mp-months" role="tablist">${FYM.map(f => { const off = !mpWeeksOf(f.y, f.m).length, r2 = ethMonthRange(f); return `<button type="button" role="tab" data-mpm="${f.y}-${f.m}" aria-selected="${f.y === Y && f.m === m}" ${off ? 'disabled title="Weeks before 10 Oct 2026 use the old Monday weeks, so they cannot be planned here"' : `title="${esc(RM_L[f.m])}: ${esc(fmt(r2.start))} – ${esc(fmt(r2.end))} (${esc(ETH_M[f.m - 1])} ${f.y} EC)"`}>${RM_S[f.m]}</button>`; }).join("")}</div>`;
     const view = `<div class="seg" role="tablist" aria-label="View"><button type="button" role="tab" data-mpv="plan" aria-selected="${!track}">Plan</button><button type="button" role="tab" data-mpv="track" aria-selected="${track}">Tracking</button></div>`;
-    const sub = subOf(u, "month", mpTag()), subbed = sub && sub.status === "pending";
     const saved = mp.rows.filter(r => r.saved).length;
+    const mpFp = () => String(saved), si = subInfo(u, "month", mpTag(), mpFp);
     const addMenu = `<details class="more"><summary class="btn">${ico(IC.plus)}Add result</summary><div class="more-menu mp-add">${Object.keys(MP_KINDS).map(k => `<button type="button" data-mpadd="${k}"><span><b>${MP_KINDS[k]}</b><span class="small muted mp-add-d">${esc(MP_HELP[k])}</span></span></button>`).join("")}</div></details>`;
-    const acts = ed && !track ? `<button class="btn" type="button" id="mpTpl">${ico(IC.down)}Download template</button><label class="btn" title="Fill the template, then upload it here">${ico(IC.fwd)}Upload Excel<input type="file" id="mpFile" accept=".xlsx,.xls,.csv" hidden></label>${addMenu}<button class="btn" type="button" id="mpCancel" ${mp.dirty ? "" : "hidden"}>Cancel</button><button class="btn${mp.dirty ? " primary" : ""}" type="button" id="mpCreate" ${mp.busy || !mp.rows.length ? "disabled" : ""}>${mp.busy ? "Creating…" : "Create weekly plans"}</button><button class="btn${mp.dirty ? "" : " primary"}" type="button" id="mpSubmit" ${mp.dirty || !saved || subbed || mp.busy ? "disabled" : ""} title="${mp.dirty ? "Create the weekly plans first" : !saved ? "Nothing created yet" : subbed ? "Already waiting for approval" : "Send this month to Group Strategy for approval"}">${sub && sub.status !== "withdrawn" && sub.status !== "pending" ? "Submit again" : "Submit for approval"}</button>` : "";
+    const acts = ed && !track ? `<button class="btn" type="button" id="mpTpl">${ico(IC.down)}Download template</button><label class="btn" title="Fill the template, then upload it here">${ico(IC.fwd)}Upload Excel<input type="file" id="mpFile" accept=".xlsx,.xls,.csv" hidden></label>${addMenu}<button class="btn" type="button" id="mpCancel" ${mp.dirty ? "" : "hidden"}>Cancel</button><button class="btn${mp.dirty ? " primary" : ""}" type="button" id="mpCreate" ${mp.busy || !mp.rows.length ? "disabled" : ""}>${mp.busy ? "Creating…" : "Create weekly plans"}</button><button class="btn${mp.dirty ? "" : " primary"}" type="button" id="mpSubmit" ${mp.dirty || !saved || si.off || mp.busy ? "disabled" : ""} title="${mp.dirty ? "Create the weekly plans first" : !saved ? "Nothing created yet" : esc(si.tip)}">${si.label}</button>` : "";
     const wkList = weeks.map((w, k) => `W${k + 1} ${weekShort(w)}`).join(" · ");
-    const top = `<div class="plan-top"><div class="plan-wk"><div class="weekban"><span class="pill out">MONTHLY PLAN</span><span class="wk-big">${RM_L[m]} ${gy}</span><span class="eth">${esc(fmt(rng.start))} – ${esc(fmt(rng.end))}</span>${u && !isAll() ? subPill(sub) : ""}</div>
+    const top = `<div class="plan-top"><div class="plan-wk"><div class="weekban"><span class="pill out">MONTHLY PLAN</span><span class="wk-big">${RM_L[m]} ${gy}</span><span class="eth">${esc(fmt(rng.start))} – ${esc(fmt(rng.end))}</span>${u && !isAll() ? subPills(u, "month", mpTag(), mpFp) : ""}</div>
       <div class="small muted plan-hint">${weeks.length ? `${weeks.length} week${weeks.length === 1 ? "" : "s"}: ${esc(wkList)}. The month starts on day 1 of the Ethiopian month and a week goes to the month holding most of its days.` : ""} ${track ? "Tracking shows how each result is being achieved, from the weekly updates." : "Plan each result once for the month and break it down into the weeks. Each week's piece lands in that week's plan, so people only update progress."}</div></div>
       <div class="toolbar plan-acts">${acts}</div></div>`;
     const bar = `<div class="plan-bar">${pick}${months}${view}</div>`;
@@ -1797,7 +1842,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     if (mp.dirty) { toast("Create the weekly plans first"); return; }
     const n = mp.rows.filter(r => r.saved).length; if (!n) { toast("Nothing created yet"); return; }
     const weeks = mpWeeks(), label = mpLabelOf(mpTag());
-    await sendSubmit(u, weeks[0], "month", mpTag(), n, `Monthly plan ${label} submitted for approval (${n} result${n === 1 ? "" : "s"})`);
+    await sendSubmit(u, weeks[0], "month", mpTag(), n, `Monthly plan ${label} submitted for approval (${n} result${n === 1 ? "" : "s"})`, String(n));
   }
   const normT = x => String(x || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
   async function mpTemplate(){
@@ -1932,6 +1977,8 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     if (t.dataset.tgl) { const k = t.dataset.tgl; state.expanded.has(k) ? state.expanded.delete(k) : state.expanded.add(k); render(); return; }
     if (t.matches("tr[data-open-unit], .hbar-row[data-open-unit]") || (t.dataset.openUnit && t.matches("button"))) { if (state.tab === "dashboard") { state.dash.units = [t.dataset.openUnit]; state.dash.pop = false; render(); window.scrollTo({ top: 0, behavior: "smooth" }); return; } openUnit(t.dataset.openUnit); return; }
     if (t.dataset.datt) { state.dash.att = t.dataset.datt; render(); return; }
+    if (t.dataset.dattall) { state.dash.attAll = !state.dash.attAll; render(); return; }
+    if (t.dataset.dasks) { state.dash.asksAll = !state.dash.asksAll; render(); return; }
     if (t.dataset.dtbl) { state.dash.tbl = t.dataset.dtbl; render(); return; }
     if (t.dataset.dper) { state.dash.period = t.dataset.dper; state.dash.range = t.dataset.dper === "quarter" ? 13 : 8; render(); ensureDash(); return; }
     if (t.id === "dPopBtn") { state.dash.pop = !state.dash.pop; render(); return; }
