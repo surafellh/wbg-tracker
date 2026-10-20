@@ -10,7 +10,7 @@
 // Run  npm run check-help  after changing the app or this file: it lists guide wording that no longer matches the app.
 // "pages" uses the app's tab ids: dashboard, update, plan, mplan, approvals, support, fb, tasks, monthly, ceo, follow, activity, units, people.
 // Keep sentences short and name the buttons exactly as they appear on screen.
-export const GUIDES_VERSION = "2026-10-19.4";
+export const GUIDES_VERSION = "2026-10-20.1";
 
 export const GROUPS = [
   { id: "start", title: "Getting started", icon: "🚀", blurb: "Signing in, weeks, roles and finding your way around" },
@@ -907,9 +907,12 @@ export const GUIDES = [
     steps: [
       "Click your initials (top right) and choose **View as another role**. It is available to the main Group Strategy account.",
       "Pick the role, unit and departments to imitate.",
-      "The screens and buttons change. A bar at the top reminds you that you are in View as mode. Use it to exit.",
+      "The screens, buttons and the data change. You see only the plans, requests, feedback, corrective actions, support requests and activity that role is allowed to read. A bar at the top reminds you that you are in View as mode. Use it to exit.",
     ],
-    why: ["On the live app View as is read-only, so nothing can be saved by accident."],
+    why: [
+      "On the live app View as is read-only, so nothing can be saved by accident.",
+      "Some things still follow your real account: your bell notifications, and requests you made yourself. If something still looks like Group Strategy, exit and open View as again so the page reloads with the role.",
+    ],
   },
 
   // =====================================================================================================================

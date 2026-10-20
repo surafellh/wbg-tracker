@@ -92,6 +92,21 @@ const sessionStore = {
 };
 const setRemember = (on) => { try { localStorage.setItem(REMEMBER_KEY, on ? "1" : "0"); } catch (e) {} };
 
+// What each collection shows this person. These are the same rules as the database's row level security policies.
+// The local test mode uses them to filter, and "View as" uses them so Group Strategy sees only what that role would see.
+function scopeRows(a, c, items) {
+  if (!a || !a.role) return [];
+  if (c === "units") return items;
+  const U = (u) => unitRead(a, u);
+  if (c === "plans") return items.filter((p) => U(p.unit) || (a.role === "staff" && a.unit === p.unit)).map((p) => visiblePlan(a, p));
+  if (c === "activity") return items.filter((x) => (x.unit ? U(x.unit) : fullRead(a)));
+  if (c === "feedback") return items.filter((x) => ["super_admin", "executive"].includes(a.role) || (x.toLead ? ["leader", "planning"].includes(a.role) && a.unit === x.unit : U(x.unit)));
+  if (c === "requests" || c === "actions") return items.filter((x) => U(x.unit));
+  if (c === "support") return items.filter((x) => U(x.function));
+  if (c === "history") return items.filter((x) => U(x.tbl === "plans" ? x.old.unit_id : x.rowId));
+  return items;
+}
+
 function createSupabaseData() {
   const sb = createClient(URL_, KEY_, { auth: { storage: sessionStore, persistSession: true, autoRefreshToken: true, detectSessionInUrl: false }, realtime: { params: { eventsPerSecond: 5 } } });
   // "View as" (Group Strategy trying other roles): on the live app it is read-only, so nothing can be written while pretending to be another role.
@@ -100,7 +115,7 @@ function createSupabaseData() {
     const realRpc = sb.rpc.bind(sb);
     sb.rpc = (fn, args) => (viewingAs() && !READ_RPC.test(fn) ? Promise.resolve({ data: { error: "view_only" }, error: null }) : realRpc(fn, args));
   }
-  let roleNow = "";   // employees read plans through a function that hides other departments
+  let roleNow = "", viewProfile = null;   // employees read plans through a function that hides other departments; viewProfile is the role Group Strategy is viewing as
   const live = new Map();
   const bump = (table) => (live.get(table) || new Set()).forEach((f) => f());
   const bumpAll = () => ["plans", "units", "activity", "change_requests", "row_history", "support_requests", "feedback", "corrective_actions"].forEach(bump);
@@ -121,6 +136,12 @@ function createSupabaseData() {
 
   function query(colName, filters = [], ord = null, lim = null) {
     const cfg = COLLECTIONS[colName];
+    // While Group Strategy is viewing as another role, show only the rows that role could read
+    const scopeDocs = (docs) => {
+      if (!viewingAs() || !viewProfile || !viewProfile.role) return docs;
+      const items = docs.map((d) => ({ id: d.id, ...d.data() }));
+      return scopeRows(viewProfile, colName, items).map((o) => { const { id, ...rest } = o; return { id, exists: true, data: () => JSON.parse(JSON.stringify(rest)) }; });
+    };
     if (!cfg) throw new Error(`Unknown collection: ${colName}`);
     const col = (f) => (f === "id" ? "id" : cfg.map[f] || f);
     const run = async () => {
@@ -129,7 +150,7 @@ function createSupabaseData() {
         for (const [f, op, v] of filters) if (f === "week") { if (op === "==") from = to = v; else if (op === ">=" || op === ">") from = v; else if (op === "<=" || op === "<") to = v; }
         const { data, error } = await sb.rpc("wbg_read_plans", { p_from: from, p_to: to });
         if (error) fail(error);
-        const docs = (data || []).map((r) => snapDoc(cfg, r));
+        const docs = scopeDocs((data || []).map((r) => snapDoc(cfg, r)));
         return { docs, size: docs.length, empty: !docs.length };
       }
       let q = sb.from(cfg.table).select("*");
@@ -138,7 +159,7 @@ function createSupabaseData() {
       if (lim) q = q.limit(lim);
       const { data, error } = await q;
       if (error) fail(error);
-      const docs = (data || []).map((r) => snapDoc(cfg, r));
+      const docs = scopeDocs((data || []).map((r) => snapDoc(cfg, r)));
       return { docs, size: docs.length, empty: !docs.length };
     };
     return {
@@ -187,7 +208,7 @@ function createSupabaseData() {
     // ----- sign-in (Supabase Auth, one-time code sent to the email) -----
     async session() { const { data } = await sb.auth.getSession(); return data.session ? this.me() : null; },
     async me() { const { data, error } = await sb.rpc("wbg_me"); if (error) fail(error); roleNow = (data && data.status === "active" && data.setupDone) ? data.role : ""; return data; },
-    setProfile(p) { roleNow = p && p.status === "active" && p.setupDone ? p.role : ""; },
+    setProfile(p) { roleNow = p && p.status === "active" && p.setupDone ? p.role : ""; viewProfile = p || null; },
     async checkEmail(email) { const { data, error } = await sb.rpc("wbg_check_email", { p_email: email }); if (error) return { allowed: false, error: error.message }; return data; },
     async sendCode(email) { const { error } = await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: true } }); return error ? { error: error.message, status: error.status } : { ok: true }; },
     async verifyCode(email, token) { const { error } = await sb.auth.verifyOtp({ email, token, type: "email" }); if (error) return { error: error.message }; return { profile: await this.me() }; },
@@ -364,21 +385,11 @@ function createLocalData() {
   const curId = () => read("wbg_local_session");
   const prof = () => people().find((x) => x.id === curId()) || null;
   // the caller as the database sees them
-  const A = () => { const p = prof(); return p && p.status === "active" && p.setupDone ? { id: p.id, name: p.name, role: p.role, title: p.title, unit: p.unit, departments: p.departments || [] } : {}; };
+  const viewOver = (p) => { try { const v = JSON.parse(sessionStorage.getItem(VIEWAS_KEY) || "null"); return v && p.role === "super_admin" && p.email === "surafel.h@wagwagoelectric.com" ? v : null; } catch (e) { return null; } };
+  const A = () => { const p = prof(); if (!(p && p.status === "active" && p.setupDone)) return {}; const v = viewOver(p); return { id: p.id, name: p.name, role: v ? v.role : p.role, title: p.title, unit: v ? v.unit || "" : p.unit, departments: v ? v.departments || [] : p.departments || [] }; };
   const meOut = (p) => (p ? { status: p.status, setupDone: p.setupDone, invited: p.invited, id: p.id, email: p.email, name: p.name, role: p.role, title: p.title, unit: p.unit, departments: p.departments || [], phone: p.phone || "", jobTitle: p.jobTitle || "" } : null);
   // what each collection shows this person (same as the row level security policies)
-  function readFilter(c, items) {
-    const a = A(); if (!a.role) return [];
-    if (c === "units") return items;
-    const U = (u) => unitRead(a, u);
-    if (c === "plans") return items.filter((p) => U(p.unit) || (a.role === "staff" && a.unit === p.unit)).map((p) => visiblePlan(a, p));
-    if (c === "activity") return items.filter((x) => (x.unit ? U(x.unit) : fullRead(a)));
-    if (c === "feedback") return items.filter((x) => ["super_admin", "executive"].includes(a.role) || (x.toLead ? ["leader", "planning"].includes(a.role) && a.unit === x.unit : U(x.unit)));
-    if (c === "requests" || c === "actions") return items.filter((x) => U(x.unit));
-    if (c === "support") return items.filter((x) => U(x.function));
-    if (c === "history") return items.filter((x) => U(x.tbl === "plans" ? x.old.unit_id : x.rowId));
-    return items;
-  }
+  function readFilter(c, items) { return scopeRows(A(), c, items); }
 
   { // number tasks that have no reference yet (seed data and older local data)
     const plans = getStore("plans"), counters = read("wbg_local_refs") || {};
