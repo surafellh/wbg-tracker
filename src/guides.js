@@ -10,7 +10,7 @@
 // Run  npm run check-help  after changing the app or this file: it lists guide wording that no longer matches the app.
 // "pages" uses the app's tab ids: dashboard, update, plan, mplan, approvals, support, fb, tasks, monthly, ceo, follow, activity, units, people.
 // Keep sentences short and name the buttons exactly as they appear on screen.
-export const GUIDES_VERSION = "2026-10-20.1";
+export const GUIDES_VERSION = "2026-10-20.2";
 
 export const GROUPS = [
   { id: "start", title: "Getting started", icon: "🚀", blurb: "Signing in, weeks, roles and finding your way around" },
@@ -819,7 +819,11 @@ export const GUIDES = [
       "**Corrective actions:** the unit head presses **+ Log a corrective action** and writes the issue, the action, the owner and the due date.",
       "Update the action's status (Open, In progress, Done, Closed) as work proceeds. Overdue open actions are marked.",
     ],
-    why: ["Feedback tied to a task appears inside that task, so the reason and the fix stay with the work."],
+    why: [
+      "Feedback tied to a task appears inside that task, so the reason and the fix stay with the work.",
+      "Who can read them: Group Strategy, the CEO and the DCEO read every unit's. A chief or GM, the planning head and the managers of a unit read only their own unit's. Employees do not see them. A letter to the head of the unit is private to that unit's chief and planning head.",
+      "They show as a number on the Feedback tab and a banner on your plan page. They do not appear on the bell.",
+    ],
     go: [["Feedback", "fb"]],
   },
   {

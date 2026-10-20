@@ -100,8 +100,11 @@ function scopeRows(a, c, items) {
   const U = (u) => unitRead(a, u);
   if (c === "plans") return items.filter((p) => U(p.unit) || (a.role === "staff" && a.unit === p.unit)).map((p) => visiblePlan(a, p));
   if (c === "activity") return items.filter((x) => (x.unit ? U(x.unit) : fullRead(a)));
-  if (c === "feedback") return items.filter((x) => ["super_admin", "executive"].includes(a.role) || (x.toLead ? ["leader", "planning"].includes(a.role) && a.unit === x.unit : U(x.unit)));
-  if (c === "requests" || c === "actions") return items.filter((x) => U(x.unit));
+  // feedback and corrective actions: a chief / GM reads only their own unit's (plans stay readable by every chief)
+  const own = (u) => ["super_admin", "executive"].includes(a.role) || (["leader", "planning", "manager"].includes(a.role) && a.unit === u);
+  if (c === "feedback") return items.filter((x) => ["super_admin", "executive"].includes(a.role) || (x.toLead ? ["leader", "planning"].includes(a.role) && a.unit === x.unit : own(x.unit)));
+  if (c === "actions") return items.filter((x) => own(x.unit));
+  if (c === "requests") return items.filter((x) => U(x.unit));
   if (c === "support") return items.filter((x) => U(x.function));
   if (c === "history") return items.filter((x) => U(x.tbl === "plans" ? x.old.unit_id : x.rowId));
   return items;
