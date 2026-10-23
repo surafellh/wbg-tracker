@@ -6,7 +6,7 @@ import { createClient } from "@supabase/supabase-js";
 import { SEED_UNITS, SEED_PLANS, SEED_ACTIVITY } from "./seedData.js";
 import { SEED_SUPPORT } from "./seedSupport.js";
 import { addisWeekStart, addisLockWeek, addisToday } from "./rules.js";
-import { isAdmin, fullRead, unitRead, unitMember, unitLead, canUndo, canFeedback, canEditDepartments, visiblePlan, mergeSave, mergeScope, deptOk, canDecide, routeStage } from "./access.js";
+import { baseRole, isAdmin, fullRead, unitRead, unitMember, unitLead, canUndo, canFeedback, canEditDepartments, visiblePlan, mergeSave, mergeScope, deptOk, canDecide, routeStage } from "./access.js";
 
 const URL_ = import.meta.env.VITE_SUPABASE_URL;
 export const IS_TEST_ENV = !URL_ || String(URL_).includes("pnipdrnpksaglmesifje");   // the test Supabase project (or no database at all)
@@ -23,7 +23,9 @@ const COLLECTIONS = {
   activity: { table: "activity", map: { ts: "ts", by: "by_name", unit: "unit_id", week: "week", action: "action", summary: "summary", details: "details", role: "by_role" }, ts: ["ts"], nullText: ["week"] },
   requests: { table: "change_requests", map: { createdAt: "created_at", unit: "unit_id", week: "week", planId: "plan_id", by: "requested_by", status: "status", summary: "summary", details: "details", patch: "patch", decidedBy: "decided_by", decidedAt: "decided_at", note: "decision_note", dept: "dept", kind: "req_kind", stage: "stage" }, ts: ["createdAt", "decidedAt"] },
   support: { table: "support_requests", map: { ref: "ref", function: "function_id", requester: "requester", requesterUnit: "requester_unit", category: "category", description: "description", priority: "priority", requested: "date_requested", status: "status", responded: "response_date", action: "action_taken", respondedBy: "responded_by", evidence: "evidence_ref", followUp: "follow_up", remarks: "remarks", createdBy: "created_by", createdAt: "created_at", updatedBy: "updated_by", updatedAt: "updated_at" }, ts: ["createdAt", "updatedAt"], nullText: ["requested", "responded"] },
-  feedback: { table: "feedback", map: { unit: "unit_id", week: "week", from: "from_role", by: "by_name", body: "body", taskRef: "task_ref", createdAt: "created_at", ackBy: "ack_by", ackAt: "ack_at", toLead: "to_lead" }, ts: ["createdAt", "ackAt"], nullText: ["week", "ackAt"] },
+  feedback: { table: "feedback", map: { unit: "unit_id", week: "week", from: "from_role", by: "by_name", body: "body", taskRef: "task_ref", createdAt: "created_at", ackBy: "ack_by", ackAt: "ack_at", toLead: "to_lead", byId: "by_uid" }, ts: ["createdAt", "ackAt"], nullText: ["week", "ackAt"] },
+  replies: { table: "feedback_replies", map: { feedbackId: "feedback_id", unit: "unit_id", kind: "kind", subject: "subject", body: "body", by: "by_name", role: "by_role", title: "by_title", byId: "by_uid", notified: "notified", toLead: "to_lead", createdAt: "created_at" }, ts: ["createdAt"] },
+  messages: { table: "messages", map: { fromId: "from_uid", from: "from_name", toId: "to_uid", to: "to_name", body: "body", linkKind: "link_kind", linkRef: "link_ref", linkUnit: "link_unit", linkWeek: "link_week", linkLabel: "link_label", createdAt: "created_at", readAt: "read_at" }, ts: ["createdAt", "readAt"], nullText: ["readAt", "linkWeek"] },
   actions: { table: "corrective_actions", map: { unit: "unit_id", week: "week", source: "source", issue: "issue", action: "action", owner: "owner", due: "due", status: "status", taskTitle: "task_title", taskRef: "task_ref", notes: "notes", createdBy: "created_by", createdAt: "created_at", updatedBy: "updated_by", updatedAt: "updated_at", closedAt: "closed_at" }, ts: ["createdAt", "updatedAt", "closedAt"], nullText: ["week", "due", "closedAt"] },
   history: { table: "row_history", map: { tbl: "tbl", rowId: "row_id", op: "op", old: "old_row", at: "changed_at", by: "changed_by" }, ts: ["at"] },
 };
@@ -103,6 +105,8 @@ function scopeRows(a, c, items) {
   // feedback and corrective actions: a chief / GM reads only their own unit's (plans stay readable by every chief)
   const own = (u) => ["super_admin", "executive"].includes(a.role) || (["leader", "planning", "manager"].includes(a.role) && a.unit === u);
   if (c === "feedback") return items.filter((x) => ["super_admin", "executive"].includes(a.role) || (x.toLead ? ["leader", "planning"].includes(a.role) && a.unit === x.unit : own(x.unit)));
+  if (c === "replies") return items.filter((x) => ["super_admin", "executive"].includes(a.role) || (x.toLead ? ["leader", "planning"].includes(a.role) && a.unit === x.unit : own(x.unit)));
+  if (c === "messages") return a.id ? items.filter((x) => x.fromId === a.id || x.toId === a.id) : [];
   if (c === "actions") return items.filter((x) => own(x.unit));
   if (c === "requests") return items.filter((x) => U(x.unit));
   if (c === "support") return items.filter((x) => U(x.function) || (!!x.requesterUnit && ["leader", "planning", "manager", "staff"].includes(a.role) && a.unit === x.requesterUnit));
@@ -121,7 +125,7 @@ function createSupabaseData() {
   let roleNow = "", viewProfile = null;   // employees read plans through a function that hides other departments; viewProfile is the role Group Strategy is viewing as
   const live = new Map();
   const bump = (table) => (live.get(table) || new Set()).forEach((f) => f());
-  const bumpAll = () => ["plans", "units", "activity", "change_requests", "row_history", "support_requests", "feedback", "corrective_actions"].forEach(bump);
+  const bumpAll = () => ["plans", "units", "activity", "change_requests", "row_history", "support_requests", "feedback", "corrective_actions", "feedback_replies", "messages"].forEach(bump);
 
   const fromRow = (cfg, row) => {
     const doc = {};
@@ -274,6 +278,11 @@ function createSupabaseData() {
     saveFeedback: (auth, row) => rpc("wbg_save_feedback", { p_auth: auth, p_row: row }),
     deleteFeedback: (auth, id) => rpc("wbg_delete_feedback", { p_auth: auth, p_id: id }),
     ackFeedback: (auth, id) => rpc("wbg_ack_feedback", { p_auth: auth, p_id: id }),
+    saveReply: (auth, row) => rpc("wbg_save_reply", { p_auth: auth, p_row: row }),
+    deleteReply: (auth, id) => rpc("wbg_delete_reply", { p_auth: auth, p_id: id }),
+    messagePeople: () => rpcq("wbg_message_people"),
+    sendMessage: (auth, row) => rpc("wbg_send_message", { p_auth: auth, p_row: row }),
+    readMessages: (auth, withId) => rpc("wbg_read_messages", { p_auth: auth, p_with: withId }),
     saveAction: (auth, row) => rpc("wbg_save_action", { p_auth: auth, p_row: row }),
     deleteAction: (auth, id) => rpc("wbg_delete_action", { p_auth: auth, p_id: id }),
     async uploadEvidence(file, path) {
@@ -302,9 +311,9 @@ function createSupabaseData() {
 // Local mode: everything lives in this browser. Same rules as the database, for trying the app on localhost.
 // ---------------------------------------------------------------------------
 function createLocalData() {
-  const KEYS = { units: "wbg_local_units", plans: "wbg_local_plans", activity: "wbg_local_activity", requests: "wbg_local_requests", history: "wbg_local_history", support: "wbg_local_support", feedback: "wbg_local_feedback", actions: "wbg_local_actions" };
+  const KEYS = { units: "wbg_local_units", plans: "wbg_local_plans", activity: "wbg_local_activity", requests: "wbg_local_requests", history: "wbg_local_history", support: "wbg_local_support", feedback: "wbg_local_feedback", actions: "wbg_local_actions", replies: "wbg_local_replies", messages: "wbg_local_messages" };
   const DOMAINS = ["wagwagoelectric.com", "geezinstitute.com", "wanzalogistics.com", "niyatconsultancy.com", "niyatconsultnacy.com", "trucksload.net"];
-  const SEEDS = { units: SEED_UNITS, plans: SEED_PLANS, activity: SEED_ACTIVITY, requests: [], history: [], support: SEED_SUPPORT, feedback: [], actions: [] };
+  const SEEDS = { units: SEED_UNITS, plans: SEED_PLANS, activity: SEED_ACTIVITY, requests: [], history: [], support: SEED_SUPPORT, feedback: [], actions: [], replies: [], messages: [] };
   const listeners = new Map();
   const getStore = (c) => {
     try {
@@ -389,7 +398,7 @@ function createLocalData() {
   const prof = () => people().find((x) => x.id === curId()) || null;
   // the caller as the database sees them
   const viewOver = (p) => { try { const v = JSON.parse(sessionStorage.getItem(VIEWAS_KEY) || "null"); return v && p.role === "super_admin" && p.email === "surafel.h@wagwagoelectric.com" ? v : null; } catch (e) { return null; } };
-  const A = () => { const p = prof(); if (!(p && p.status === "active" && p.setupDone)) return {}; const v = viewOver(p); return { id: p.id, name: p.name, role: v ? v.role : p.role, title: p.title, unit: v ? v.unit || "" : p.unit, departments: v ? v.departments || [] : p.departments || [] }; };
+  const A = () => { const p = prof(); if (!(p && p.status === "active" && p.setupDone)) return {}; const v = viewOver(p); return { id: p.id, name: p.name, role: baseRole(v ? v.role : p.role), title: p.title, unit: v ? v.unit || "" : p.unit, departments: v ? v.departments || [] : p.departments || [] }; };
   const meOut = (p) => (p ? { status: p.status, setupDone: p.setupDone, invited: p.invited, id: p.id, email: p.email, name: p.name, role: p.role, title: p.title, unit: p.unit, departments: p.departments || [], phone: p.phone || "", jobTitle: p.jobTitle || "" } : null);
   // what each collection shows this person (same as the row level security policies)
   function readFilter(c, items) { return scopeRows(A(), c, items); }
@@ -539,7 +548,7 @@ function createLocalData() {
       const from = auth.role === "executive" ? auth.title : (row.from || "Group Strategy");
       if (!row.unit || !(row.body || "").trim() || !["CEO", "DCEO", "Group Strategy"].includes(from)) return err("bad_request");
       const old = row.id ? getStore("feedback").find((x) => x.id === row.id) : null;
-      put("feedback", { ackBy: "", ackAt: "", ...(old || {}), id: old ? old.id : (row.id || Date.now().toString(36) + Math.random().toString(36).slice(2, 8)), unit: row.unit, week: row.week || "", taskRef: row.taskRef || (old && old.taskRef) || "", from, body: row.body, toLead: row.toLead !== undefined ? !!row.toLead : !!(old && old.toLead), by: old ? old.by : (auth.name || "").trim(), createdAt: old ? old.createdAt : new Date().toISOString() });
+      put("feedback", { ackBy: "", ackAt: "", ...(old || {}), id: old ? old.id : (row.id || Date.now().toString(36) + Math.random().toString(36).slice(2, 8)), unit: row.unit, week: row.week || "", taskRef: row.taskRef || (old && old.taskRef) || "", from, body: row.body, toLead: row.toLead !== undefined ? !!row.toLead : !!(old && old.toLead), by: old ? old.by : (auth.name || "").trim(), byId: old ? old.byId : auth.id, createdAt: old ? old.createdAt : new Date().toISOString() });
       addActivity(auth.name, row.unit, row.week || "", { action: "feedback", summary: (row.toLead ? "Letter from " : "Feedback from ") + from });
       return ok();
     },
@@ -549,6 +558,36 @@ function createLocalData() {
       if (!isAppr(auth) && !leadOk(auth, f.unit)) return err("not_allowed");
       put("feedback", { ...f, ackBy: (auth.name || "").trim(), ackAt: new Date().toISOString() }); return ok();
     },
+    saveReply(auth, row) {
+      const f = getStore("feedback").find((x) => x.id === row.feedbackId); if (!f) return err("not_found");
+      const role = auth.role;
+      if (!["super_admin", "executive", "leader", "planning"].includes(role) || (["leader", "planning"].includes(role) && auth.unit !== f.unit)) return err("not_allowed");
+      const body = (row.body || "").trim(), kind = row.kind === "letter" ? "letter" : "reply", subject = (row.subject || "").trim();
+      if (!body || body.length > 8000 || subject.length > 300) return err("bad_request");
+      const name = (auth.name || "").trim(), now = new Date().toISOString(), id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+      if (["leader", "planning"].includes(role) && !f.ackAt) put("feedback", { ...f, ackBy: name, ackAt: now });
+      const label = (subject || (f.body || "").split("\n")[0]).slice(0, 80), notified = [];
+      const msg = (to, text) => put("messages", { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8) + to.id.slice(0, 3), fromId: auth.id, from: name, toId: to.id, to: to.name, body: text, linkKind: "feedback", linkRef: f.id, linkUnit: f.unit, linkWeek: "", linkLabel: label, createdAt: now, readAt: "" });
+      if (["planning", "super_admin", "executive"].includes(role)) people().filter((p) => p.status === "active" && p.setupDone && baseRole(p.role) === "leader" && p.unit === f.unit && p.id !== auth.id).forEach((p) => { msg(p, role === "planning" ? "I replied to the feedback below for your unit. Please read it." : "I answered the feedback below for your unit. Please read it."); notified.push(p.name); });
+      if (["leader", "planning"].includes(role) && f.byId && f.byId !== auth.id) { const t = people().find((p) => p.id === f.byId); if (t) msg(t, "I replied to your feedback."); }
+      put("replies", { id, feedbackId: f.id, unit: f.unit, kind, subject, body, by: name, role, title: auth.title || "", byId: auth.id, notified: notified.join(", "), toLead: !!f.toLead, createdAt: now });
+      addActivity(name, f.unit, "", { action: "feedback", summary: (kind === "letter" ? "Letter in reply from " : "Reply from ") + (auth.title || role) });
+      return ok({ id, notified: notified.join(", ") });
+    },
+    deleteReply(auth, id) { const r = getStore("replies").find((x) => x.id === id); if (!r) return err("not_found"); if (!(isAppr(auth) || r.byId === auth.id)) return err("not_allowed"); del("replies", id); return ok(); },
+    async messagePeople(auth) {
+      if (!auth.id) return err("not_signed_in");
+      return ok({ people: people().filter((p) => p.status === "active" && p.setupDone && p.name && p.id !== auth.id && (["super_admin", "executive"].includes(auth.role) || p.unit === auth.unit || ["super_admin", "executive"].includes(p.role))).map((p) => ({ id: p.id, name: p.name, role: p.role, title: p.title, unit: p.unit })) });
+    },
+    async sendMessage(auth, row) {
+      const body = (row.body || "").trim(); if (!auth.id || !body || body.length > 4000 || row.to === auth.id) return err("bad_request");
+      const t = people().find((p) => p.id === row.to && p.status === "active" && p.setupDone); if (!t) return err("not_found");
+      if (!(["super_admin", "executive"].includes(auth.role) || ["super_admin", "executive"].includes(t.role) || t.unit === auth.unit)) return err("not_allowed");
+      const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+      put("messages", { id, fromId: auth.id, from: (auth.name || "").trim(), toId: t.id, to: t.name, body, linkKind: ["feedback", "task"].includes(row.linkKind) ? row.linkKind : "", linkRef: row.linkRef || "", linkUnit: row.linkUnit || "", linkWeek: row.linkWeek || "", linkLabel: (row.linkLabel || "").slice(0, 200), createdAt: new Date().toISOString(), readAt: "" });
+      return ok({ id });
+    },
+    async readMessages(auth, withId) { const l = getStore("messages"); let ch = false; l.forEach((m) => { if (m.toId === auth.id && m.fromId === withId && !m.readAt) { m.readAt = new Date().toISOString(); ch = true; } }); if (ch) setStore("messages", l); return ok(); },
     saveAction(auth, row) {
       const unit = row.unit || ""; if (!unit) return err("bad_request");
       const appr = isAppr(auth); if (!appr && !leadOk(auth, unit)) return err("not_allowed");

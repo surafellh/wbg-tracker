@@ -984,3 +984,22 @@ table.fsum th,table.fsum td{text-align:center}table.fsum th:first-child,table.fs
 
 /* keep the Help button off the Save plan bar at the foot of a plan */
 body:has(.save-bar:not([hidden])) .help-fab{bottom:calc(84px + env(safe-area-inset-bottom,0px))}
+
+.fb-thread{margin-top:10px;border-top:1px solid var(--line);padding-top:8px;display:grid;gap:8px}
+.fb-reply{border-left:3px solid var(--line);padding:4px 0 4px 10px}
+.fb-reply.letter{border-left-color:var(--accent);background:var(--surface-2,transparent);padding:8px 10px;border-radius:0 8px 8px 0}
+.fb-subj{font-weight:600;margin:4px 0}
+.fb-card.focus{box-shadow:0 0 0 2px var(--accent)}
+
+.dm-menu{width:min(380px,calc(100vw - 16px))}
+.dm-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line)}
+.dm-pad{padding:10px 12px}
+.dm-pad textarea,.dm-pad select{width:100%;box-sizing:border-box}
+.dm-thread{display:grid;gap:8px;padding:10px 12px;max-height:42vh;overflow:auto}
+.dm-msg{display:grid;gap:2px;max-width:88%}
+.dm-msg.mine{justify-self:end;text-align:right}
+.dm-b{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--hero-tint,rgba(127,127,127,.12));border-radius:10px;padding:7px 10px;text-align:left}
+.dm-msg.mine .dm-b{background:var(--accent);color:#fff}
+.dm-msg.mine .dm-b .btn{color:inherit}
+.dm-link{margin-top:6px}
+.dm-row{display:block;width:100%;text-align:left}

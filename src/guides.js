@@ -10,7 +10,7 @@
 // Run  npm run check-help  after changing the app or this file: it lists guide wording that no longer matches the app.
 // "pages" uses the app's tab ids: dashboard, update, plan, mplan, approvals, support, fb, tasks, monthly, ceo, follow, activity, units, people.
 // Keep sentences short and name the buttons exactly as they appear on screen.
-export const GUIDES_VERSION = "2026-10-23.2";
+export const GUIDES_VERSION = "2026-10-23.7";
 
 export const GROUPS = [
   { id: "start", title: "Getting started", icon: "🚀", blurb: "Signing in, weeks, roles and finding your way around" },
@@ -146,6 +146,18 @@ export const GUIDES = [
     ],
     why: ["Your access changes on your next action after the approval. If a page still looks the same, refresh the page."],
     
+  },
+  {
+    id: "messages", g: "start", pages: ["*"], title: "Messages: write to a colleague",
+    kw: "message messages chat write send colleague direct link task feedback unread icon speech bubble",
+    intro: "The speech bubble beside the bell is for messages between two people. A number on it shows messages you have not read.",
+    steps: [
+      "Press the speech bubble, then **New message**, choose the person and write your message.",
+      "You can write to people in your own unit, and to Group Strategy, the CEO and the DCEO. Group Strategy, the CEO and the DCEO can write to anyone.",
+      "To talk about a task, open the task and press **Message**. To talk about feedback, press **Message about this** on it. The message carries a link that opens it.",
+      "Open a conversation to read it. Messages you open are marked as read.",
+    ],
+    why: ["Only the sender and the receiver can read a message. The bell is for approvals, mentions and notices; messages are separate."],
   },
   {
     id: "bell", g: "start", pages: ["*"], title: "The bell: messages, mentions and approvals waiting for you",
@@ -818,6 +830,8 @@ export const GUIDES = [
       "**Receiving feedback:** units see a blue banner on their page. Open it and press **Acknowledge** so the sender knows it was read.",
       "**Corrective actions:** the unit head presses **+ Log a corrective action** and writes the issue, the action, the owner and the due date.",
       "Update the action's status (Open, In progress, Done, Closed) as work proceeds. Overdue open actions are marked.",
+      "**Answering feedback** (chief or GM, planning head, Group Strategy, CEO, DCEO): press **Reply** for a short answer, or **Reply with a letter** for a formal one with a subject. The answer shows under the feedback for everyone who can read it. A reply from the unit also counts as acknowledging it.",
+      "When the planning head replies, the unit's chief or GM gets a message about it. The person who wrote the feedback gets a message when the unit replies.",
     ],
     why: [
       "Feedback tied to a task appears inside that task, so the reason and the fix stay with the work.",

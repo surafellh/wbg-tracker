@@ -13,7 +13,7 @@ const dayDiff = (a, b) => Math.round((Date.parse(b + "T00:00:00Z") - Date.parse(
 
 export function createExtras(c) {
   const { state, esc, fmt } = c;
-  state.support = []; state.fbs = []; state.acts = []; state.xm = null;
+  state.support = []; state.fbs = []; state.reps = []; state.acts = []; state.xm = null;
   state.sup = { fn: "", req: "", status: "active", cat: "", q: "", from: "", to: "", show: 15, init: false };
   state.fbv = { view: "feedback", unit: "", from: "", ack: "", astatus: "active", asrc: "", aq: "", ashow: 15, init: false };
   state.sort.sup = { k: "requested", dir: -1 };
@@ -36,7 +36,7 @@ export function createExtras(c) {
   function subscribe() {
     if (!c.db() || subs.length) return;
     const on = (col, key, order) => c.db().collection(col).orderBy(order, "desc").limit(1000).onSnapshot((snap) => { state[key] = snap.docs.map((d) => ({ id: d.id, ...d.data() })); c.render(); }, () => { state[key] = []; });
-    subs = [on("support", "support", "createdAt"), on("feedback", "fbs", "createdAt"), on("actions", "acts", "createdAt")];
+    subs = [on("support", "support", "createdAt"), on("feedback", "fbs", "createdAt"), on("replies", "reps", "createdAt"), on("actions", "acts", "createdAt")];
   }
 
   // ---------------- badge + banner ----------------
@@ -128,6 +128,16 @@ export function createExtras(c) {
   }
 
   // ---------------- Feedback & corrective actions ----------------
+  // Who may answer: the chief / GM and the planning head of that unit, and Group Strategy, the CEO and the DCEO
+  const canReply = (x) => { const a = A(); return !!a && (["super_admin", "executive"].includes(a.role) || (["leader", "planning"].includes(a.role) && a.unit === x.unit)); };
+  const repsOf = (id) => state.reps.filter((r) => r.feedbackId === id).sort((a, b) => ((a.createdAt || "") < (b.createdAt || "") ? -1 : 1));
+  function replyHtml(r) {
+    const who = `${esc(r.by)}${r.title ? " · " + esc(r.title) : r.role === "leader" ? " · Chief / GM" : r.role === "planning" ? " · Planning head" : ""}`;
+    const del = (c.isAppr() || (r.byId && r.byId === A().id)) ? ` <button class="btn small ghost" data-x="rep-del" data-id="${esc(r.id)}">Delete</button>` : "";
+    return `<div class="fb-reply${r.kind === "letter" ? " letter" : ""}"><div class="small muted"><b>${who}</b> · ${esc(fmt((r.createdAt || "").slice(0, 10)))}${r.kind === "letter" ? ' · <span class="pill s-prog">Letter</span>' : ""}</div>
+      ${r.kind === "letter" ? `<div class="fb-subj">${esc(r.subject || "Letter")}</div>` : ""}<div class="fb-body">${esc(r.body)}</div>
+      ${r.notified ? `<div class="small muted" style="margin-top:4px">Sent to ${esc(r.notified)} as a message.</div>` : ""}${del ? `<div class="fb-foot small">${del}</div>` : ""}</div>`;
+  }
   function renderFb() {
     const f = state.fbv;
     if (!f.init) { f.init = true; const mu = c.myUnit(); if (mu) f.unit = mu; }
@@ -138,12 +148,15 @@ export function createExtras(c) {
     const unitSel = (attr, val) => `<select data-xf="${attr}" aria-label="Unit"><option value="">All units</option>${c.sortedUnits().map((u) => `<option value="${esc(u.id)}" ${val === u.id ? "selected" : ""}>${esc(u.name)}</option>`).join("")}</select>`;
     if (f.view === "feedback") {
       const list = state.fbs.filter((x) => (!f.unit || x.unit === f.unit) && (!f.from || x.from === f.from) && (!f.ack || (f.ack === "new" ? !x.ackAt : !!x.ackAt)));
-      const cards = list.slice(0, f.ashow).map((x) => `<div class="fb-card${x.ackAt ? "" : " new"}">
+      if (f.focus) list.sort((a, b) => (a.id === f.focus ? -1 : b.id === f.focus ? 1 : 0));
+      const cards = list.slice(0, f.ashow).map((x) => `<div class="fb-card${x.ackAt ? "" : " new"}${f.focus === x.id ? " focus" : ""}" id="fb-${esc(x.id)}">
         <div class="fb-top"><span class="pill ${x.from === "CEO" ? "s-bad" : x.from === "DCEO" ? "s-prog" : "s-done"}">${esc(x.from)}</span> <b>${esc(c.unitName(x.unit))}</b>${x.toLead ? ' <span class="pill s-prog" title="Only the head of the unit, Group Strategy, the CEO and the DCEO can read this letter">Letter to the head of the unit</span>' : ""}
           <span class="small muted">${x.week ? esc(c.weekLabel(x.week)) + " · " : ""}${esc(fmt((x.createdAt || "").slice(0, 10)))}${x.by ? " · " + esc(x.by) : ""}</span></div>
         ${x.taskRef ? `<div class="small"><span class="ref">${esc(x.taskRef)}</span></div>` : ""}<div class="fb-body">${esc(x.body)}</div>
         <div class="fb-foot small">${x.ackAt ? `<span class="muted">Acknowledged by ${esc(x.ackBy)} on ${esc(fmt(x.ackAt.slice(0, 10)))}</span>` : (c.canLead(x.unit) && !(x.toLead && c.myRole && c.myRole() === "planning") ? `<button class="btn small" data-x="fb-ack" data-id="${esc(x.id)}">Acknowledge</button> <button class="btn small ghost" data-x="act-from-fb" data-unit="${esc(x.unit)}" data-id="${esc(x.id)}">Log a corrective action</button>` : '<span class="muted">Not yet acknowledged</span>')}
-          ${c.canFeedback() ? `<button class="btn small ghost" data-x="fb-edit" data-id="${esc(x.id)}">Edit</button>` : ""}</div></div>`).join("");
+          <button class="btn small ghost" data-x="fb-msg" data-id="${esc(x.id)}" data-dm-compose="1">Message about this</button> ${canReply(x) ? `<button class="btn small" data-x="rep-new" data-id="${esc(x.id)}" data-k="reply">Reply</button> <button class="btn small ghost" data-x="rep-new" data-id="${esc(x.id)}" data-k="letter">Reply with a letter</button>` : ""}
+          ${c.canFeedback() ? `<button class="btn small ghost" data-x="fb-edit" data-id="${esc(x.id)}">Edit</button>` : ""}</div>
+        ${repsOf(x.id).length ? `<div class="fb-thread">${repsOf(x.id).map(replyHtml).join("")}</div>` : ""}</div>`).join("");
       return `<div class="panel">${head}
         <div class="toolbar" style="padding:10px 16px 12px;border-bottom:1px solid var(--line)">${unitSel("fbunit", f.unit)}
           <select data-xf="fbfrom" aria-label="From"><option value="">From: anyone</option>${FROM.map((x) => `<option ${f.from === x ? "selected" : ""}>${x}</option>`).join("")}</select>
@@ -186,7 +199,7 @@ export function createExtras(c) {
   function drawModal() {
     const root = document.getElementById("xModalRoot"); if (!root) return;
     const m = state.xm; if (!m) { root.innerHTML = ""; return; }
-    root.innerHTML = `<div class="overlay"><div class="modal wide xmodal" role="dialog" aria-modal="true">${m.type === "support" ? supModal(m) : m.type === "feedback" ? fbModal(m) : actModal(m)}</div></div>`;
+    root.innerHTML = `<div class="overlay"><div class="modal wide xmodal" role="dialog" aria-modal="true">${m.type === "support" ? supModal(m) : m.type === "feedback" ? fbModal(m) : m.type === "reply" ? repModal(m) : actModal(m)}</div></div>`;
     const first = root.querySelector("textarea, input[type=text], select"); if (first && m.isNew) first.focus();
   }
   function supModal(m) {
@@ -222,6 +235,18 @@ export function createExtras(c) {
         ${field("fb-body", "Feedback", `<textarea id="fb-body" rows="5" placeholder="What was observed, and what is expected">${esc(r.body)}</textarea>`, true)}
       </div>
       <div class="save-bar"><div class="toolbar">${!m.isNew ? `<button class="btn danger" data-x="fb-del">${m.confirmDel ? "Click again to delete" : "Delete"}</button>` : ""}</div><div class="toolbar"><button class="btn" data-x="close">Cancel</button><button class="btn primary" data-x="fb-save">Save</button></div></div>`;
+  }
+  function repModal(m) {
+    const f = state.fbs.find((y) => y.id === m.feedbackId) || {}, a = A(), letter = m.kind === "letter";
+    const note = a.role === "planning" ? "Your reply is also sent as a message to the chief or GM of the unit." : ["super_admin", "executive"].includes(a.role) ? "The chief or GM of the unit gets a message that you answered." : "The planning head and Group Strategy can read this. The person who wrote the feedback gets a message.";
+    return `<div class="panel-head"><div><h2>${letter ? "Reply with a letter" : "Reply"}</h2><div class="small muted">To the feedback on ${esc(c.unitName(f.unit))} from ${esc(f.from || "")}${f.by ? " (" + esc(f.by) + ")" : ""}</div></div></div>
+      <div class="xgrid">
+        <div class="field wide"><div class="fb-body small muted" style="max-height:90px;overflow:auto">${esc(f.body || "")}</div></div>
+        ${letter ? field("rp-subj", "Subject", `<input type="text" id="rp-subj" maxlength="300" placeholder="For example: Response to the feedback on the October plan">`, true) : ""}
+        ${field("rp-body", letter ? "Letter" : "Your reply", `<textarea id="rp-body" rows="${letter ? 9 : 5}" placeholder="${letter ? "Dear …" : "What has been done or will be done"}"></textarea>`, true)}
+      </div>
+      <div class="small muted" style="padding:0 16px 8px">${note}</div>
+      <div class="save-bar"><div class="toolbar"></div><div class="toolbar"><button class="btn" data-x="close">Cancel</button><button class="btn primary" data-x="rep-save">${letter ? "Send letter" : "Send reply"}</button></div></div>`;
   }
   function actModal(m) {
     const r = m.row, appr = c.isAppr(), ed = m.canEdit, d = ed ? "" : "disabled";
@@ -277,6 +302,15 @@ export function createExtras(c) {
       const res = await c.api().saveFeedback(A(), row); if (ok(res, "Feedback saved")) { g.unit = row.unit; closeModal(); }
     }
     else if (x === "fb-del") { const m = state.xm; if (!m.confirmDel) { m.confirmDel = true; drawModal(); return; } const res = await c.api().deleteFeedback(A(), m.row.id); if (ok(res, "Feedback deleted")) closeModal(); }
+    else if (x === "fb-msg") { const r = state.fbs.find((y) => y.id === id); if (r) c.messageAbout({ linkKind: "feedback", linkRef: r.id, linkUnit: r.unit, linkLabel: "Feedback on " + c.unitName(r.unit) + " · " + String(r.body || "").split("\n")[0].slice(0, 60) }); }
+    else if (x === "rep-new") { state.xm = { type: "reply", isNew: true, feedbackId: id, kind: el.dataset.k === "letter" ? "letter" : "reply" }; drawModal(); }
+    else if (x === "rep-save") {
+      const m = state.xm, row = { feedbackId: m.feedbackId, kind: m.kind, subject: v("rp-subj").trim(), body: v("rp-body").trim() };
+      if (!row.body) { c.toast(m.kind === "letter" ? "Write the letter first" : "Write your reply first"); return; }
+      if (m.kind === "letter" && !row.subject) { c.toast("Add a subject to the letter"); return; }
+      const res = await c.api().saveReply(A(), row); if (ok(res, res && res.notified ? "Sent. " + res.notified + " notified" : "Sent")) closeModal();
+    }
+    else if (x === "rep-del") { const res = await c.api().deleteReply(A(), id); ok(res, "Reply deleted"); }
     else if (x === "fb-ack") { const res = await c.api().ackFeedback(A(), id); ok(res, "Acknowledged"); }
     else if (x === "act-from-fb") { const fb = state.fbs.find((y) => y.id === id) || {}; g.view = "actions"; state.xm = { type: "action", isNew: true, canEdit: true, row: { unit: el.dataset.unit, source: fb.from || "Self", issue: fb.body || "", action: "", owner: "", due: "", status: "Open", taskTitle: "", notes: "", week: fb.week || "" } }; c.render(); drawModal(); }
     else if (x === "act-new") { const u = g.unit || c.myUnit() || (c.sortedUnits()[0] || {}).id || ""; state.xm = { type: "action", isNew: true, canEdit: true, row: { unit: u, source: c.isAppr() ? "Group Strategy" : "Self", issue: "", action: "", owner: "", due: "", status: "Open", taskTitle: "", notes: "", week: "" } }; drawModal(); }
@@ -313,5 +347,9 @@ export function createExtras(c) {
   const openAction = (unit, ref, title) => { state.xm = { type: "action", isNew: true, canEdit: true, row: { unit, source: c.isAppr() ? "Group Strategy" : "Self", issue: "", action: "", owner: "", due: "", status: "Open", taskTitle: title || "", taskRef: ref, notes: "", week: "" } }; drawModal(); };
   const openExisting = (kind, id) => { if (kind === "fb") { const r = state.fbs.find((y) => y.id === id); if (r) { state.xm = { type: "feedback", isNew: false, row: { ...r } }; drawModal(); } } else { const r = state.acts.find((y) => y.id === id); if (r) { state.xm = { type: "action", isNew: false, canEdit: c.canLead(r.unit), row: { ...r } }; drawModal(); } } };
   const ackFb = async (id) => { const res = await c.api().ackFeedback(A(), id); ok(res, "Acknowledged"); };
-  return { renderSupport, renderFb, subscribe, badgeCount, banner, forTask, openFeedback, openAction, openExisting, ackFb };
+  // used by messages: open the feedback page on one feedback
+  const showFeedback = (id) => { const f = state.fbs.find((y) => y.id === id); g_open(f); };
+  function g_open(f) { const g = state.fbv; g.init = true; g.view = "feedback"; g.unit = f ? f.unit : g.unit; g.from = ""; g.ack = ""; g.ashow = 15; g.focus = f ? f.id : ""; c.goTab("fb"); setTimeout(() => { const e = f && document.getElementById("fb-" + f.id); if (e && e.scrollIntoView) e.scrollIntoView({ block: "center" }); }, 150); }
+  const hasFeedback = (id) => state.fbs.some((y) => y.id === id);
+  return { showFeedback, hasFeedback, renderSupport, renderFb, subscribe, badgeCount, banner, forTask, openFeedback, openAction, openExisting, ackFb };
 }
