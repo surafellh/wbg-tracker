@@ -159,6 +159,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     view_only: "View as is read-only on the live app. Try your edits on the test app.",
     view_only_role: "Your role is view-only. Use \"Ask for an update\" to send what should change to your department head.",
     not_allowed: "You can't save changes to this unit with your current sign-in. Sign out and sign in again, then retry. If it keeps happening, ask Group Strategy to check your role and unit.",
+    locked: "This request has been taken up by the function, so it can no longer be changed here. Ask the function to update it.",
     not_allowed_dept: "One of these tasks is in a department that is not yours (or has no department). Pick one of your own departments for the task, or remove it, then save again.",
     bad_request: "This plan could not be read. Reload the page and try again.",
     conflict: "Someone saved this plan a moment ago. Their version is now loaded underneath yours: press Save again to add your changes.",

@@ -22,7 +22,7 @@ const COLLECTIONS = {
   plans: { table: "plans", map: { week: "week", unit: "unit_id", tasks: "tasks", wins: "wins", blockers: "blockers", asks: "asks", updatedAt: "updated_at", updatedBy: "updated_by", source: "source" }, ts: ["updatedAt"] },
   activity: { table: "activity", map: { ts: "ts", by: "by_name", unit: "unit_id", week: "week", action: "action", summary: "summary", details: "details", role: "by_role" }, ts: ["ts"], nullText: ["week"] },
   requests: { table: "change_requests", map: { createdAt: "created_at", unit: "unit_id", week: "week", planId: "plan_id", by: "requested_by", status: "status", summary: "summary", details: "details", patch: "patch", decidedBy: "decided_by", decidedAt: "decided_at", note: "decision_note", dept: "dept", kind: "req_kind", stage: "stage" }, ts: ["createdAt", "decidedAt"] },
-  support: { table: "support_requests", map: { ref: "ref", function: "function_id", requester: "requester", category: "category", description: "description", priority: "priority", requested: "date_requested", status: "status", responded: "response_date", action: "action_taken", respondedBy: "responded_by", evidence: "evidence_ref", followUp: "follow_up", remarks: "remarks", createdBy: "created_by", createdAt: "created_at", updatedBy: "updated_by", updatedAt: "updated_at" }, ts: ["createdAt", "updatedAt"], nullText: ["requested", "responded"] },
+  support: { table: "support_requests", map: { ref: "ref", function: "function_id", requester: "requester", requesterUnit: "requester_unit", category: "category", description: "description", priority: "priority", requested: "date_requested", status: "status", responded: "response_date", action: "action_taken", respondedBy: "responded_by", evidence: "evidence_ref", followUp: "follow_up", remarks: "remarks", createdBy: "created_by", createdAt: "created_at", updatedBy: "updated_by", updatedAt: "updated_at" }, ts: ["createdAt", "updatedAt"], nullText: ["requested", "responded"] },
   feedback: { table: "feedback", map: { unit: "unit_id", week: "week", from: "from_role", by: "by_name", body: "body", taskRef: "task_ref", createdAt: "created_at", ackBy: "ack_by", ackAt: "ack_at", toLead: "to_lead" }, ts: ["createdAt", "ackAt"], nullText: ["week", "ackAt"] },
   actions: { table: "corrective_actions", map: { unit: "unit_id", week: "week", source: "source", issue: "issue", action: "action", owner: "owner", due: "due", status: "status", taskTitle: "task_title", taskRef: "task_ref", notes: "notes", createdBy: "created_by", createdAt: "created_at", updatedBy: "updated_by", updatedAt: "updated_at", closedAt: "closed_at" }, ts: ["createdAt", "updatedAt", "closedAt"], nullText: ["week", "due", "closedAt"] },
   history: { table: "row_history", map: { tbl: "tbl", rowId: "row_id", op: "op", old: "old_row", at: "changed_at", by: "changed_by" }, ts: ["at"] },
@@ -105,7 +105,7 @@ function scopeRows(a, c, items) {
   if (c === "feedback") return items.filter((x) => ["super_admin", "executive"].includes(a.role) || (x.toLead ? ["leader", "planning"].includes(a.role) && a.unit === x.unit : own(x.unit)));
   if (c === "actions") return items.filter((x) => own(x.unit));
   if (c === "requests") return items.filter((x) => U(x.unit));
-  if (c === "support") return items.filter((x) => U(x.function));
+  if (c === "support") return items.filter((x) => U(x.function) || (!!x.requesterUnit && ["leader", "planning", "manager", "staff"].includes(a.role) && a.unit === x.requesterUnit));
   if (c === "history") return items.filter((x) => U(x.tbl === "plans" ? x.old.unit_id : x.rowId));
   return items;
 }
@@ -509,11 +509,18 @@ function createLocalData() {
     },
     saveSupport(auth, row) {
       const fn = row.function || ""; if (!fn) return err("bad_request");
-      if (!isAppr(auth) && !leadOk(auth, fn)) return err("not_allowed");
       const items = getStore("support"), old = row.id ? items.find((x) => x.id === row.id) : null, name = (auth.name || "").trim(), now = new Date().toISOString();
-      if (old && old.function !== fn && !isAppr(auth)) return err("not_allowed");
+      const member = ["leader", "planning", "manager", "staff"].includes(auth.role) && !!auth.unit;
+      const priv = isAppr(auth) || leadOk(auth, old ? old.function : fn);
+      if (!old && !priv && !member) return err("not_allowed");
+      if (old) {
+        if (old.function !== fn && !isAppr(auth)) return err("not_allowed");
+        if (!priv) { if (!(member && old.requesterUnit && old.requesterUnit === auth.unit)) return err("not_allowed"); if (old.status !== "Open") return err("locked"); }
+      }
       const n = items.reduce((m, x) => Math.max(m, parseInt(String(x.ref || "").replace(/\D/g, ""), 10) || 0), 0) + 1;
-      const rec = { requester: "", category: "", description: "", priority: "Normal", requested: "", status: "Open", responded: "", action: "", respondedBy: "", evidence: "", followUp: false, remarks: "", ...(old || {}), ...row, function: fn,
+      const ru = priv ? (row.requesterUnit || (old && old.requesterUnit) || "") : auth.unit;
+      const keep = priv ? {} : { status: old ? old.status : "Open", responded: old ? old.responded : "", action: old ? old.action : "", respondedBy: old ? old.respondedBy : "", evidence: old ? old.evidence : "", followUp: old ? old.followUp : false };
+      const rec = { requester: "", category: "", description: "", priority: "Normal", requested: "", status: "Open", responded: "", action: "", respondedBy: "", evidence: "", followUp: false, remarks: "", ...(old || {}), ...row, ...keep, function: fn, requesterUnit: ru,
         id: old ? old.id : (row.id || Date.now().toString(36) + Math.random().toString(36).slice(2, 8)), ref: old ? old.ref : (row.ref || "SR-" + String(n).padStart(4, "0")),
         createdBy: old ? old.createdBy : name, createdAt: old ? old.createdAt : now, updatedBy: name, updatedAt: now };
       put("support", rec);

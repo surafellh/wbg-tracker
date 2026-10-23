@@ -10,7 +10,7 @@
 // Run  npm run check-help  after changing the app or this file: it lists guide wording that no longer matches the app.
 // "pages" uses the app's tab ids: dashboard, update, plan, mplan, approvals, support, fb, tasks, monthly, ceo, follow, activity, units, people.
 // Keep sentences short and name the buttons exactly as they appear on screen.
-export const GUIDES_VERSION = "2026-10-20.2";
+export const GUIDES_VERSION = "2026-10-23.1";
 
 export const GROUPS = [
   { id: "start", title: "Getting started", icon: "🚀", blurb: "Signing in, weeks, roles and finding your way around" },
@@ -797,15 +797,15 @@ export const GUIDES = [
     kw: "business support request log function respond status open in progress on hold responded closed turnaround follow up category filter excel pdf",
     intro: "This page records what business units ask from corporate functions (HR, Finance, IT...) and how each request was answered.",
     steps: [
-      "Press **+ Log a request**.",
-      "Choose the function, who requested, the category and priority, and write the request.",
+      "Press **+ Log a request**. Every business unit and function can do this, not only Group Strategy: choose the function you are asking, the category and priority, and write the request. Your unit is recorded as the requester.",
+      "You see your own unit's requests and can still change them while the status is **Open**. Once the function takes it up, only the function can change it.",
       "The function opens the request, writes what was done in **Response / action taken**, and sets the status: **Open → In progress → On hold → Responded → Closed**.",
       "Use the status buttons, function, category and date filters to find requests. **Excel** and **PDF** download the filtered list.",
     ],
     why: [
       "**Turnaround** shows days from request to response. Requests still open show how long they have been waiting, highlighted red if stale.",
       "**Follow-up = Yes** means someone needs to check later.",
-      "Only the function concerned (and Group Strategy) can answer; everyone else can view.",
+      "Only the function concerned (and Group Strategy) can answer. The unit that asked can edit its request until it is taken up.",
     ],
     go: [["Business support", "support"]],
   },

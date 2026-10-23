@@ -61,6 +61,9 @@ export function createExtras(c) {
       && (!f.from || (r.requested && r.requested >= f.from)) && (!f.to || (r.requested && r.requested <= f.to))
       && (!q || `${r.ref} ${r.requester} ${r.description} ${r.action} ${r.respondedBy} ${r.remarks} ${r.category}`.toLowerCase().includes(q)));
   }
+  const isMember = () => { const a = c.auth(); return !!a && ["leader", "planning", "manager", "staff"].includes(a.role) && !!a.unit; };
+  const canRespond = (fn) => c.isAppr() || c.canLead(fn);
+  const canEditReq = (r) => canRespond(r.function) || (isMember() && !!r.requesterUnit && r.requesterUnit === c.myUnit() && r.status === "Open");
   function renderSupport() {
     const f = state.sup;
     if (!f.init) { f.init = true; const mu = c.myUnit(); if (mu && fnUnits().some((u) => u.id === mu)) f.fn = mu; }
@@ -69,7 +72,7 @@ export function createExtras(c) {
     const reqs = [...new Set(pool.map((r) => r.requester).filter(Boolean))].sort();
     const cnt = (s) => pool.filter((r) => r.status === s).length;
     const list = supFiltered(), order = c.sortOrder(list, "sup", supVal), shown = order.slice(0, f.show).map((i) => list[i]);
-    const canAdd = c.isAppr() || (f.fn && c.canLead(f.fn)) || (!f.fn && c.canLead(c.myUnit()) && fns.some((u) => u.id === c.myUnit()));
+    const canAdd = c.isAppr() || isMember();
     const showFn = !f.fn;
     const sh = (k, l) => c.th("sup", k, l);
     const rows = shown.map((r) => {
@@ -187,27 +190,27 @@ export function createExtras(c) {
     const first = root.querySelector("textarea, input[type=text], select"); if (first && m.isNew) first.focus();
   }
   function supModal(m) {
-    const r = m.row, ed = m.canEdit, d = ed ? "" : "disabled", fns = fnUnits().filter((u) => c.isAppr() || c.canLead(u.id) || u.id === r.function);
+    const r = m.row, ed = m.canEdit, d = ed ? "" : "disabled", resp = canRespond(r.function), rd = ed && resp ? "" : "disabled", fns = fnUnits();
     const names = c.sortedUnits().map((u) => `<option value="${esc(u.name)}">`).join("");
     return `<div class="panel-head"><div><h2>${m.isNew ? "Log a support request" : `Request ${esc(r.ref || "")}`}</h2>${!m.isNew && r.updatedBy ? `<div class="small muted">Last updated ${esc(fmt((r.updatedAt || "").slice(0, 10)))} by ${esc(r.updatedBy)}</div>` : ""}</div></div>
       <div class="xgrid">
         ${field("sp-fn", "Function that received it", `<select id="sp-fn" ${m.isNew || c.isAppr() ? d : "disabled"}><option value="">Choose the function</option>${fns.map((u) => `<option value="${esc(u.id)}" ${u.id === r.function ? "selected" : ""}>${esc(u.name)}</option>`).join("")}</select>`)}
-        ${field("sp-req", "Requested by (business unit or function)", `<input type="text" id="sp-req" list="sp-names" value="${esc(r.requester)}" ${d}><datalist id="sp-names">${names}</datalist>`)}
+        ${field("sp-req", "Requested by (business unit or function)", `<input type="text" id="sp-req" list="sp-names" value="${esc(r.requester)}" ${resp ? d : "disabled"}><datalist id="sp-names">${names}</datalist>`)}
         ${field("sp-cat", "Category", `<select id="sp-cat" ${d}>${opt(SUP_CATS, r.category, "Choose a category")}</select>`)}
         ${field("sp-pri", "Priority", `<select id="sp-pri" ${d}>${opt(SUP_PRI, r.priority || "Normal")}</select>`)}
         ${field("sp-date", "Date requested", `<input type="date" id="sp-date" value="${esc(r.requested)}" ${d}>`)}
-        ${field("sp-st", "Status", `<select id="sp-st" ${d}>${opt(SUP_STATUS, r.status || "Open")}</select>`)}
+        ${field("sp-st", "Status", `<select id="sp-st" ${rd}>${opt(SUP_STATUS, r.status || "Open")}</select>`)}
         ${field("sp-desc", "What was requested", `<textarea id="sp-desc" rows="3" ${d}>${esc(r.description)}</textarea>`, true)}
-        ${field("sp-act", "Action taken / response", `<textarea id="sp-act" rows="3" ${d}>${esc(r.action)}</textarea>`, true)}
-        ${field("sp-rdate", "Response date", `<input type="date" id="sp-rdate" value="${esc(r.responded)}" ${d}>`)}
-        ${field("sp-by", "Responded by (name / role)", `<input type="text" id="sp-by" value="${esc(r.respondedBy)}" ${d}>`)}
-        ${field("sp-ev", "Evidence / reference (for example Email, ERP)", `<input type="text" id="sp-ev" value="${esc(r.evidence)}" ${d}>`)}
-        ${field("sp-fu", "Follow-up needed?", `<select id="sp-fu" ${d}><option value="no" ${r.followUp ? "" : "selected"}>No</option><option value="yes" ${r.followUp ? "selected" : ""}>Yes</option></select>`)}
+        ${field("sp-act", "Action taken / response", `<textarea id="sp-act" rows="3" ${rd}>${esc(r.action)}</textarea>`, true)}
+        ${field("sp-rdate", "Response date", `<input type="date" id="sp-rdate" value="${esc(r.responded)}" ${rd}>`)}
+        ${field("sp-by", "Responded by (name / role)", `<input type="text" id="sp-by" value="${esc(r.respondedBy)}" ${rd}>`)}
+        ${field("sp-ev", "Evidence / reference (for example Email, ERP)", `<input type="text" id="sp-ev" value="${esc(r.evidence)}" ${rd}>`)}
+        ${field("sp-fu", "Follow-up needed?", `<select id="sp-fu" ${rd}><option value="no" ${r.followUp ? "" : "selected"}>No</option><option value="yes" ${r.followUp ? "selected" : ""}>Yes</option></select>`)}
         ${field("sp-rem", "Remarks", `<input type="text" id="sp-rem" value="${esc(r.remarks)}" ${d}>`, true)}
       </div>
-      <div class="save-bar"><div class="toolbar">${ed && !m.isNew && ACTIVE.includes(r.status) ? `<button class="btn" data-x="sup-done">Mark as responded today</button>` : ""}${c.isAppr() && !m.isNew ? `<button class="btn danger" data-x="sup-del">${m.confirmDel ? "Click again to delete" : "Delete"}</button>` : ""}</div>
+      <div class="save-bar"><div class="toolbar">${rd === "" && !m.isNew && ACTIVE.includes(r.status) ? `<button class="btn" data-x="sup-done">Mark as responded today</button>` : ""}${c.isAppr() && !m.isNew ? `<button class="btn danger" data-x="sup-del">${m.confirmDel ? "Click again to delete" : "Delete"}</button>` : ""}</div>
         <div class="toolbar"><button class="btn" data-x="close">${ed ? "Cancel" : "Close"}</button>${ed ? `<button class="btn primary" data-x="sup-save">Save</button>` : ""}</div></div>
-      ${ed ? "" : `<div class="banner info" style="margin:0 16px 12px">View only. Sign in with the PIN of ${esc(c.unitName(r.function))}, or as Group Strategy, to change this request.</div>`}`;
+      ${ed ? "" : `<div class="banner info" style="margin:0 16px 12px">View only. ${r.requesterUnit && r.requesterUnit === c.myUnit() ? "The function has taken this request up, so only it can change it now." : `Only ${esc(c.unitName(r.function))} and Group Strategy can change this request.`}</div>`}`;
   }
   function fbModal(m) {
     const r = m.row, weeks = c.weekChoices();
@@ -248,13 +251,13 @@ export function createExtras(c) {
     if (x === "sup-st") { f.status = el.dataset.v; f.show = 15; c.render(); }
     else if (x === "sup-more") { f.show += 15; c.render(); } else if (x === "sup-all") { f.show = 100000; c.render(); }
     else if (x === "sup-new") {
-      const fn = f.fn || (c.myUnit() && fnUnits().some((u) => u.id === c.myUnit()) ? c.myUnit() : "");
-      state.xm = { type: "support", isNew: true, canEdit: true, row: { function: fn, requester: "", category: "", description: "", priority: "Normal", requested: c.todayIso, status: "Open", responded: "", action: "", respondedBy: "", evidence: "", followUp: false, remarks: "" } }; drawModal();
+      const mine = c.myUnit(), fn = f.fn || (mine && c.canLead(mine) && fnUnits().some((u) => u.id === mine) ? mine : "");
+      state.xm = { type: "support", isNew: true, canEdit: true, row: { function: fn, requester: canRespond(fn) ? "" : c.unitName(mine), category: "", description: "", priority: "Normal", requested: c.todayIso, status: "Open", responded: "", action: "", respondedBy: "", evidence: "", followUp: false, remarks: "" } }; drawModal();
     }
-    else if (x === "sup-open") { const r = state.support.find((y) => y.id === id); if (r) { state.xm = { type: "support", isNew: false, canEdit: c.canLead(r.function), row: { ...r } }; drawModal(); } }
+    else if (x === "sup-open") { const r = state.support.find((y) => y.id === id); if (r) { state.xm = { type: "support", isNew: false, canEdit: canEditReq(r), row: { ...r } }; drawModal(); } }
     else if (x === "sup-save") {
       const m = state.xm, r = m.row;
-      const row = { id: m.isNew ? undefined : r.id, ref: r.ref, function: v("sp-fn"), requester: v("sp-req").trim(), category: v("sp-cat"), description: v("sp-desc").trim(), priority: v("sp-pri"), requested: v("sp-date"), status: v("sp-st"), responded: v("sp-rdate"), action: v("sp-act").trim(), respondedBy: v("sp-by").trim(), evidence: v("sp-ev").trim(), followUp: v("sp-fu") === "yes", remarks: v("sp-rem").trim() };
+      const row = { id: m.isNew ? undefined : r.id, ref: r.ref, function: v("sp-fn"), requester: v("sp-req").trim(), requesterUnit: ((c.sortedUnits().find((u) => u.name === v("sp-req").trim()) || {}).id) || (state.xm.row.requesterUnit || ""), category: v("sp-cat"), description: v("sp-desc").trim(), priority: v("sp-pri"), requested: v("sp-date"), status: v("sp-st"), responded: v("sp-rdate"), action: v("sp-act").trim(), respondedBy: v("sp-by").trim(), evidence: v("sp-ev").trim(), followUp: v("sp-fu") === "yes", remarks: v("sp-rem").trim() };
       if (!row.function) { c.toast("Choose the function that received the request"); return; }
       if (!row.requester || !row.description) { c.toast("Fill in who requested it and what was requested"); return; }
       if (["Responded", "Closed"].includes(row.status) && !row.responded) row.responded = c.todayIso;
