@@ -469,6 +469,12 @@ function createLocalData() {
       if (h.tbl === "plans") {
         const p = planFromRow(h.old);
         if (!isAppr(auth) && (auth.unit !== p.unit || p.week < addisLockWeek())) return err("not_allowed");
+        if (!isAppr(auth)) {
+          const hs = getStore("history"), nm = (auth.name || "").trim();
+          const from = hs.filter((x) => x.tbl === "plans" && x.rowId === h.rowId && x.op !== "SNAPSHOT" && Date.parse(x.at) >= Date.parse(h.at));
+          if (from.some((x) => (x.by || "").trim() !== nm)) return err("others_changed");
+          if (from.length > 5) return err("too_far");
+        }
         let tasks = p.tasks;
         if (auth.role === "manager") { const cur = getStore("plans").find((x) => x.id === p.id); tasks = mergeScope(auth, p.unit, cur && cur.tasks, p.tasks); }
         savePlanRaw(auth, { ...p, tasks }, "Restored copy from " + when);

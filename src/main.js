@@ -160,6 +160,8 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     view_only_role: "Your role is view-only. Use \"Ask for an update\" to send what should change to your department head.",
     not_allowed: "You can't save changes to this unit with your current sign-in. Sign out and sign in again, then retry. If it keeps happening, ask Group Strategy to check your role and unit.",
     locked: "This request has been taken up by the function, so it can no longer be changed here. Ask the function to update it.",
+    others_changed: "Someone else changed this plan after that change, so you can only undo your own changes. Ask Group Strategy if it has to be put back.",
+    too_far: "That change is more than 5 steps back, so it can no longer be undone from here. Ask Group Strategy.",
     not_allowed_dept: "One of these tasks is in a department that is not yours (or has no department). Pick one of your own departments for the task, or remove it, then save again.",
     bad_request: "This plan could not be read. Reload the page and try again.",
     conflict: "Someone saved this plan a moment ago. Their version is now loaded underneath yours: press Save again to add your changes.",
@@ -1141,11 +1143,18 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   const actionLabel = a => ({ save:"Saved plan", import:"Imported file", "data-load":"Data load", lists:"Departments / staff", unit:"Unit change", request:"Asked for approval", approval:"Approval decision", restore:"Restore / undo", evidence:"Evidence", support:"Business support", feedback:"Feedback", corrective:"Corrective action" })[a] || a;
 
   const UNDOABLE = ["save", "import", "approval", "restore", "lists", "unit"];
-  const canUndoAct = a => mayUndo() && UNDOABLE.includes(a.action) && a.unit && Date.now() - Date.parse(a.ts) < 30 * 864e5 && (a.action === "lists" || a.action === "unit" ? isAppr() : (a.week && (isAppr() || (a.unit === me.unit && a.week >= thisMonday()))));
+  const canUndoAct = a => mayUndo() && UNDOABLE.includes(a.action) && a.unit && Date.now() - Date.parse(a.ts) < 30 * 864e5 && (a.action === "lists" || a.action === "unit" ? isAppr() : (a.week && (isAppr() || (a.unit === me.unit && a.week >= thisMonday() && (a.by || "").trim() === (me.name || "").trim()))));
+  const laterChanges = a => state.activity.filter(x => x.unit === a.unit && x.week === a.week && Date.parse(x.ts) > Date.parse(a.ts) && ["save", "import", "restore"].includes(x.action));
   function undoBtn(a){
     if (!canUndoAct(a)) return "";
-    if (state.undoAsk === a.id) return `<div class="undo-ask" role="alert"><span>Put this back as it was before? Later changes to the same plan are undone too. The version you replace stays in History.</span> <button class="btn small primary" type="button" data-undo-yes="${esc(a.id)}">Yes, undo</button> <button class="btn small" type="button" data-undo-no="1">Keep</button></div>`;
-    return `<div><button class="btn small ghost" type="button" data-undo="${esc(a.id)}" title="Put the plan back as it was before this change">${ico(IC.undo || IC.clock)}Undo</button></div>`;
+    const isUnit = a.action === "lists" || a.action === "unit", redo = a.action === "restore", word = redo ? "Redo" : "Undo";
+    const later = isUnit ? [] : laterChanges(a), others = [...new Set(later.filter(x => (x.by || "").trim() !== (me.name || "").trim()).map(x => x.by || "someone"))];
+    if (!isAppr() && !isUnit && (others.length || later.length + 1 > 5)) return `<div class="small muted" title="You can only undo your own changes, up to 5 steps back">${others.length ? "Changed by " + esc(others.join(", ")) + " since. Ask Group Strategy to put it back." : "More than 5 steps back. Ask Group Strategy."}</div>`;
+    if (state.undoAsk === a.id) {
+      const warn = later.length ? ` <b>${later.length} later change${later.length > 1 ? "s" : ""} to this plan${others.length ? " (including by " + esc(others.join(", ")) + ")" : ""} will be undone with it.</b>` : "";
+      return `<div class="undo-ask" role="alert"><span>${redo ? "Bring back the version that was replaced by this undo?" : "Put this back as it was before?"}${warn} The version you replace stays in History.</span> <button class="btn small primary" type="button" data-undo-yes="${esc(a.id)}">Yes, ${word.toLowerCase()}</button> <button class="btn small" type="button" data-undo-no="1">Keep</button></div>`;
+    }
+    return `<div><button class="btn small ghost" type="button" data-undo="${esc(a.id)}" title="${redo ? "Bring back what this undo replaced" : "Put the plan back as it was before this change"}">${ico(IC.undo || IC.clock)}${word}</button>${later.length ? ` <span class="small muted">${later.length} later change${later.length > 1 ? "s" : ""}</span>` : ""}</div>`;
   }
   async function doUndoAct(id){
     const a = state.activity.find(x => x.id === id); state.undoAsk = null; if (!a) { render(); return; }

@@ -10,7 +10,7 @@
 // Run  npm run check-help  after changing the app or this file: it lists guide wording that no longer matches the app.
 // "pages" uses the app's tab ids: dashboard, update, plan, mplan, approvals, support, fb, tasks, monthly, ceo, follow, activity, units, people.
 // Keep sentences short and name the buttons exactly as they appear on screen.
-export const GUIDES_VERSION = "2026-10-23.1";
+export const GUIDES_VERSION = "2026-10-23.2";
 
 export const GROUPS = [
   { id: "start", title: "Getting started", icon: "🚀", blurb: "Signing in, weeks, roles and finding your way around" },
@@ -613,9 +613,9 @@ export const GUIDES = [
       "Open the plan, press the **⋯ menu → History**.",
       "Each saved version is listed with who saved it and when. Press one to preview it.",
       "Press **Restore** on the one you want. The version you replace is also kept in History.",
-      "From the **Activity log** you can also press **Undo** on a single change.",
+      "From the **Activity log** you can also press **Undo** on a change. A change you undo can be brought back with **Redo** on the entry the undo created.",
     ],
-    why: ["Only chiefs, planning heads, department heads and Group Strategy can undo. Nothing is ever really lost: a restore is itself recorded."],
+    why: ["Only chiefs, planning heads, department heads and Group Strategy can undo. You can undo only your own changes; Group Strategy can undo anyone's. Nothing is ever really lost: a restore is itself recorded.","Undo puts the whole plan back as it was before that save, so any later saves are undone too. The page tells you how many. If someone else changed the plan after you, or the change is more than 5 steps back, only Group Strategy can undo it.","One save is one entry, even if it adds one task and deletes another. Open its details to see each task."],
   },
 
   // =====================================================================================================================
