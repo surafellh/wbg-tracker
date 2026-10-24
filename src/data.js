@@ -26,6 +26,7 @@ const COLLECTIONS = {
   feedback: { table: "feedback", map: { unit: "unit_id", week: "week", from: "from_role", by: "by_name", body: "body", taskRef: "task_ref", createdAt: "created_at", ackBy: "ack_by", ackAt: "ack_at", toLead: "to_lead", byId: "by_uid" }, ts: ["createdAt", "ackAt"], nullText: ["week", "ackAt"] },
   replies: { table: "feedback_replies", map: { feedbackId: "feedback_id", unit: "unit_id", kind: "kind", subject: "subject", body: "body", by: "by_name", role: "by_role", title: "by_title", byId: "by_uid", notified: "notified", toLead: "to_lead", createdAt: "created_at" }, ts: ["createdAt"] },
   messages: { table: "messages", map: { fromId: "from_uid", from: "from_name", toId: "to_uid", to: "to_name", body: "body", linkKind: "link_kind", linkRef: "link_ref", linkUnit: "link_unit", linkWeek: "link_week", linkLabel: "link_label", createdAt: "created_at", readAt: "read_at" }, ts: ["createdAt", "readAt"], nullText: ["readAt", "linkWeek"] },
+  projects: { table: "projects", map: { code: "code", name: "name", type: "type", unit: "unit_id", directorate: "directorate", sponsor: "sponsor", manager: "manager", budget: "budget", start: "start_date", end: "end_date", revisedEnd: "revised_end", actualEnd: "actual_end", strategicLink: "strategic_link", status: "status", rag: "rag", mode: "mode", involved: "involved", phases: "phases", updates: "updates", risks: "risks", decisions: "decisions", notes: "notes", createdBy: "created_by", createdAt: "created_at", updatedBy: "updated_by", updatedAt: "updated_at" }, ts: ["createdAt", "updatedAt"], nullText: ["start", "end", "revisedEnd", "actualEnd"] },
   actions: { table: "corrective_actions", map: { unit: "unit_id", week: "week", source: "source", issue: "issue", action: "action", owner: "owner", due: "due", status: "status", taskTitle: "task_title", taskRef: "task_ref", notes: "notes", createdBy: "created_by", createdAt: "created_at", updatedBy: "updated_by", updatedAt: "updated_at", closedAt: "closed_at" }, ts: ["createdAt", "updatedAt", "closedAt"], nullText: ["week", "due", "closedAt"] },
   history: { table: "row_history", map: { tbl: "tbl", rowId: "row_id", op: "op", old: "old_row", at: "changed_at", by: "changed_by" }, ts: ["at"] },
 };
@@ -107,6 +108,7 @@ function scopeRows(a, c, items) {
   if (c === "feedback") return items.filter((x) => ["super_admin", "executive"].includes(a.role) || (x.toLead ? ["leader", "planning"].includes(a.role) && a.unit === x.unit : own(x.unit)));
   if (c === "replies") return items.filter((x) => ["super_admin", "executive"].includes(a.role) || (x.toLead ? ["leader", "planning"].includes(a.role) && a.unit === x.unit : own(x.unit)));
   if (c === "messages") return a.id ? items.filter((x) => x.fromId === a.id || x.toId === a.id) : [];
+  if (c === "projects") { const raw = a.rawRole || a.role; return items.filter((x) => ["super_admin", "executive"].includes(a.role) || raw === "lea" || (["leader", "planning", "manager"].includes(a.role) && a.unit === "pmo") || (["leader", "planning"].includes(a.role) && (a.unit === x.unit || (x.involved || []).includes(a.unit))) || (a.role === "manager" && x.unit === "niyat-consultancy" && a.unit === x.unit)); }
   if (c === "actions") return items.filter((x) => own(x.unit));
   if (c === "requests") return items.filter((x) => U(x.unit));
   if (c === "support") return items.filter((x) => U(x.function) || (!!x.requesterUnit && ["leader", "planning", "manager", "staff"].includes(a.role) && a.unit === x.requesterUnit));
@@ -125,7 +127,7 @@ function createSupabaseData() {
   let roleNow = "", viewProfile = null;   // employees read plans through a function that hides other departments; viewProfile is the role Group Strategy is viewing as
   const live = new Map();
   const bump = (table) => (live.get(table) || new Set()).forEach((f) => f());
-  const bumpAll = () => ["plans", "units", "activity", "change_requests", "row_history", "support_requests", "feedback", "corrective_actions", "feedback_replies", "messages"].forEach(bump);
+  const bumpAll = () => ["plans", "units", "activity", "change_requests", "row_history", "support_requests", "feedback", "corrective_actions", "feedback_replies", "messages", "projects"].forEach(bump);
 
   const fromRow = (cfg, row) => {
     const doc = {};
@@ -283,6 +285,8 @@ function createSupabaseData() {
     messagePeople: () => rpcq("wbg_message_people"),
     sendMessage: (auth, row) => rpc("wbg_send_message", { p_auth: auth, p_row: row }),
     readMessages: (auth, withId) => rpc("wbg_read_messages", { p_auth: auth, p_with: withId }),
+    saveProject: (auth, row) => rpc("wbg_save_project", { p_auth: auth, p_row: row }),
+    deleteProject: (auth, id) => rpc("wbg_delete_project", { p_auth: auth, p_id: id }),
     saveAction: (auth, row) => rpc("wbg_save_action", { p_auth: auth, p_row: row }),
     deleteAction: (auth, id) => rpc("wbg_delete_action", { p_auth: auth, p_id: id }),
     async uploadEvidence(file, path) {
@@ -311,9 +315,9 @@ function createSupabaseData() {
 // Local mode: everything lives in this browser. Same rules as the database, for trying the app on localhost.
 // ---------------------------------------------------------------------------
 function createLocalData() {
-  const KEYS = { units: "wbg_local_units", plans: "wbg_local_plans", activity: "wbg_local_activity", requests: "wbg_local_requests", history: "wbg_local_history", support: "wbg_local_support", feedback: "wbg_local_feedback", actions: "wbg_local_actions", replies: "wbg_local_replies", messages: "wbg_local_messages" };
+  const KEYS = { units: "wbg_local_units", plans: "wbg_local_plans", activity: "wbg_local_activity", requests: "wbg_local_requests", history: "wbg_local_history", support: "wbg_local_support", feedback: "wbg_local_feedback", actions: "wbg_local_actions", replies: "wbg_local_replies", messages: "wbg_local_messages", projects: "wbg_local_projects" };
   const DOMAINS = ["wagwagoelectric.com", "geezinstitute.com", "wanzalogistics.com", "niyatconsultancy.com", "niyatconsultnacy.com", "trucksload.net"];
-  const SEEDS = { units: SEED_UNITS, plans: SEED_PLANS, activity: SEED_ACTIVITY, requests: [], history: [], support: SEED_SUPPORT, feedback: [], actions: [], replies: [], messages: [] };
+  const SEEDS = { units: SEED_UNITS, plans: SEED_PLANS, activity: SEED_ACTIVITY, requests: [], history: [], support: SEED_SUPPORT, feedback: [], actions: [], replies: [], messages: [], projects: [] };
   const listeners = new Map();
   const getStore = (c) => {
     try {
@@ -384,6 +388,10 @@ function createLocalData() {
     { id: "hr.chief@wagwagoelectric.com", name: "Selam (Wagwago HR chief)", role: "chief", title: "Chief", unit: "wagwago-electric", departments: ["HR"] },
     { id: "design@wagwagoelectric.com", name: "Alem (Wagwago Design)", role: "staff", title: "", unit: "wagwago-electric", departments: ["Design and Engineering"] },
     { id: "planning@trucksload.net", name: "Trucksload planning (test)", role: "planning", title: "Planning", unit: "trucksload", departments: ["Planning"] },
+    { id: "lea@wagwagoelectric.com", name: "Lead executive assistant (test)", role: "lea", title: "LEA", unit: null, departments: [] },
+    { id: "pmo@wagwagoelectric.com", name: "Group PMO planning (test)", role: "planning", title: "Planning", unit: "pmo", departments: ["Planning"] },
+    { id: "niyat.dir@niyatconsultancy.com", name: "Niyat director (test)", role: "director", title: "Director", unit: "niyat-consultancy", departments: [] },
+    { id: "niyat.mgr@niyatconsultancy.com", name: "Niyat department head (test)", role: "manager", title: "Manager", unit: "niyat-consultancy", departments: ["Finance"] },
     { id: "chro@wagwagoelectric.com", name: "Group HR chief (test)", role: "chief", title: "Chief", unit: "hrm", departments: [] },
   ].map((p) => ({ email: p.id, status: "active", setupDone: true, invited: true, ...p }));
   const NEWBIE = { id: "new.person@wagwagoelectric.com", email: "new.person@wagwagoelectric.com", name: "", role: "staff", title: "", unit: null, departments: [], status: "active", setupDone: false, invited: false };
@@ -398,7 +406,7 @@ function createLocalData() {
   const prof = () => people().find((x) => x.id === curId()) || null;
   // the caller as the database sees them
   const viewOver = (p) => { try { const v = JSON.parse(sessionStorage.getItem(VIEWAS_KEY) || "null"); return v && p.role === "super_admin" && p.email === "surafel.h@wagwagoelectric.com" ? v : null; } catch (e) { return null; } };
-  const A = () => { const p = prof(); if (!(p && p.status === "active" && p.setupDone)) return {}; const v = viewOver(p); return { id: p.id, name: p.name, role: baseRole(v ? v.role : p.role), title: p.title, unit: v ? v.unit || "" : p.unit, departments: v ? v.departments || [] : p.departments || [] }; };
+  const A = () => { const p = prof(); if (!(p && p.status === "active" && p.setupDone)) return {}; const v = viewOver(p); return { id: p.id, name: p.name, role: baseRole(v ? v.role : p.role), rawRole: v ? v.role : p.role, title: p.title, unit: v ? v.unit || "" : p.unit, departments: v ? v.departments || [] : p.departments || [] }; };
   const meOut = (p) => (p ? { status: p.status, setupDone: p.setupDone, invited: p.invited, id: p.id, email: p.email, name: p.name, role: p.role, title: p.title, unit: p.unit, departments: p.departments || [], phone: p.phone || "", jobTitle: p.jobTitle || "" } : null);
   // what each collection shows this person (same as the row level security policies)
   function readFilter(c, items) { return scopeRows(A(), c, items); }
@@ -588,6 +596,21 @@ function createLocalData() {
       return ok({ id });
     },
     async readMessages(auth, withId) { const l = getStore("messages"); let ch = false; l.forEach((m) => { if (m.toId === auth.id && m.fromId === withId && !m.readAt) { m.readAt = new Date().toISOString(); ch = true; } }); if (ch) setStore("messages", l); return ok(); },
+    saveProject(auth, row) {
+      const unit = row.unit || ""; if (!unit || !String(row.name || "").trim()) return err("bad_request");
+      const w = () => auth.role === "super_admin" || (["leader", "planning", "manager"].includes(auth.role) && auth.unit === "pmo");
+      if (!w()) return err("not_allowed");
+      const old = row.id ? getStore("projects").find((x) => x.id === row.id) : null;
+      if (old && !w()) return err("not_allowed");
+      if (old && row.updatedAt && old.updatedAt && row.updatedAt !== old.updatedAt) return err("conflict");
+      const name = (auth.name || "").trim(), now = new Date().toISOString();
+      const rec = { code: "", directorate: "", sponsor: "", manager: "", budget: null, start: "", end: "", strategicLink: "", status: "In progress", rag: "Green", mode: "phases", involved: [], phases: [], updates: [], risks: [], decisions: [], notes: "", ...(old || {}), ...row,
+        id: old ? old.id : (row.id || Date.now().toString(36) + Math.random().toString(36).slice(2, 8)), unit, createdBy: old ? old.createdBy : name, createdAt: old ? old.createdAt : now, updatedBy: name, updatedAt: now };
+      put("projects", rec);
+      addActivity(name, unit, "", { action: "project", summary: (old ? "Updated project: " : "Added project: ") + String(rec.name).slice(0, 120) });
+      return ok({ id: rec.id, updatedAt: now });
+    },
+    deleteProject(auth, id) { const o = getStore("projects").find((x) => x.id === id); if (!o) return ok(); if (!(auth.role === "super_admin" || (["leader", "planning", "manager"].includes(auth.role) && auth.unit === "pmo"))) return err("not_allowed"); del("projects", id); return ok(); },
     saveAction(auth, row) {
       const unit = row.unit || ""; if (!unit) return err("bad_request");
       const appr = isAppr(auth); if (!appr && !leadOk(auth, unit)) return err("not_allowed");

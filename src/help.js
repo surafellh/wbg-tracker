@@ -55,7 +55,7 @@ export function createHelp({ esc, getTab, getMe, goTab, getFacts, getReport, toa
   let fab, panel, started = false;
 
   const roleOf = () => { const m = getMe() || {}; return m.role || ""; };
-  const PRIMARY = { plan: "plan", update: "upd", mplan: "mp", approvals: "appr", dashboard: "rep", tasks: "rep", monthly: "rep", ceo: "rep", support: "del", fb: "del", people: "adm", units: "adm", activity: "adm" };
+  const PRIMARY = { plan: "plan", update: "upd", mplan: "mp", approvals: "appr", dashboard: "rep", tasks: "rep", monthly: "rep", ceo: "rep", support: "del", fb: "del", projects: "prj", people: "adm", units: "adm", activity: "adm" };
   const isMain = (g, tab) => onPage(g, tab) && !(g.pages || []).includes("*") && (g.g === PRIMARY[tab] || (g.pin || []).includes(tab));
   const forMe = (g) => !g.roles || g.roles.includes(roleOf());
   const onPage = (g, tab) => (g.pages || []).includes(tab);

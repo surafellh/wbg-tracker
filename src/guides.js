@@ -10,7 +10,7 @@
 // Run  npm run check-help  after changing the app or this file: it lists guide wording that no longer matches the app.
 // "pages" uses the app's tab ids: dashboard, update, plan, mplan, approvals, support, fb, tasks, monthly, ceo, follow, activity, units, people.
 // Keep sentences short and name the buttons exactly as they appear on screen.
-export const GUIDES_VERSION = "2026-10-23.7";
+export const GUIDES_VERSION = "2026-10-24.1";
 
 export const GROUPS = [
   { id: "start", title: "Getting started", icon: "🚀", blurb: "Signing in, weeks, roles and finding your way around" },
@@ -20,13 +20,14 @@ export const GROUPS = [
   { id: "appr", title: "Approvals and changes", icon: "🔏", blurb: "Who approves what, and why some fields are locked" },
   { id: "rep", title: "Reports and dashboards", icon: "📊", blurb: "Dashboard, weekly and monthly reports, downloads" },
   { id: "del", title: "Business support and feedback", icon: "🤝", blurb: "Support requests, feedback and corrective actions" },
+  { id: "prj", title: "Projects", icon: "🏗️", blurb: "Follow project status and progress, phases, monthly reports" },
   { id: "adm", title: "Group Strategy tools", icon: "⚙️", blurb: "People, units, settings and the activity log" },
   { id: "fix", title: "When something goes wrong", icon: "🛠️", blurb: "Quick fixes for the most common problems" },
 ];
 
 export const TAB_NAMES = {
   dashboard: "Dashboard", update: "Progress update", plan: "Next plan", mplan: "Monthly plan", approvals: "Approvals",
-  support: "Business support", fb: "Feedback", tasks: "Weekly report", monthly: "Monthly report", ceo: "Actions for the CEO",
+  support: "Business support", fb: "Feedback", tasks: "Weekly report", monthly: "Monthly report", ceo: "Actions for the CEO", projects: "Projects",
   activity: "Activity log", units: "Units", people: "People",
 };
 
@@ -820,6 +821,55 @@ export const GUIDES = [
       "Only the function concerned (and Group Strategy) can answer. The unit that asked can edit its request until it is taken up.",
     ],
     go: [["Business support", "support"]],
+  },
+  {
+    id: "projects", g: "prj", pages: ["projects"], title: "Following a project",
+    kw: "project status progress phase activity monthly update rag green amber red physical capital milestone budget risk decision portfolio",
+    intro: "The Projects page shows every project you can read with its status, colour, progress and the month of its last report. Click a project to open it.",
+    steps: [
+      "Group PMO adds projects: press **+ Add project** and fill in the name, type, owner unit, budget, contract start and end date. Choose **Capital (physical)** for a building or plant.",
+      "Under **Progress is taken from**, choose **phases and activities** (progress is worked out from the work done) or **the physical % reported each month** (you enter a cumulative % every month, best for slow physical projects).",
+      "Set the current **Status** (Not started, In progress, On hold, Completed, Cancelled) and the **Colour** (Green, Amber, Red) on the project page. A suggested colour is shown when progress is behind the time used.",
+      "Use the filters at the top of the list to narrow by type, unit, colour or status, **Download PDF** for a short, readable summary of the list, and **Download Excel** to take the details away. Open a project and press **Download PDF** for a one project brief.",
+    ],
+    why: [
+      "The list shows the contract start and end, and the days used out of the contract length (for example 245 of 365 days). Open a project to see the same as a percentage. A project at 40% progress with 80% of its time used is behind.",
+      "Who can read a project: Group PMO, Group Strategy, the CEO, the DCEO and the lead executive assistant read all of them. A unit's chief, GM or director and its planning head read that unit's projects, and projects that list their unit as involved. At Niyat Consultancy the department heads read its projects too.",
+      "Who can change it: Group PMO and Group Strategy.",
+    ],
+    fix: [["I cannot see the Projects menu", "It is shown to Group PMO, Group Strategy, the CEO, the DCEO, the lead executive assistant, and to the chief, GM, director and planning head of a unit (and the department heads of Niyat Consultancy). Everyone else does not see it."], ["My project is missing", "You can only read projects of your own unit, or ones that list your unit as involved. Ask Group PMO to add your unit under Edit details."]],
+    go: [["Projects", "projects"]],
+  },
+  {
+    id: "projects-phases", g: "prj", pages: ["projects"], title: "Phases, activities and the weekly plan",
+    kw: "phase activity link weekly plan task weight progress sync linked",
+    intro: "A project can be split into phases (for example Design, Procurement, Construction). Each phase has activities. Finishing activities moves the phase, and the phases move the project.",
+    steps: [
+      "Open the project and press **+ Add phase**. Give it a name and a weight. A heavier phase counts for more.",
+      "In a phase press **+ Activity**. Give it a name, an owner, a due date and a weight.",
+      "To follow the weekly plan, search in **Link to a task in the weekly plan** and choose the task. The activity then takes its status and % from that task, so finishing the task moves the project.",
+      "An activity that is not linked uses the status and % you set by hand. **Done** counts as 100%.",
+      "If someone outside the unit cannot read the weekly plan, they see the last saved value of a linked task. Press **Sync linked tasks** to save the latest values.",
+    ],
+    why: [
+      "Project progress is the weighted average of its phases, and a phase is the weighted average of its activities.",
+      "A phase with no activities can carry a % set by hand.",
+    ],
+    go: [["Projects", "projects"]],
+  },
+  {
+    id: "projects-monthly", g: "prj", pages: ["projects"], title: "Reporting the month",
+    kw: "monthly status report physical financial cumulative accomplishments concern decision no change risk issue",
+    intro: "Each project is reported once a month. Physical projects move slowly, so a month is the right rhythm.",
+    steps: [
+      "Open the project and press **Report this month**. The month, colour and progress are filled in for you.",
+      "Enter the physical progress to date (cumulative, not the change in the month). For capital projects also enter the financial progress to date.",
+      "Write the key accomplishments, the main concern and the plan for next month. Add a decision you need from management if there is one.",
+      "If nothing moved, press **No change since last update** to copy last month's figures forward.",
+      "Record problems under **Risks and issues** and requests under **Decisions needed**. The list shows when a monthly update is due.",
+      "You can also type the progress % straight into the **Progress** column of the list. It is saved as this month's update. Projects that calculate progress from phases cannot be edited there. Set the contract start and end date when you edit the project; the list shows days left or past the end.",
+    ],
+    go: [["Projects", "projects"]],
   },
   {
     id: "fb", g: "del", pages: ["fb"], title: "Feedback and corrective actions",

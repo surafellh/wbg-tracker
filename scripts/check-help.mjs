@@ -12,7 +12,7 @@ const { GUIDES, GROUPS, TAB_NAMES } = await import(pathToFileURL(join(root, "src
 const strict = process.argv.includes("--strict"), soft = process.argv.includes("--soft");
 
 const read = (f) => (existsSync(join(root, f)) ? readFileSync(join(root, f), "utf8") : "");
-const SRC = ["index.html", "src/main.js", "src/extras.js", "src/messages.js", "src/gate.js", "src/dashboard.js", "src/ceoaction.js", "src/finalstatus.js", "src/access.js", "src/rules.js", "src/help.js", "src/data.js"].map(read).join("\n");
+const SRC = ["index.html", "src/main.js", "src/extras.js", "src/messages.js", "src/projects.js", "src/gate.js", "src/dashboard.js", "src/ceoaction.js", "src/finalstatus.js", "src/access.js", "src/rules.js", "src/help.js", "src/data.js"].map(read).join("\n");
 const norm = (s) => String(s).toLowerCase().replace(/&amp;/g, "&").replace(/\*\*/g, "").replace(/\s+/g, " ").trim();
 const HAY = norm(SRC);
 const allow = new Set(read("scripts/help-allow.txt").split("\n").map((x) => norm(x)).filter((x) => x && !x.startsWith("#")));

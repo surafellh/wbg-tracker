@@ -15,6 +15,7 @@ import { renderDashboard } from "./dashboard.js";
 import { FINAL_LABELS, FINAL_CLASS, FINAL_COLOR, FINAL_BANDS, RATING_BANDS, ratingOf, weekClosed, finalLabel, finalSummary, pctOf as finalPct } from "./finalstatus.js";
 import { createExtras } from "./extras.js";
 import { createMessages } from "./messages.js";
+import { createProjects } from "./projects.js";
 import { openViewer, canPreview } from "./viewer.js";
 applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
 
@@ -52,7 +53,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   // The signed-in person (from the database). The database checks every save again.
   state.requests = []; state.dash = { type: "", units: [], period: "week", pop: false, range: 8 }; state.dashData = null; state.dashKey = "";
   state.level = "tasks"; state.history = null; state.lastSave = null; state.base = {}; state.unlock = new Set(); state.reqNotes = {}; state.people = null; state.pu = {};
-  const auth = () => me ? { id: me.id || "", name: me.name || "", role: me.role, title: me.title || "", unit: me.unit || "", departments: me.departments || [] } : {};
+  const auth = () => me ? { id: me.id || "", raw: me.roleRaw || me.role, name: me.name || "", role: me.role, title: me.title || "", unit: me.unit || "", departments: me.departments || [] } : {};
   const isAppr = () => isAdmin(me);
   const isLenient = () => !!me && (me.role === "leader" || me.role === "planning");
   const canEdit = u => isAppr() || (unitMember(me, u) && me.role !== "staff");   // employees and division heads are view-only
@@ -780,9 +781,9 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   const NO_PLAN_UNITS = ["ceo", "d-ceo"];
   function sortedUnits(){ return [...state.units].sort((a,b) => (a.type||"").localeCompare(b.type||"") || (a.order??99)-(b.order??99) || a.name.localeCompare(b.name)); }
 
-  const GROUPS = { dashboard: ["dashboard"], plans: ["update", "plan", "mplan", "approvals"], delivery: ["support", "fb"], reports: ["tasks", "monthly", "ceo"] };
-  const SUB_LABEL = { update: "Progress update", plan: "Next plan", mplan: "Monthly plan", approvals: "Approvals", support: "Business support", fb: "Feedback", tasks: "Weekly report", monthly: "Monthly report", ceo: "Actions for the CEO" };
-  const PAGE_TITLE = { dashboard: ["Dashboards", "How every unit and function is doing this week."], update: ["Plans", "Update progress on this week's tasks."], plan: ["Plans", "Plan the tasks for next week."], mplan: ["Plans", "Plan the month once and split it across its weeks."], approvals: ["Plans", "Changes waiting for approval."], support: ["Delivery", "Support requested from group functions."], fb: ["Delivery", "Feedback and corrective actions."], tasks: ["Reports", "Every task, filtered and downloadable."], monthly: ["Reports", "Consolidated by Ethiopian calendar month."], ceo: ["Reports", "What the CEO should do about each unit."], follow: ["Follow-up", ""], activity: ["Activity log", "Who changed what, and when."], units: ["Settings · Units", "Group Strategy only."], people: ["Settings · People", "Group Strategy only."] };
+  const GROUPS = { dashboard: ["dashboard"], plans: ["update", "plan", "mplan", "approvals"], delivery: ["support", "fb"], reports: ["tasks", "monthly", "ceo"], projects: ["projects"] };
+  const SUB_LABEL = { update: "Progress update", plan: "Next plan", mplan: "Monthly plan", approvals: "Approvals", support: "Business support", fb: "Feedback", tasks: "Weekly report", monthly: "Monthly report", ceo: "Actions for the CEO", projects: "Projects" };
+  const PAGE_TITLE = { projects: ["Projects", "Status and progress of business and capital projects."], dashboard: ["Dashboards", "How every unit and function is doing this week."], update: ["Plans", "Update progress on this week's tasks."], plan: ["Plans", "Plan the tasks for next week."], mplan: ["Plans", "Plan the month once and split it across its weeks."], approvals: ["Plans", "Changes waiting for approval."], support: ["Delivery", "Support requested from group functions."], fb: ["Delivery", "Feedback and corrective actions."], tasks: ["Reports", "Every task, filtered and downloadable."], monthly: ["Reports", "Consolidated by Ethiopian calendar month."], ceo: ["Reports", "What the CEO should do about each unit."], follow: ["Follow-up", ""], activity: ["Activity log", "Who changed what, and when."], units: ["Settings · Units", "Group Strategy only."], people: ["Settings · People", "Group Strategy only."] };
   const groupOf = t => Object.keys(GROUPS).find(g => GROUPS[g].includes(t)) || "";
   const SM = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   const weekShort = w => { const a = parse(w), b = parse(weekEndOf(w)); return a.getMonth() === b.getMonth() ? `${SM[a.getMonth()]} ${a.getDate()} – ${b.getDate()}` : `${SM[a.getMonth()]} ${a.getDate()} – ${SM[b.getMonth()]} ${b.getDate()}`; };
@@ -1056,6 +1057,9 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     newPdf: (...a) => newPdf(...a), pdfStyle: () => pdfStyle(), pdfFooter: (...a) => pdfFooter(...a), save: (...a) => save(...a), goTab: t => goTab(t), weekLabel: w => weekLabel(w),
     weekChoices: () => { const t = thisMonday(); return [nextWeekOf(t), t, prevWeekOf(t), prevWeekOf(prevWeekOf(t)), prevWeekOf(prevWeekOf(prevWeekOf(t)))]; }, thisWeek: () => thisMonday(), ALL,
   });
+  const PJ = createProjects({ state, esc, fmt, sortedUnits: () => sortedUnits(), unitName: id => unitName(id), todayIso, toast: (...a) => toast(...a), errText: e => errText(e), render: () => render(), db: () => db, api: () => api, auth: () => auth(),
+    libsReady: k => libsReady(k), sheetFromRows: (...a) => sheetFromRows(...a), writeXlsx: (...a) => writeXlsx(...a), XLSX: () => XLSX,
+    newPdf: (...a) => newPdf(...a), pdfStyle: () => pdfStyle(), save: (...a) => save(...a) });
   const DM = createMessages({
     esc, toast: (...a) => toast(...a), errText: e => errText(e), db: () => db, api: () => api, auth: () => auth(), unitName: id => unitName(id),
     badge: () => { const n = DM.unreadCount(), b = $("#msgCount"); if (b) { b.textContent = n; b.hidden = !n; } },
@@ -1538,6 +1542,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     else if (state.tab==="follow") html += renderFollow();
     else if (state.tab==="monthly") html += renderMonthly();
     else if (state.tab==="support") html += X.renderSupport();
+    else if (state.tab==="projects") html += PJ.renderProjects();
     else if (state.tab==="fb") html += X.renderFb();
     else if (state.tab==="activity") html += renderActivity();
     else if (state.tab==="approvals") html += renderApprovals();
@@ -2207,7 +2212,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   // ---------- Stage 4: top bar, grouped tabs, account menu, calendar picker ----------
   function renderNav(){
     const g = groupOf(state.tab);
-    document.querySelectorAll("#mainNav button").forEach(b => b.setAttribute("aria-current", String(b.dataset.group === g)));
+    document.querySelectorAll("#mainNav button").forEach(b => { b.setAttribute("aria-current", String(b.dataset.group === g)); if (b.dataset.group === "projects") b.hidden = !PJ.canSee(); });
     const subs = (GROUPS[g] || []).filter(t => (t !== "approvals" || isAppr() || pendingMine().length || toDecide().length) && (t !== "ceo" || canFeedback(me)));
     const nb = X.badgeCount();
     $("#subNav").innerHTML = subs.length > 1 ? subs.map(t => `<button role="tab" data-sub="${t}" aria-selected="${t === state.tab}">${SUB_LABEL[t]}${t === "fb" && nb ? ` <span class="badge">${nb}</span>` : ""}${t === "approvals" && pendingFor().length ? ` <span class="badge">${pendingFor().length}</span>` : ""}</button>`).join("") : "";
@@ -3570,7 +3575,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     state.level = store.get("wp-level") || ((isAppr() || me.role === "executive") ? "deliverables" : "tasks");
     if (!state.editUnit || state.editUnit === ALL) { const mu = myUnit(); if (mu) { state.editUnit = mu; store.set("wp-unit", mu); } }
     if (!isAppr() && state.editUnit && !myUnit() && me.role !== "executive" && me.role !== "leader") state.editUnit = null;
-    subscribeRequests(); X.subscribe(); DM.subscribe(); refreshMentions(); refreshRR(); if (["planning", "leader", "super_admin", "executive"].includes(me.role)) subscribeActivity();
+    subscribeRequests(); X.subscribe(); DM.subscribe(); PJ.subscribe(); refreshMentions(); refreshRR(); if (["planning", "leader", "super_admin", "executive"].includes(me.role)) subscribeActivity();
     { const st = store.get("wp-start"); if (st && st !== "dashboard" && !location.hash && document.querySelector(`nav.tabs button[data-tab="${st}"]`) && !(st === "people" && !isAppr())) setTimeout(() => goTab(st), 0); }
     window.addEventListener("offline", () => banner("You are offline. Changes will not save until the connection returns."));
     window.addEventListener("online", () => { bannerMsg = ""; subscribePlans(); render(); });
