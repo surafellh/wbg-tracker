@@ -20,12 +20,12 @@ export function createProjects(c) {
   // Who sees what (the database enforces the same rules, see supabase/upgrade-23-projects.sql):
   //  all projects: Group Strategy, CEO / DCEO, the lead executive assistant and the Group PMO function
   //  a unit's own projects (and those that list the unit as involved): its chief / GM / director and planning head; for Niyat Consultancy also its department heads
-  //  edit: Group PMO and Group Strategy only
+  //  edit: Group PMO and Group Strategy, and the planning head of the unit that owns the project (add and delete stay with Group PMO and Group Strategy)
   const inPmo = () => { const a = A(); return a.unit === "pmo" && ["leader", "planning", "manager"].includes(a.role); };
   const seesAll = () => { const a = A(); return ["super_admin", "executive"].includes(a.role) || (a.raw || a.role) === "lea" || inPmo(); };
   const canSee = () => { const a = A(); return seesAll() || (["leader", "planning"].includes(a.role) && !!a.unit) || (a.role === "manager" && a.unit === NIYAT); };
-  const canEditP = () => A().role === "super_admin" || inPmo();
-  const canCreate = () => canEditP();
+  const canEditP = (p) => { const a = A(); return a.role === "super_admin" || inPmo() || (a.role === "planning" && !!p && !!a.unit && p.unit === a.unit); };
+  const canCreate = () => A().role === "super_admin" || inPmo();
   const unitChoices = () => c.sortedUnits();
   const money = (n) => (num(n) === null ? "–" : "ETB " + Math.round(Number(n)).toLocaleString("en-US"));
   const pctTxt = (n) => (n === null || n === undefined ? "–" : n + "%");
@@ -75,11 +75,11 @@ export function createProjects(c) {
   // progress in the list: a number that can be typed over, when it is set by hand; worked out from activities otherwise
   const calcFromPhases = (p) => p.mode !== "manual" && (p.phases || []).some((ph) => (ph.activities || []).length);
   function progressCell(p, pr) {
-    if (!canEditP() || p.status === "Completed" || calcFromPhases(p)) return `<div title="${p.status === "Completed" ? "Completed" : calcFromPhases(p) ? "Worked out from the activities. Open the project to change them." : ""}">${bar(pr)}</div>`;
+    if (!canEditP(p) || p.status === "Completed" || calcFromPhases(p)) return `<div title="${p.status === "Completed" ? "Completed" : calcFromPhases(p) ? "Worked out from the activities. Open the project to change them." : ""}">${bar(pr)}</div>`;
     return `<div class="pc"><div class="bar"><i style="width:${Math.min(100, pr || 0)}%"></i></div><input type="number" class="pj-pct" min="0" max="100" step="1" value="${pr ?? ""}" placeholder="–" data-pjpct="${esc(p.id)}" aria-label="Progress % of ${esc(p.name)}" title="Type the progress to date (cumulative %) and press Enter"><span class="small muted">%</span></div>`;
   }
   async function setProgress(el) {
-    const p = find(el.dataset.pjpct); if (!p || !canEditP()) return;
+    const p = find(el.dataset.pjpct); if (!p || !canEditP(p)) return;
     const raw = el.value.trim(), val = raw === "" ? null : Number(raw);
     if (val !== null && (Number.isNaN(val) || val < 0 || val > 100)) { c.toast("Progress must be between 0 and 100"); c.render(); return; }
     const per = currentPeriod(c.todayIso), lu = latestUpdate(p);
@@ -130,7 +130,7 @@ export function createProjects(c) {
 
   // ---------------- one project ----------------
   function renderDetail(p) {
-    const ed = canEditP(), pr = progressOf(p), te = timeElapsed(p, c.todayIso), du = daysUsed(p, c.todayIso), sug = suggestRag(pr, te, p.status), lu = latestUpdate(p), manual = p.mode === "manual";
+    const ed = canEditP(p), pr = progressOf(p), te = timeElapsed(p, c.todayIso), du = daysUsed(p, c.todayIso), sug = suggestRag(pr, te, p.status), lu = latestUpdate(p), manual = p.mode === "manual";
     ensureLinks(p.unit); (p.involved || []).forEach(ensureLinks);
     const late = needsUpdate(p, c.todayIso);
     const sel = (key, list, cur) => ed ? `<select data-pjset="${key}" aria-label="${key}">${opt(list, cur)}</select>` : `<b>${esc(cur)}</b>`;
@@ -231,7 +231,7 @@ export function createProjects(c) {
       ${field("pf-st", "Status", `<select id="pf-st">${opt(STATUSES, r.status)}</select>`)}
       ${field("pf-inv", "Other units involved (they can read it)", `<div class="chipset">${others.map((u) => `<label class="chk"><input type="checkbox" data-inv="${esc(u.id)}" ${(r.involved || []).includes(u.id) ? "checked" : ""}> ${esc(u.name)}</label>`).join("")}</div>`, true)}
       ${field("pf-notes", "Notes", `<textarea id="pf-notes" rows="2">${esc(r.notes)}</textarea>`, true)}</div>
-      ${footer(m, "proj-save", "proj-del")}`;
+      ${footer(m, "proj-save", canCreate() ? "proj-del" : "")}`;
   }
   function phaseForm(m) {
     const r = m.row; const has = (m.hasActs);
@@ -394,7 +394,7 @@ export function createProjects(c) {
     else if (x === "dec-del") { if (!m.confirmDel) { m.confirmDel = true; drawModal(); return; } if (await commit(p, (q) => { q.decisions = q.decisions.filter((z) => z.id !== m.row.id); }, "Deleted")) closeModal(); }
   }
   async function onSet(el) {
-    const p = find(S.id); if (!p || !canEditP()) return;
+    const p = find(S.id); if (!p || !canEditP(p)) return;
     const k = el.dataset.pjset, val = el.value;
     await commit(p, (q) => { q[k] = val; }, k === "mode" ? "Saved" : "Saved");
   }
@@ -475,6 +475,6 @@ export function createProjects(c) {
     await c.save(`Project - ${String(p.name).replace(/[\\/:*?"<>|]/g, "").slice(0, 50)} ${c.todayIso}.pdf`, doc.output("arraybuffer"), "PDF saved. Open it to print.");
   }
 
-  const count = () => (canSee() && canEditP() ? S.list.filter((p) => needsUpdate(p, c.todayIso)).length : 0);
+  const count = () => (canSee() ? S.list.filter((p) => canEditP(p) && needsUpdate(p, c.todayIso)).length : 0);
   return { renderProjects, subscribe, count, canSee };
 }

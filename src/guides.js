@@ -10,7 +10,7 @@
 // Run  npm run check-help  after changing the app or this file: it lists guide wording that no longer matches the app.
 // "pages" uses the app's tab ids: dashboard, update, plan, mplan, approvals, support, fb, tasks, monthly, ceo, follow, activity, units, people.
 // Keep sentences short and name the buttons exactly as they appear on screen.
-export const GUIDES_VERSION = "2026-10-24.3";
+export const GUIDES_VERSION = "2026-10-24.4";
 
 export const GROUPS = [
   { id: "start", title: "Getting started", icon: "🚀", blurb: "Signing in, weeks, roles and finding your way around" },
@@ -835,7 +835,7 @@ export const GUIDES = [
     why: [
       "The list shows the contract start and end, and the days used out of the contract length (for example 245 of 365 days). Open a project to see the same as a percentage. A project at 40% progress with 80% of its time used is behind.",
       "Who can read a project: Group PMO, Group Strategy, the CEO, the DCEO and the lead executive assistant read all of them. A unit's chief, GM or director and its planning head read that unit's projects, and projects that list their unit as involved. At Niyat Consultancy the department heads read its projects too.",
-      "Who can change it: Group PMO and Group Strategy.",
+      "Who can change it: Group PMO and Group Strategy, and the planning head of the unit that owns the project (adding and deleting projects stay with Group PMO and Group Strategy).",
     ],
     fix: [["I cannot see the Projects menu", "It is shown to Group PMO, Group Strategy, the CEO, the DCEO, the lead executive assistant, and to the chief, GM, director and planning head of a unit (and the department heads of Niyat Consultancy). Everyone else does not see it."], ["My project is missing", "You can only read projects of your own unit, or ones that list your unit as involved. Ask Group PMO to add your unit under Edit details."]],
     go: [["Projects", "projects"]],
