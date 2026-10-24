@@ -10,7 +10,7 @@
 // Run  npm run check-help  after changing the app or this file: it lists guide wording that no longer matches the app.
 // "pages" uses the app's tab ids: dashboard, update, plan, mplan, approvals, support, fb, tasks, monthly, ceo, follow, activity, units, people.
 // Keep sentences short and name the buttons exactly as they appear on screen.
-export const GUIDES_VERSION = "2026-10-24.1";
+export const GUIDES_VERSION = "2026-10-24.2";
 
 export const GROUPS = [
   { id: "start", title: "Getting started", icon: "🚀", blurb: "Signing in, weeks, roles and finding your way around" },
@@ -358,7 +358,7 @@ export const GUIDES = [
     ],
     why: [
       "While the plan is waiting you can keep editing, and your colleagues (for example a Finance head for the Finance rows) can keep adding their tasks or uploading their Excel. What each person may change still depends on their role and department.",
-      "Approving accepts the plan as it stands at that moment. After approval the button reads **Approved** and stays off. If you change one of your tasks afterwards the pill turns **Approved, changed since** and the button becomes **Submit changes**, so the approver sees the final version. Changes by other departments do not count.",
+      "Approving accepts the plan as it stands at that moment. After approval the pill shows **Approved** with the name of the person who approved it (hover for the date), and the button stays off. If you change one of your tasks afterwards the pill reads **changed since** the approval and the button becomes **Submit changes**, so the approver sees the final version. Changes by other departments do not count.",
       "Who approves: a department head's plan goes to the chief; a chief's goes to the planning head (or Group Strategy in corporate functions); the planning head approves their own. Nobody approves their own request otherwise.",
       "Once the week starts, tasks become partly locked. See 'Locked fields'.",
     ],
