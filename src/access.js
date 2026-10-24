@@ -15,7 +15,7 @@ export const ROLE_HELP = {
   super_admin: "Sees and changes everything, manages people and roles, approves changes, can undo anything.",
   executive: "Sees everything. Writes feedback. Cannot change plans. Set the title to CEO or DCEO.",
   leader: "Sees every unit. Edits everything in their own unit or function. Approves the plans of the departments they cover (leave departments empty to cover the whole unit).",
-  chief: "Head of a corporate function. Sees every unit, edits their own function, approves the next-week plans of the departments they cover (leave departments empty to cover the whole function).",
+  chief: "Head of a corporate function. Sees every unit, edits their own function, approves the next-week plans of everyone in their function.",
   gm: "Head of a business unit. Same access as a chief: sees every unit, edits their own unit, approves its next-week plans.",
   director: "Head of a business unit or function. Same access as a chief: sees every unit, edits their own unit, approves its next-week plans.",
   lea: "Lead executive assistant. Sees every unit and the business units' work, and keeps their own plan and activities.",
@@ -105,14 +105,14 @@ export function canDecide(p, r) {
   if (r.by && p.name && r.by === p.name && p.role !== "planning") return false; // nobody approves their own request (the planning head may approve their own plan)
   const st = r.stage || "group";
   if (p.role === "planning") return st === "chief" || st === "planning";
-  if (p.role === "leader") { const mine = p.departments || [], ds = deptList(r); return st === "chief" && (!mine.length || (ds.length > 0 && ds.every((d) => mine.includes(d)))); }
+  if (p.role === "leader") return st === "chief";   // a chief, GM or director answers for everyone in their own unit or function, whatever department is set on their profile
   return false;
 }
 // Which step must decide a request made by `role` in `unit` for `depts`? (people = profiles, units = unit rows)
 export function routeStage(people, units, unit, role, depts) {
   const fn = ((units || []).find((u) => u.id === unit) || {}).type === "Corporate function";
   const act = (people || []).filter((x) => x.unit === unit && x.status === "active" && x.setupDone !== false);
-  const chief = act.some((x) => baseRole(x.role) === "leader" && (!(x.departments || []).length || (depts.length > 0 && depts.every((d) => x.departments.includes(d)))));
+  const chief = act.some((x) => baseRole(x.role) === "leader");
   const plan = act.some((x) => x.role === "planning");
   if (role === "planning") return "planning";   // the planning head approves their own plan
   if (role === "staff" || role === "manager") return chief ? "chief" : (plan && !fn ? "planning" : "group");

@@ -10,7 +10,7 @@
 // Run  npm run check-help  after changing the app or this file: it lists guide wording that no longer matches the app.
 // "pages" uses the app's tab ids: dashboard, update, plan, mplan, approvals, support, fb, tasks, monthly, ceo, follow, activity, units, people.
 // Keep sentences short and name the buttons exactly as they appear on screen.
-export const GUIDES_VERSION = "2026-10-24.2";
+export const GUIDES_VERSION = "2026-10-24.3";
 
 export const GROUPS = [
   { id: "start", title: "Getting started", icon: "🚀", blurb: "Signing in, weeks, roles and finding your way around" },
@@ -103,7 +103,7 @@ export const GUIDES = [
     steps: [
       "**Employee / Division head:** view only. You see your own department and can ask your department head to update progress (a box on the Progress update page).",
       "**Department head (Manager):** sees the whole unit. Updates progress and plans next week for **their own departments** only. Their next-week plan goes to the chief for approval.",
-      "**Chief, GM, Director:** sees every unit. Edits everything in their own unit or function and approves the plans of the departments they cover.",
+      "**Chief, GM, Director:** sees every unit. Edits everything in their own unit or function and approves the plans of everyone in their own unit or function.",
       "**Planning head:** edits everything in their own unit (including deleting), manages its departments, approves plans including their own.",
       "**CEO / DCEO:** sees everything and writes feedback, but cannot change plans.",
       "**Group Strategy (super admin):** sees and changes everything, manages people, units and settings, approves and can undo anything.",
@@ -714,7 +714,7 @@ export const GUIDES = [
     kw: "chain route who approves chief planning head group strategy department head step stage above one level",
     intro: "A request goes to the person one step above the one who asked.",
     steps: [
-      "**Department head or employee request** → the **chief/director/GM** who covers that department. If there is none, the planning head. If none, Group Strategy.",
+      "**Department head or employee request** → the **chief/director/GM** of their unit or function. If there is none, the planning head. If none, Group Strategy.",
       "**Chief/director/GM request** → the **planning head** (in a corporate function it goes straight to Group Strategy).",
       "**Planning head request** → the planning head approves their own plan.",
       "**View-only employee 'ask to update'** → their department head, chief or planning head.",
