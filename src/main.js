@@ -334,7 +334,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     const order = ["In progress","Not started","","Blocked","Delayed"];
     const groups = order.map(s => ({ s, list: b.items.map((x, i) => ({ ...x, i })).filter(x => (x.t.status || "") === s) })).filter(g => g.list.length);
     root.innerHTML = `<div class="overlay"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="bfTitle">
-      <div class="panel-head"><div><h2 id="bfTitle">Bring forward unfinished tasks</h2><div class="small muted">From the last 8 weeks into ${esc(weekLabel(state.week))}. Each task shows the week it was last seen in. Done tasks are not listed. Blocked and Delayed tasks start unticked: bring them only if they will still be worked on. Unticked tasks stay in last week only.</div></div></div>
+      <div class="panel-head"><div><h2 id="bfTitle">Bring forward unfinished tasks</h2><div class="small muted">From the last 8 weeks into ${esc(weekLabel(state.week))}. Each task shows the week it was last seen in. Done tasks are not listed. A task you bring forward starts again at Not started and 0% on what is left; the progress already made stays as "done earlier" and counts in its overall progress. Blocked and Delayed tasks start unticked: bring them only if they will still be worked on. Unticked tasks stay in last week only.</div></div></div>
       <div class="toolbar" style="padding:10px 16px"><button class="btn" id="bfAll">Select all</button><button class="btn" id="bfProg">In progress only</button><button class="btn" id="bfNone">Select none</button></div>
       <div style="padding:0 16px 8px">${groups.map(g => `<div class="small muted" style="margin:10px 0 4px;font-weight:700;text-transform:uppercase;letter-spacing:.05em">${esc(g.s || "No status")} · ${g.list.length}</div>${g.list.map(x => `<label class="bf-row ${x.dup ? "dim" : ""}"><input type="checkbox" data-bf="${x.i}" ${x.checked ? "checked" : ""} ${x.dup ? "disabled" : ""}><span><b>${esc(x.t.title)}</b>${x.dup ? ' <span class="tag">Already in this week</span>' : ""}<br><span class="small muted">${[x.t.dept, x.t.owner, typeof x.t.pct === "number" ? x.t.pct + "%" : "", x.t.due ? "due " + fmt(x.t.due) : ""].filter(Boolean).map(esc).join(" · ")}${x.wk ? ` · <b>from ${esc(weekShort(x.wk))}</b>` : ""}</span></span></label>`).join("")}`).join("")}</div>
       <div class="save-bar"><span class="small muted">Past due dates are cleared on the copy and kept in its notes.</span><div class="toolbar"><button class="btn" id="bfCancel">Cancel</button><button class="btn primary" id="bfGo">Bring ${bfCount()} task${bfCount() === 1 ? "" : "s"} forward</button></div></div></div></div>`;
@@ -344,7 +344,8 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     if (sel.length && !confirmCross(state.editUnit, sel.map(x => x.t.dept), `Bring ${sel.length} task${sel.length > 1 ? "s" : ""} forward into ${unitName(state.editUnit)}?`)) return;
     sel.forEach(x => {
       const t = clone(x.t), past = t.due && t.due < todayIso;
-      state.draft.tasks.push({ ...t, id: uid(), carried: true, carriedCount: (t.carriedCount || 0) + 1, prevStatus: t.status || "", prevPct: typeof t.pct === "number" ? t.pct : null, completedAt: "",
+      const base = overallOf(t);   // what is already done becomes the starting point; this week counts only the rest
+      state.draft.tasks.push({ ...t, id: uid(), carried: true, carriedCount: (t.carriedCount || 0) + 1, prevStatus: t.status || "", prevPct: typeof t.pct === "number" ? t.pct : null, basePct: base > 0 && base < 100 ? base : 0, status: "Not started", pct: null, blockedSince: "", completedAt: "",
         due: past ? "" : (t.due || ""), notes: [t.notes, `Carried from ${fmt(x.wk || b.week)} week${past ? ` (was due ${fmt(t.due)})` : ""}`].filter(Boolean).join(" | ") });
     });
     if (sel.length) { state.dirty = true; state.dirtyUnits.add(state.editUnit); }
@@ -952,12 +953,12 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
       + (ed && lk ? `<button class="icon-btn ib" type="button" data-unlock="${esc(t.id)}" aria-label="Request change" title="Request change: the edit goes to Group Strategy for approval">${ico(IC.pen)}</button>` : "")
       + (ed ? (state.confirmDelete === t.id ? `<span class="confirm">${savedTask(u, t) && !isAppr() && state.week <= thisMonday() ? "Ask to remove?" : "Remove?"} <button class="btn danger small" data-del-yes="${esc(key)}">Yes</button><button class="btn small" data-del-no>No</button></span>` : `<button class="icon-btn ib bad" type="button" data-del="${t.id}" aria-label="Remove task" title="Remove task">${ico(IC.trash)}</button>`) : "");
     return `<tr class="task-row${ind ? " kid" : ""}" data-u="${esc(u)}" data-i="${i}" data-id="${esc(t.id)}">
-      <td class="c-task"><div class="task-main">${main}<div class="sub">${sub}</div></div></td>
+      <td class="c-task"><div class="task-main">${main}<div class="sub">${sub}</div>${remNote(t)}</div></td>
       <td class="c-due" data-l="Due">${dueC}</td>
       <td class="c-dept" data-l="Department">${deptC}</td>
       <td class="c-pri" data-l="Priority">${priC}</td>
       <td class="c-status" data-l="Status">${stC}${stExtra}${doneTxt}</td>
-      <td class="c-pct" data-l="Progress">${pcC}</td>
+      <td class="c-pct" data-l="Progress">${pcC}${baseOf(t) ? `<div class="small muted pc-of">of the ${100 - baseOf(t)}% left</div>` : ""}</td>
       <td class="c-act"><div class="task-side">${act}</div></td>
     </tr>`;
   }
@@ -978,6 +979,10 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
       <td class="c-act"><div class="task-side">${act}</div></td></tr>`;
   }
   // Progress update, Financial: one line per revenue product, actual typed in the row
+  // A task brought forward starts again from zero on what is left. basePct is the overall progress made in earlier weeks; pct is this week's progress on the remaining part.
+  const baseOf = t => { const b = Number(t && t.basePct); return b > 0 && b < 100 ? Math.round(b) : 0; };
+  const overallOf = t => { const b = baseOf(t), p = t.status === "Done" ? 100 : (typeof t.pct === "number" ? t.pct : 0); return Math.round(b + (100 - b) * p / 100); };
+  const remNote = t => { const b = baseOf(t); if (!b) return ""; const o = overallOf(t); return `<div class="rem-note" id="t-rem-${t.id}" title="Progress on a brought-forward task is counted on the part that was still left. Overall = done earlier + this week's share of the rest."><span class="rem-bar"><i style="width:${o}%"></i></span><span>Overall <b>${o}%</b> · ${b}% done earlier · ${100 - b}% was left</span></div>`; };
   const finPct = t => { const c = calcPct(t); return c === null ? 0 : c; };
   function finRowHtml(u, t, i){
     const ed = rowEd(u, t), pct = finPct(t);
@@ -2177,7 +2182,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
       if (bad) { el.value = task.due || ""; toast(bad, state.week < nextMonday() ? { label: "Go to next week's plan", fn: () => { state.tab = "plan"; setWeek(nextMonday()); }, ms: 12000 } : null); return null; }
     }
     state.dirtyUnits.add(u);
-    if (f==="pct") { const v = el.value==="" ? null : Math.max(0, Math.min(100, Number(el.value))); task.pct = v; if (v===100 && task.status!=="Done") { task.status = "Done"; statusSideEffects(task); return true; } return false; }
+    if (f==="pct") { const v = el.value==="" ? null : Math.max(0, Math.min(100, Number(el.value))); task.pct = v; if (v===100 && task.status!=="Done") { task.status = "Done"; statusSideEffects(task); return true; } const rn = document.getElementById("t-rem-" + task.id); if (rn) rn.outerHTML = remNote(task); return false; }
     if (f==="target" || f==="actual" || f==="measure" || f==="lower") {
       if (f==="lower") task.lower = el.checked; else if (f==="measure") task.measure = el.value; else task[f] = el.value === "" ? "" : Number(el.value);
       const c = calcPct(task);
@@ -2766,7 +2771,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     (t.kind === "KPI / OKR" ? "[KPI / OKR] " : "") + (t.title || "") + (t.carried ? "\n(carried forward)" : ""),
     t.outcome || "", t.dept || "", t.owner || "", fmt(t.due), t.priority || "",
     (t.status || "No status") + (t.prevStatus ? `\n(was: ${t.prevStatus}${typeof t.prevPct === "number" ? " " + t.prevPct + "%" : ""})` : ""),
-    typeof t.pct === "number" ? t.pct + "%" : "", fmt(t.completedAt || ""), depText(t),
+    (typeof t.pct === "number" ? t.pct + "%" : "") + (baseOf(t) ? `\n(overall ${overallOf(t)}%)` : ""), fmt(t.completedAt || ""), depText(t),
     [t.notes || "", (t.ev || []).length ? "Evidence: " + t.ev.map(e => e.name).join(", ") : ""].filter(Boolean).join("\n")];
   const pdfStyle = () => { const b = tableStyle(); b.styles = { ...b.styles, fontSize: 7.5, cellPadding: 3 }; b.headStyles = { ...b.headStyles, fontSize: 7.5 }; return b; };
   const safeName = s => s.replace(/[\\/:*?"<>|]/g,"").slice(0,60);
@@ -2795,9 +2800,9 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   }
 
   function sheetFromRows(rows, widths){ const ws = XLSX.utils.aoa_to_sheet(rows); ws["!cols"] = widths.map(w => ({ wch: w })); return ws; }
-  const taskHead = ["#","Task / deliverable","Department","Owner (name)","Due","Priority","Status","% complete","Notes / next step","Type","Expected outcome","Previous status","Completed on","Depends on (unit)","Dependency details","Evidence files","Task code"];
-  const taskWidths = [5,55,18,22,12,10,13,11,50,11,40,14,13,24,30,30,14];
-  const xlsxTask = (t,i) => [i+1, t.title||"", t.dept||"", t.owner||"", t.due||"", t.priority||"", t.status||"No status", typeof t.pct==="number" ? t.pct/100 : "", t.notes||"", t.kind||"Task", t.outcome||"", t.prevStatus||"", t.completedAt||"", t.depUnit ? unitName(t.depUnit) : "", t.dep||"", (t.ev||[]).map(e => e.name).join(", "), t.ref||""];
+  const taskHead = ["#","Task / deliverable","Department","Owner (name)","Due","Priority","Status","% complete","Notes / next step","Type","Expected outcome","Previous status","Completed on","Depends on (unit)","Dependency details","Evidence files","Task code","Done in earlier weeks","Overall %"];
+  const taskWidths = [5,55,18,22,12,10,13,11,50,11,40,14,13,24,30,30,14,14,11];
+  const xlsxTask = (t,i) => [i+1, t.title||"", t.dept||"", t.owner||"", t.due||"", t.priority||"", t.status||"No status", typeof t.pct==="number" ? t.pct/100 : "", t.notes||"", t.kind||"Task", t.outcome||"", t.prevStatus||"", t.completedAt||"", t.depUnit ? unitName(t.depUnit) : "", t.dep||"", (t.ev||[]).map(e => e.name).join(", "), t.ref||"", baseOf(t) ? baseOf(t)/100 : "", baseOf(t) ? overallOf(t)/100 : ""];
   function pctFormat(ws, col, firstRow){ const r = XLSX.utils.decode_range(ws["!ref"]); for (let R = firstRow; R <= r.e.r; R++) { const c = ws[XLSX.utils.encode_cell({ r: R, c: col })]; if (c && typeof c.v === "number") c.z = "0%"; } }
   async function writeXlsx(wb, filename, msg){ const buf = XLSX.write(wb, { bookType: "xlsx", type: "array" }); await save(filename, buf, msg); }
 
@@ -3097,7 +3102,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
       ["3","Type: Task, or KPI / OKR for indicator lines. Category: Operational or Revenue."],
       ["4","Week starting: any date inside the week. Leave blank to use the week selected on the page."],
       ["5","Target, Target unit and Actual: for measurable work, enter the target (for example 500), its unit (ETB, units, %) and the actual so far. % complete is then calculated for you. Pick 'Yes' under Lower is better when less is better, for example cost or delay."],
-      ["6","Without a target, enter % complete yourself (0% to 100%). Done with no % counts as 100%."],
+      ["6","Without a target, enter % complete yourself (0% to 100%). Done with no % counts as 100%. For a task brought forward from an earlier week, % complete is the share of what was still left at the start of this week: the progress already made is kept as 'done earlier' and the overall progress is worked out for you."],
       ["7","Due date: a real date. Priority: High, Medium or Low. Status: Not started, In progress, Done, Blocked or Delayed."],
       ["8","On import, each row is matched to a saved task by its title; new titles are added and the app gives them a task code. To update an existing task even when the wording changed, use the Excel export of the plan (it carries the Task code column) and upload that file. You see a review first, and rows with a wrong unit or department are held back with a suggestion."],
       ["9","Once a week has started, saved tasks keep their title, outcome, type, department, due date and priority. Changes to those, and anything for a past week, go to Group Strategy for approval."]].forEach(r => ins.addRow(r));
@@ -3134,7 +3139,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
           const ex = (code && plan.tasks.find(t => t.ref === code)) || plan.tasks.find(t => norm(t.title) === key && (!code || !t.ref));
           const prior = !ex && code ? (g.earlier || []).find(t => t.ref === code) : null;   // the same task from an earlier week: keep its code, mark it as carried
           if (ex) { FIELDS.forEach(f => { const v = r.row[f]; if (v !== "" && v !== null && v !== undefined) ex[f] = v; }); if (r.row.status) statusSideEffects(ex); }
-          else { const nt = { id: uid(), category: r.row.category, target: r.row.target, measure: r.row.measure, actual: r.row.actual, lower: r.row.lower, title: r.row.title, outcome: r.row.outcome, dept: r.row.dept, owner: r.row.owner, due: r.row.due, priority: r.row.priority, status: r.row.status, pct: r.row.pct, notes: r.row.notes, kind: r.row.kind, depUnit: r.row.depUnit, dep: r.row.dep, ev: [] }; if (nt.status) statusSideEffects(nt); if (r.row.pct !== null && r.row.pct !== undefined) nt.pct = r.row.pct; if (prior) { nt.ref = prior.ref; nt.carried = true; nt.carriedCount = (prior.carriedCount || 0) + 1; nt.prevStatus = prior.status || ""; nt.prevPct = typeof prior.pct === "number" ? prior.pct : null; if (prior.parent) nt.parent = prior.parent; } plan.tasks.push(nt); }
+          else { const nt = { id: uid(), category: r.row.category, target: r.row.target, measure: r.row.measure, actual: r.row.actual, lower: r.row.lower, title: r.row.title, outcome: r.row.outcome, dept: r.row.dept, owner: r.row.owner, due: r.row.due, priority: r.row.priority, status: r.row.status, pct: r.row.pct, notes: r.row.notes, kind: r.row.kind, depUnit: r.row.depUnit, dep: r.row.dep, ev: [] }; if (nt.status) statusSideEffects(nt); if (r.row.pct !== null && r.row.pct !== undefined) nt.pct = r.row.pct; if (prior) { nt.ref = prior.ref; nt.carried = true; nt.carriedCount = (prior.carriedCount || 0) + 1; nt.prevStatus = prior.status || ""; nt.prevPct = typeof prior.pct === "number" ? prior.pct : null; { const b0 = overallOf(prior); if (b0 > 0 && b0 < 100) nt.basePct = b0; } if (prior.parent) nt.parent = prior.parent; } plan.tasks.push(nt); }
         });
         if (g.sum) { ["wins","blockers","asks"].forEach(f => { if (g.sum[f]) plan[f] = g.sum[f]; }); }
         const res = await persistPlan(g.unit.id, g.week, latest, plan, { latest, source: "Import: " + imp.fileName, action: "import", prefix: `Imported ${imp.fileName}: ` });

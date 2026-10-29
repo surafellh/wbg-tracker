@@ -10,7 +10,7 @@
 // Run  npm run check-help  after changing the app or this file: it lists guide wording that no longer matches the app.
 // "pages" uses the app's tab ids: dashboard, update, plan, mplan, approvals, support, fb, tasks, monthly, ceo, follow, activity, units, people.
 // Keep sentences short and name the buttons exactly as they appear on screen.
-export const GUIDES_VERSION = "2026-10-24.4";
+export const GUIDES_VERSION = "2026-10-29.1";
 
 export const GROUPS = [
   { id: "start", title: "Getting started", icon: "🚀", blurb: "Signing in, weeks, roles and finding your way around" },
@@ -334,10 +334,12 @@ export const GUIDES = [
       "A list shows unfinished tasks from the last 8 weeks, grouped by status, with the week each was last seen.",
       "Tick the ones you want. **In progress** and **Not started** are ticked for you; **Blocked** and **Delayed** start unticked, bring them only if they can really move. Use **Select all**, **In progress only** or **Select none**.",
       "Press **Bring N tasks forward**, then **Save plan**.",
+      "A brought-forward task starts again at Not started and 0%, counted on what is left. If last week ended at 70%, the task shows a line under its name: overall 70%, 70% done earlier, 30% was left, and the progress box says \"of the 30% left\". As you enter this week's progress the overall figure grows: 50% of the rest makes the overall 85%, 100% (or Done) makes it 100%. The work already done is not lost, and this week is not credited with it.",
+      "With an Excel template, the **% complete** of a task that was brought forward is also the share of what was left. Fill a row with the task code of an unfinished task and it comes in as brought forward, with the earlier progress kept as done earlier. The Excel export of the plan has the columns **Done in earlier weeks** and **Overall %**.",
     ],
     why: [
       "Brought-forward tasks keep their original task code, so the weekly and monthly reports follow one task across weeks instead of counting it as new.",
-      "The copy shows a **Carried** tag (and ×2, ×3 if it keeps being carried). Its previous status and % are remembered, and a past due date is cleared and written in the notes.",
+      "The copy shows a **Carried** tag (and ×2, ×3 if it keeps being carried). Its previous status and % are remembered (the % becomes the progress done earlier), and a past due date is cleared and written in the notes.",
       "Done and Closed tasks are never listed, and tasks already in the plan show as duplicates so you cannot bring them twice.",
       "Department heads and staff only see tasks of their own departments in this list.",
     ],

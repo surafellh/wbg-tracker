@@ -23,7 +23,7 @@ export const lockedFields = () => (cfg.allowRename ? LOCKED.filter((f) => f !== 
 export const timeLabel = (t) => { const [h, m] = String(t || "14:00").split(":").map(Number); return `${((h + 11) % 12) + 1}:${String(m || 0).padStart(2, "0")} ${h >= 12 ? "PM" : "AM"}`; };
 export const graceLabel = () => `Saturday ${timeLabel(cfg.graceTime)}`;
 // Fields compared when working out what changed (lu / lb are "last updated" stamps, not content).
-export const TASK_FIELDS = ["title", "kind", "dept", "outcome", "owner", "due", "priority", "prevStatus", "prevPct", "status", "pct", "completedAt", "depUnit", "dep", "notes", "ev", "carried", "carriedCount", "blockedSince", "category", "target", "measure", "actual", "lower", "ref", "parent", "weight", "unplanned"];
+export const TASK_FIELDS = ["title", "kind", "dept", "outcome", "owner", "due", "priority", "prevStatus", "prevPct", "basePct", "status", "pct", "completedAt", "depUnit", "dep", "notes", "ev", "carried", "carriedCount", "blockedSince", "category", "target", "measure", "actual", "lower", "ref", "parent", "weight", "unplanned"];
 export const DEFAULT_APPROVERS = ["Surafel", "Surafel Hailu", "Ataklti", "Ataklti Nega"];
 
 const pad = (n) => String(n).padStart(2, "0");
@@ -98,7 +98,7 @@ export const CATEGORIES = ["Operational", "Revenue"];
 const same = (f, a, b) => {
   if (f === "kind") return (a || "Task") === (b || "Task");
   if (f === "ev") return JSON.stringify(a || []) === JSON.stringify(b || []);
-  if (f === "pct" || f === "prevPct" || f === "carriedCount") return (a ?? null) === (b ?? null) || (a === "" && b == null) || (b === "" && a == null);
+  if (f === "pct" || f === "prevPct" || f === "basePct" || f === "carriedCount") return (a ?? null) === (b ?? null) || (a === "" && b == null) || (b === "" && a == null);
   if (f === "carried" || f === "lower") return !!a === !!b;
   if (f === "weight") return Number(a || 1) === Number(b || 1);
   if (f === "target" || f === "actual") return (a === "" || a == null ? "" : Number(a)) === (b === "" || b == null ? "" : Number(b));

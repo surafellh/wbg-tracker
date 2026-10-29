@@ -1025,3 +1025,9 @@ body:has(.save-bar:not([hidden])) .help-fab{bottom:calc(84px + env(safe-area-ins
 body[data-tab="projects"] .weeknav{display:none}
 .pj-pct{width:62px;text-align:right;padding:4px 6px}
 
+
+.rem-note{display:flex;align-items:center;gap:8px;margin-top:4px;font-size:12px;color:var(--muted)}
+.rem-note b{color:var(--ink)}
+.rem-bar{flex:none;width:70px;height:6px;border-radius:3px;background:var(--line);overflow:hidden}
+.rem-bar i{display:block;height:100%;background:var(--brand,#f5c518)}
+.pc-of{margin-top:2px;white-space:nowrap}
