@@ -334,7 +334,7 @@ export const GUIDES = [
       "A list shows unfinished tasks from the last 8 weeks, grouped by status, with the week each was last seen.",
       "Tick the ones you want. **In progress** and **Not started** are ticked for you; **Blocked** and **Delayed** start unticked, bring them only if they can really move. Use **Select all**, **In progress only** or **Select none**.",
       "Press **Bring N tasks forward**, then **Save plan**.",
-      "A brought-forward task starts again at Not started and 0%, counted on what is left. If last week ended at 70%, the task shows a line under its name: overall 70%, 70% done earlier, 30% was left, and the progress box says \"of the 30% left\". As you enter this week's progress the overall figure grows: 50% of the rest makes the overall 85%, 100% (or Done) makes it 100%. The work already done is not lost, and this week is not credited with it.",
+      "A brought-forward task starts again as In progress at 0%, counted on what is left (a task that was never started stays Not started). If last week ended at 70%, the task shows a line under its name: overall 70%, 70% done earlier, 30% was left, and the progress box says \"of the 30% left\". As you enter this week's progress the overall figure grows: 50% of the rest makes the overall 85%, 100% (or Done) makes it 100%. The work already done is not lost, and this week is not credited with it.",
       "With an Excel template, the **% complete** of a task that was brought forward is also the share of what was left. Fill a row with the task code of an unfinished task and it comes in as brought forward, with the earlier progress kept as done earlier. The Excel export of the plan has the columns **Done in earlier weeks** and **Overall %**.",
     ],
     why: [
