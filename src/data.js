@@ -174,12 +174,19 @@ function createSupabaseData() {
         const docs = scopeDocs((data || []).map((r) => snapDoc(cfg, r)));
         return { docs, size: docs.length, empty: !docs.length };
       }
-      let q = sb.from(cfg.table).select("*");
-      for (const [f, op, v] of filters) q = q[OPS[op]](col(f), v);
-      if (ord) q = q.order(col(ord[0]), { ascending: ord[1] !== "desc" });
-      if (lim) q = q.limit(lim);
-      const { data, error } = await q;
-      if (error) fail(error);
+      // The server sends at most 1000 rows per request, so read in pages of 1000 up to the limit or the end of the table.
+      // A second sort on id keeps the pages from overlapping when many rows share the first sort value (for example the same day).
+      const data = [], cap = lim || Infinity;
+      for (let from = 0; data.length < cap; from += 1000) {
+        let q = sb.from(cfg.table).select("*");
+        for (const [f, op, v] of filters) q = q[OPS[op]](col(f), v);
+        if (ord) q = q.order(col(ord[0]), { ascending: ord[1] !== "desc" });
+        if (!ord || col(ord[0]) !== "id") q = q.order("id");
+        const { data: page, error } = await q.range(from, from + Math.min(999, cap - data.length - 1));
+        if (error) fail(error);
+        data.push(...page);
+        if (page.length < 1000) break;
+      }
       const docs = scopeDocs((data || []).map((r) => snapDoc(cfg, r)));
       return { docs, size: docs.length, empty: !docs.length };
     };
