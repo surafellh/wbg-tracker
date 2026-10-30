@@ -10,7 +10,7 @@
 // Run  npm run check-help  after changing the app or this file: it lists guide wording that no longer matches the app.
 // "pages" uses the app's tab ids: dashboard, update, plan, mplan, approvals, support, fb, tasks, monthly, ceo, follow, activity, units, people.
 // Keep sentences short and name the buttons exactly as they appear on screen.
-export const GUIDES_VERSION = "2026-10-29.1";
+export const GUIDES_VERSION = "2026-10-30.1";
 
 export const GROUPS = [
   { id: "start", title: "Getting started", icon: "🚀", blurb: "Signing in, weeks, roles and finding your way around" },
@@ -21,13 +21,14 @@ export const GROUPS = [
   { id: "rep", title: "Reports and dashboards", icon: "📊", blurb: "Dashboard, weekly and monthly reports, downloads" },
   { id: "del", title: "Business support and feedback", icon: "🤝", blurb: "Support requests, feedback and corrective actions" },
   { id: "prj", title: "Projects", icon: "🏗️", blurb: "Follow project status and progress, phases, monthly reports" },
+  { id: "cf", title: "Cash flow", icon: "💰", blurb: "Bank balances, collections and payments, forecast and financing" },
   { id: "adm", title: "Group Strategy tools", icon: "⚙️", blurb: "People, units, settings and the activity log" },
   { id: "fix", title: "When something goes wrong", icon: "🛠️", blurb: "Quick fixes for the most common problems" },
 ];
 
 export const TAB_NAMES = {
   dashboard: "Dashboard", update: "Progress update", plan: "Next plan", mplan: "Monthly plan", approvals: "Approvals",
-  support: "Business support", fb: "Feedback", tasks: "Weekly report", monthly: "Monthly report", ceo: "Actions for the CEO", projects: "Projects",
+  support: "Business support", fb: "Feedback", tasks: "Weekly report", monthly: "Monthly report", ceo: "Actions for the CEO", projects: "Projects", cashflow: "Cash flow",
   activity: "Activity log", units: "Units", people: "People",
 };
 
@@ -825,6 +826,25 @@ export const GUIDES = [
     go: [["Business support", "support"]],
   },
   {
+    id: "fb", g: "del", pages: ["fb"], title: "Feedback and corrective actions",
+    kw: "feedback ceo dceo group strategy corrective action issue owner due acknowledge log task linked",
+    intro: "Feedback is written by the CEO, DCEO or Group Strategy about a unit or a task. Corrective actions record what is being done to fix a gap.",
+    steps: [
+      "**Giving feedback** (CEO, DCEO, Group Strategy): press **+ Give feedback**, choose the unit, optionally a task, and write the message. You can also do it from inside a task's **Discussion and feedback** section.",
+      "**Receiving feedback:** units see a blue banner on their page. Open it and press **Acknowledge** so the sender knows it was read.",
+      "**Corrective actions:** the unit head presses **+ Log a corrective action** and writes the issue, the action, the owner and the due date.",
+      "Update the action's status (Open, In progress, Done, Closed) as work proceeds. Overdue open actions are marked.",
+      "**Answering feedback** (chief or GM, planning head, Group Strategy, CEO, DCEO): press **Reply** for a short answer, or **Reply with a letter** for a formal one with a subject. The answer shows under the feedback for everyone who can read it. A reply from the unit also counts as acknowledging it.",
+      "When the planning head replies, the unit's chief or GM gets a message about it. The person who wrote the feedback gets a message when the unit replies.",
+    ],
+    why: [
+      "Feedback tied to a task appears inside that task, so the reason and the fix stay with the work.",
+      "Who can read them: Group Strategy, the CEO and the DCEO read every unit's. A chief or GM, the planning head and the managers of a unit read only their own unit's. Employees do not see them. A letter to the head of the unit is private to that unit's chief and planning head.",
+      "They show as a number on the Feedback tab and a banner on your plan page. They do not appear on the bell.",
+    ],
+    go: [["Feedback", "fb"]],
+  },
+  {
     id: "projects", g: "prj", pages: ["projects"], title: "Following a project",
     kw: "project status progress phase activity monthly update rag green amber red physical capital milestone budget risk decision portfolio",
     intro: "The Projects page shows every project you can read with its status, colour, progress and the month of its last report. Click a project to open it.",
@@ -874,23 +894,83 @@ export const GUIDES = [
     go: [["Projects", "projects"]],
   },
   {
-    id: "fb", g: "del", pages: ["fb"], title: "Feedback and corrective actions",
-    kw: "feedback ceo dceo group strategy corrective action issue owner due acknowledge log task linked",
-    intro: "Feedback is written by the CEO, DCEO or Group Strategy about a unit or a task. Corrective actions record what is being done to fix a gap.",
+    id: "cash-position", g: "cf", pages: ["cashflow"], title: "Reading the cash summary",
+    kw: "cash flow summary bank balance collections payables 1 11 2 22 3 33 deficit financing as of counted categories exclude not expected live pdf",
+    intro: "The Summary starts from the bank balance, then adds what is collected and subtracts what is paid, step by step. Code 1 and 11 mean this calendar month (on 28 October that is October, not November), 2 and 22 next month, 3 and 33 the month after. Single digits are collections, double digits are payments. Only Group Finance (and the super admin who looks after the app) can open Cash flow.",
     steps: [
-      "**Giving feedback** (CEO, DCEO, Group Strategy): press **+ Give feedback**, choose the unit, optionally a task, and write the message. You can also do it from inside a task's **Discussion and feedback** section.",
-      "**Receiving feedback:** units see a blue banner on their page. Open it and press **Acknowledge** so the sender knows it was read.",
-      "**Corrective actions:** the unit head presses **+ Log a corrective action** and writes the issue, the action, the owner and the due date.",
-      "Update the action's status (Open, In progress, Done, Closed) as work proceeds. Overdue open actions are marked.",
-      "**Answering feedback** (chief or GM, planning head, Group Strategy, CEO, DCEO): press **Reply** for a short answer, or **Reply with a letter** for a formal one with a subject. The answer shows under the feedback for everyone who can read it. A reply from the unit also counts as acknowledging it.",
-      "When the planning head replies, the unit's chief or GM gets a message about it. The person who wrote the feedback gets a message when the unit replies.",
+      "Open **Cash flow**, then **Summary**. Pick the **As of** date (it rolls forward every day) and a unit, or leave all units.",
+      "Use the **1 / 2 / 3** buttons to focus on one urgency. The table then shows only those steps.",
+      "**What is counted** is a drop-down next to the unit. Open it and tick the categories you expect to be collected or paid; untick the ones you do not, for example related parties. **Select all** and **Clear all** do every category, **All** and **None** do one side. Figures change at once. **Saved settings** returns to what Setup says.",
+      "Read the ladder: **Bank balance now**, then what is **still to be collected** (▲), what is **still to be paid** (▼), and the **position** after each step. Red means negative. With several units, the table **By unit** shows the position after each step, with the amount to collect (green) and to pay (red) under it. What was already collected or paid is not counted again, so the figures change through the day as cash is recorded.",
+      "**Financing needed now** is the shortfall within the coming month (step 1). The later steps are shown as \"more later\". The box below shows which units have spare cash to cover it. **Download PDF** gives the table on paper.",
+      "Move over the line in **Bank balance by day** to see the amount for each day.",
     ],
-    why: [
-      "Feedback tied to a task appears inside that task, so the reason and the fix stay with the work.",
-      "Who can read them: Group Strategy, the CEO and the DCEO read every unit's. A chief or GM, the planning head and the managers of a unit read only their own unit's. Employees do not see them. A letter to the head of the unit is private to that unit's chief and planning head.",
-      "They show as a number on the Feedback tab and a banner on your plan page. They do not appear on the bell.",
+    go: [["Cash flow", "cashflow"]],
+  },
+  {
+    id: "cash-week", g: "cf", pages: ["cashflow"], title: "The weekly plan, as your cash flow statement",
+    kw: "weekly plan week monday saturday statement plan actual variance next week unplanned payment download excel pdf",
+    intro: "The Weekly plan page is the weekly cash flow statement: Plan, Actual, Variance, % and the plan for next week. A week runs Monday to Saturday. It is for reading only: the plan comes from Collections & payments, and the actual fills in as cash is recorded each day.",
+    steps: [
+      "Open **Weekly plan** and pick the unit and the week with the arrows or the date box. Click a row such as **Credit collection** to open its lines: first the business units, then the categories, then the lines themselves.",
+      "**Plan** is what was expected to be collected or paid in the week. **Actual** is what was recorded, day by day, in Collections & payments. **Var.** and **%** compare the two.",
+      "Cash collected or paid with no plan line appears in **Unplanned collections** and **Unplanned payments**, with the day, who and the bank.",
+      "To change the plan or record cash, go to **Collections & payments**: record the day in the **Actual** tab, or upload the next plan from the **Status** tab.",
+      "**Download Excel** and **Download PDF** give the statement as you see it.",
     ],
-    go: [["Feedback", "fb"]],
+    go: [["Cash flow", "cashflow"]],
+  },
+  {
+    id: "cash-daily-upload", g: "cf", pages: ["cashflow"], title: "Collections & payments: Plan, Actual and Status, and Bank",
+    kw: "collections payments plan actual status week monday saturday day bank several banks split template upload excel pdf drop line next plan unplanned reconcile",
+    intro: "Collections & payments has three tabs. **Plan** shows what is planned, by month. **Actual** is where cash collected and paid is recorded, day by day. **Status** shows what is left as of the day chosen at the top, and is the sheet you use to plan next week. **Bank** shows each bank: opening plus in minus out gives the closing.",
+    steps: [
+      "**Add weekly plan** is the yellow button at the top of **Plan** and **Status**. It uploads the plan for the coming week as an Excel sheet; **Download the sheet to fill in** gives the layout.",
+      "**Plan:** three boxes, one for each month step (within one month, two months, three months). Collections are on the left and payments on the right, folded by category. Open a category to see its lines. **Open all** and **Fold all** do it for every category.",
+      "**Actual:** pick the week with the arrows. Collections are at the top, payments below. Click the **Collections** or **Payments** title to fold or open that block, so you can go straight to the other one. For each line type what was collected or paid in the day it happened, Monday to Saturday, then press **Save**. **Planned**, **Collected** and **Remaining** are shown on every line.",
+      "**+ Add a line** (top right of **Actual**) is for cash that was not in the plan. A panel opens on the right: who, category, day, bank and amount. The line is marked **Unplanned**, and the box **Planned and unplanned, this week** compares planned cash with unplanned lines and cash with no line.",
+      "Click anywhere in the code, name or category cell of a line, or **Details**, to open it on the right. Click the same line again, or anywhere outside the panel, to close it. If you typed something that is not saved, the panel stays open and asks you to **Save** or **Discard changes**. Each day has a row for the bank and the amount. For a different bank on another day, type or pick that bank on that day. For two banks on one day, press **+ Another bank**. A bank that is not in the list yet is added when you save. **Save** records the week. The panel also lists what was recorded for the line, and by whom.",
+      "To work in Excel: **⋯**, **Download this week as a template**. Fill the day columns and use **Upload the filled week**. An empty day means no change, 0 removes that day's entry. A row with no code is cash with no line: write who it is and the bank. The file remembers what was recorded when you downloaded it. If someone changed a day in the app after that, your upload does not overwrite it: the result names the day and keeps the newer figure. A day you did not touch in the file is never changed.",
+      "**Collected & paid:** one click shows everything collected and paid, with the day, the bank, the code and what is left on the line. Pick This week, This month, Last 30 days or your own dates, group by day or by customer, and download Excel or PDF. A line that is paid stays here: nothing is cleared.",
+      "**Status:** where we stand as of the day chosen at the top. Collections on the left, payments on the right, by month step. **⋯**, **Download as Excel** gives one sheet per unit in that layout. Change an amount, move a line to another month block, add rows with no code for new lines, or write **DROP** in Remark to take a line off the plan, then **Upload a filled sheet as the plan**.",
+      "Open **Bank** and type **In** and **Out** for each bank from the bank report. Collections and payments are not copied into the Bank page: the bank is filled from the bank report on its own, and **Reconcile** shows where it differs from what was recorded. Closing is calculated. For several amounts type a sum such as 500000+250000. Press **Save day**. In its **⋯** menu, **Download daily template** and **Upload filled template** work with the two daily sheets (Colln and Bank).",
+      "**Download PDF** on the Summary, Plan, Actual and Status gives a readable copy to print. **Reconcile** compares the bank report with the collections and payments from the day a unit first records them in the app.",
+    ],
+    go: [["Cash flow", "cashflow"]],
+  },
+  {
+    id: "cash-reports", g: "cf", pages: ["cashflow"], title: "Downloading what you see",
+    kw: "download excel report weekly summary history reconciliation what i see this view",
+    intro: "There is no separate reports page. Every page has a **⋯** menu at the top right, and its **Download this view** gives exactly what is on that page.",
+    steps: [
+      "On **Weekly plan**: **Download Excel** and **Download PDF** give the statement for the week.",
+      "On **Collections & payments**, **Bank**, **Reconcile** and **Forecast**: **Download this view**.",
+      "A full copy of everything is the backup in **Setup**.",
+    ],
+    go: [["Cash flow", "cashflow"]],
+  },
+  {
+    id: "cash-report", g: "cf", pages: ["cashflow"], title: "Forecast: plan, actual and the monthly forecast",
+    kw: "forecast report plan actual percentage follow-through monthly quarterly daily by type by bank monthly forecast lines",
+    intro: "The Forecast page compares plan with actual by day, month or quarter, and projects the balance forward.",
+    steps: [
+      "Open **Forecast** and choose **Daily**, **Monthly** or **Quarterly**.",
+      "**Planned against done** shows what was planned for each period, what was done, and the percentage. The forecast applies the usual follow-through of the last periods.",
+      "At the bottom, **Monthly forecast lines** holds the monthly forecast (for example the September to November forecast). The tables above compare it with the cash that really moved.",
+    ],
+    go: [["Cash flow", "cashflow"]],
+  },
+  {
+    id: "cash-day", g: "cf", pages: ["cashflow"], title: "Looking at another day, undo and backup",
+    kw: "day calendar dot past review history position as of delete undo restore backup deleted entries",
+    intro: "The day at the top of Cash flow applies to every screen. Pick another day to see the position as it stood at the end of that day.",
+    steps: [
+      "Use the arrows or open the **calendar** at the top. A green dot marks a day when something was collected, an orange dot a day when something was paid. Hover a day to see the amounts.",
+      "On **Collections & payments**, **Status** shows what was left to collect and pay at the end of the chosen day, and **Actual** shows the week that day falls in.",
+      "To remove a movement, type 0 in its day on **Actual** and press **Save**, or remove the bank row in the split form. Deleted lines and movements are kept under **Setup**, **Recently deleted**, with **Restore**.",
+      "Press **Download a backup (JSON)** in Setup for a safety copy of everything you can see in Cash flow.",
+    ],
+    go: [["Cash flow", "cashflow"]],
   },
   {
     id: "task-thread", g: "del", pages: ["update", "plan", "tasks"], title: "Comments and @mentions on a task",
