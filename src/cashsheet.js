@@ -51,17 +51,17 @@ const addPlan = () => (writable() ? `<div class="cf-addplan"><button type="butto
 
   // ---------------- Plan ----------------
   function sidePlan(kind, b, items, many) {
-    const tot = sum(items, (x) => conv(x.it, x.it.amount)), title = kind === "in" ? "Collections" : "Payments";
-    const gs = groups(items, (x) => catOf(x.it), (x) => conv(x.it, x.it.amount));
+    const tot = sum(items, (x) => conv(x.it, x.v.left)), title = kind === "in" ? "Collections" : "Payments";
+    const gs = groups(items, (x) => catOf(x.it), (x) => conv(x.it, x.v.left));
     const body = gs.map(([cat, ls]) => { const key = `plan|${b}|${kind}|${cat}`, o = isOpen(key);
-      return `<tr class="cf-row clickable cf-g1" data-cf="k-x" data-key="${esc(key)}" tabindex="0"><td colspan="2"><span class="cf-caret">${o ? "▾" : "▸"}</span> <b>${esc(catLabel(cat))}</b> <span class="small muted">${ls.length}</span></td><td class="num"><b>${plain(sum(ls, (x) => conv(x.it, x.it.amount)))}</b></td></tr>`
-        + (o ? ls.slice().sort((p, q) => conv(q.it, q.it.amount) - conv(p.it, p.it.amount)).map(({ it }) => `<tr class="cf-sub"><td>${esc(it.party || it.description || "")}${cur(it)}${unitTag(it, many)}</td><td class="small">${esc(it.party ? it.description : "")}</td><td class="num">${plain(it.amount)}</td></tr>`).join("") : ""); }).join("");
+      return `<tr class="cf-row clickable cf-g1" data-cf="k-x" data-key="${esc(key)}" tabindex="0"><td colspan="2"><span class="cf-caret">${o ? "▾" : "▸"}</span> <b>${esc(catLabel(cat))}</b> <span class="small muted">${ls.length}</span></td><td class="num"><b>${plain(sum(ls, (x) => conv(x.it, x.v.left)))}</b></td></tr>`
+        + (o ? ls.slice().sort((p, q) => conv(q.it, q.v.left) - conv(p.it, p.v.left)).map(({ it, v }) => `<tr class="cf-sub"><td>${esc(it.party || it.description || "")}${cur(it)}${unitTag(it, many)}</td><td class="small">${esc(it.party ? it.description : "")}</td><td class="num">${plain(v.left)}</td></tr>`).join("") : ""); }).join("");
     return `<div class="cf-side"><div class="cf-side-h"><span><b>${title}</b> <span class="small muted">${bucketCode(kind, b)}</span></span><b>${plain(tot)}</b></div>${gs.length ? `<div class="scroll"><table class="cf-table cf-mini"><thead><tr><th>Customer</th><th>Description</th><th>Amount</th></tr></thead><tbody>${body}<tr class="tot"><td colspan="2">Total</td><td class="num">${plain(tot)}</td></tr></tbody></table></div>` : `<div class="small muted cf-pad">Nothing planned.</div>`}</div>`;
   }
   function renderPlan() {
     const units = h.scopeUnits(), many = units.length > 1, { list, skipped } = openLines(units, S.day), k = K();
     const box = (b) => { const ls = list.filter((x) => x.it.bucket === b), inn = ls.filter((x) => x.it.kind === "in"), out = ls.filter((x) => x.it.kind === "out");
-      const ti = sum(inn, (x) => conv(x.it, x.it.amount)), to = sum(out, (x) => conv(x.it, x.it.amount));
+      const ti = sum(inn, (x) => conv(x.it, x.v.left)), to = sum(out, (x) => conv(x.it, x.v.left));
       return `<section class="cf-card cf-mbox"><div class="cf-split"><h3>${BUCKET_NAME[b]} <span class="small muted">${b} / ${b}${b}</span></h3><span class="small">To collect <b class="ok">${plain(ti)}</b> · To pay <b class="neg">${plain(to)}</b> · Net <b class="${ti - to < 0 ? "neg" : ""}">${plain(ti - to)}</b></span></div>
         <div class="cf-two">${sidePlan("in", b, inn, many)}${sidePlan("out", b, out, many)}</div></section>`; };
     return `${bar(`<span class="cf-group"><button class="btn small" data-cf="k-all" data-v="1">Open all</button><button class="btn small" data-cf="k-all" data-v="0">Fold all</button></span><span class="cf-right"><button class="btn small" data-cf="k-pdf" data-v="plan">Download PDF</button></span>`)}
@@ -469,7 +469,7 @@ const addPlan = () => (writable() ? `<div class="cf-addplan"><button type="butto
     if (!c.libsReady("pdf")) return; const units = h.scopeUnits(), many = units.length > 1, { list } = openLines(units, S.day);
     const doc = c.newPdf(status ? "Cash flow status" : "Cash flow plan", `${scopeText()}  ·  ${status ? "what is left, as of " + dShort(S.day) : "planned, as of " + dShort(S.day)}`); let y = 92;
     for (const b of [1, 2, 3]) { y = secTitle(doc, `${BUCKET_NAME[b]}  (${b} / ${b}${b})`, y);
-      for (const kind of ["in", "out"]) { const ls = list.filter((x) => x.it.bucket === b && x.it.kind === kind), amt = (x) => status ? x.v.left : x.it.amount; if (!ls.length) continue;
+      for (const kind of ["in", "out"]) { const ls = list.filter((x) => x.it.bucket === b && x.it.kind === kind), amt = (x) => x.v.left; if (!ls.length) continue;
         const body = []; groups(ls, (x) => catOf(x.it), (x) => conv(x.it, amt(x))).forEach(([cat, cl]) => { body.push([{ content: catLabel(cat), colSpan: 2, styles: { fontStyle: "bold", fillColor: [245, 240, 225] } }, { content: plain(sum(cl, (x) => conv(x.it, amt(x)))), styles: { fontStyle: "bold", halign: "right", fillColor: [245, 240, 225] } }]); cl.slice().sort((p, q) => conv(q.it, amt(q)) - conv(p.it, amt(p))).forEach((x) => body.push([clip(x.it.party || x.it.description, 48) + (many ? " · " + h.ushort(x.it.unit) : ""), clip(x.it.party ? x.it.description : "", 60), { content: plain(amt(x)), styles: { halign: "right" } }])); });
         body.push([{ content: "Total", colSpan: 2, styles: { fontStyle: "bold" } }, { content: plain(sum(ls, (x) => conv(x.it, amt(x)))), styles: { fontStyle: "bold", halign: "right" } }]);
         doc.autoTable({ startY: y, margin: { left: 36, right: 36 }, head: [[kind === "in" ? "Collections" : "Payments", "Description", status ? "Left" : "Amount"]], body, columnStyles: { 0: { cellWidth: 260 }, 1: { cellWidth: "auto" }, 2: { cellWidth: 90 } }, ...pdfSt() }); y = doc.lastAutoTable.finalY + 14; } }
