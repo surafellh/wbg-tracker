@@ -3403,7 +3403,19 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
         <div class="pf-f"><label for="pp-status">Access</label><select id="pp-status" ${self ? "disabled" : ""}><option value="active" ${u.status === "active" ? "selected" : ""}>Active</option><option value="disabled" ${u.status === "disabled" ? "selected" : ""}>Disabled (cannot sign in)</option></select></div>
         ${self ? '<div class="banner info">You cannot change your own role or switch yourself off.</div>' : ""}
         <div class="small muted">Last seen ${u.lastSeen ? esc(String(u.lastSeen).slice(0, 16).replace("T", " ")) + " UTC" : "never"} · joined ${u.createdAt ? esc(String(u.createdAt).slice(0, 10)) : "–"}</div></div>
-      <div class="panel-foot save-bar"><div class="toolbar">${self ? "" : `<button class="btn" type="button" data-pe="reset-pw" data-id="${esc(u.id)}" title="Removes their password and signs them out. They sign in with a code and choose a new password.">Reset password</button>`}</div><div class="toolbar"><button class="btn" type="button" data-pe="pp-close">Cancel</button><button class="btn primary" type="button" data-pe="save-user" data-id="${esc(u.id)}">Save changes</button></div></div></aside>`;
+      <div class="panel-foot save-bar"><div class="toolbar">${self ? "" : `<button class="btn" type="button" data-pe="reset-pw" data-id="${esc(u.id)}" title="Removes their password and signs them out. They sign in with a code and choose a new password.">Reset password</button><button class="btn" type="button" data-pe="temp-pw" data-id="${esc(u.id)}" title="Gives them a temporary password to sign in with, for when they cannot receive the code. They must choose their own at the next sign-in.">Give temporary password</button>`}</div><div class="toolbar"><button class="btn" type="button" data-pe="pp-close">Cancel</button><button class="btn primary" type="button" data-pe="save-user" data-id="${esc(u.id)}">Save changes</button></div></div></aside>`;
+  }
+  function showTempPassword(name, email, pw) {
+    const el = document.createElement("div"); el.className = "overlay";
+    el.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="tpwTitle"><div class="panel-head"><div><h2 id="tpwTitle">Temporary password</h2></div></div>
+      <div style="padding:0 16px 8px"><div class="small muted">${esc(name)}${email ? " · " + esc(email) : ""}</div>
+      <div class="pf-f"><input id="tpwBox" type="text" readonly value="${esc(pw)}" style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:22px;letter-spacing:1px" aria-label="Temporary password"></div>
+      <div class="small muted">This is shown once. Pass it on in person or by phone. They sign in with their email and this password, and are asked to choose their own straight away.</div></div>
+      <div class="save-bar"><div class="toolbar"><button class="btn" type="button" id="tpwCopy">Copy</button><button class="btn primary" type="button" id="tpwDone">Done</button></div></div></div>`;
+    document.body.appendChild(el);
+    const box = el.querySelector("#tpwBox"); box.focus(); box.select();
+    el.querySelector("#tpwCopy").onclick = async () => { try { await navigator.clipboard.writeText(pw); toast("Copied"); } catch (e) { box.select(); } };
+    el.querySelector("#tpwDone").onclick = () => el.remove();
   }
   function ppDepts(){
     const us = sortedUnits(); if (!us.length) return "";
@@ -3489,6 +3501,12 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
         const role = q("#pp-role").value, unit = q("#pp-unit").value || null, deps = ddValues(document, "pp-dept");
         const r = await api.adminSaveUser(id, { name: q("#pp-name").value, role, title: role === "executive" ? q("#pp-title").value : "", unit, departments: deps, status: q("#pp-status").value });
         if (await done(r, "Saved")) { state.pp.edit = null; render(); }
+      } else if (a === "temp-pw") {
+        const u = ((state.people && state.people.users) || []).find(x => x.id === id) || {};
+        if (!confirm("Give " + (u.name || u.email || "this person") + " a temporary password? Their current password stops working and they are signed out everywhere. They must choose their own at the next sign-in. Pass it on in person or by phone.")) return;
+        const r = await api.adminTempPassword(id);
+        if (r && r.error) { toast(errText(r)); return; }
+        if (r && r.password) showTempPassword(u.name || u.email || "", u.email || "", r.password);
       } else if (a === "reset-pw") {
         if (!confirm("Remove this person's password and sign them out everywhere? They can sign in again with a code and choose a new password.")) return;
         await done(await api.adminResetPassword(id), "Password reset. They sign in with a code.");

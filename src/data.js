@@ -250,8 +250,10 @@ function createSupabaseData() {
     // a code sign-in also honours "stay signed in": the choice is stored before the session is created
     setRemember(on) { setRemember(on); },
     async hasPassword() { const { data } = await sb.auth.getUser(); return !!(data && data.user && data.user.user_metadata && data.user.user_metadata.has_password); },
-    async setPassword(password) { const { error } = await sb.auth.updateUser({ password, data: { has_password: true } }); return error ? { error: error.message } : { ok: true }; },
+    async mustChangePassword() { const { data } = await sb.auth.getUser(); return !!(data && data.user && data.user.user_metadata && data.user.user_metadata.must_change_password); },
+    async setPassword(password) { const { error } = await sb.auth.updateUser({ password, data: { has_password: true, must_change_password: false } }); return error ? { error: error.message } : { ok: true }; },
     adminResetPassword: (id) => rpc("wbg_admin_reset_password", { p_user: id }),
+    adminTempPassword: (id) => rpc("wbg_admin_temp_password", { p_user: id }),
     // ----- profile settings and role requests -----
     updateProfile: (data) => rpc("wbg_update_profile", { p_data: data }),
     requestRole: (r) => rpc("wbg_request_role", { p_role: r.role, p_unit: r.unit || "", p_departments: r.departments || [], p_reason: r.reason || "", p_kind: r.kind || "upgrade" }),
@@ -724,6 +726,7 @@ function createLocalData() {
     setRemember() {},
     async signInPassword(email, password) { const e = (email || "").trim().toLowerCase(), p = people().find((x) => x.email === e); if (!p || !p.pw || p.pw !== password) return { error: "Invalid login credentials" }; write("wbg_local_session", p.id); return { profile: meOut(p) }; },
     async hasPassword() { const p = prof(); return !!(p && p.pw); },
+    async mustChangePassword() { return false; },
     async setPassword(password) { const l = people(), p = l.find((x) => x.id === curId()); if (!p) return { error: "not_signed_in" }; p.pw = password; setPeople(l); return { ok: true }; },
     // ----- discussion on tasks (same rules as the database functions) -----
     async taskComments(auth, unit, ref) {
@@ -878,7 +881,7 @@ function createLocalData() {
   };
   // every change runs as the signed-in person, never as what the page says
   for (const k of Object.keys(api)) {
-    if (typeof api[k] !== "function" || /^(session|me|appSettings|setProfile|setRemember|signInPassword|hasPassword|setPassword|localPeople|localSignIn|checkEmail|sendCode|verifyCode|signOut|onSignedOut|publicUnits|requestAccess|completeSignup|updateProfile|requestRole|myRoleRequests|withdrawRoleRequest|signOutEverywhere|approveRoleWithCode|admin\w+|uploadEvidence|evidenceUrl|evidenceBlob|readAll)$/.test(k)) continue;
+    if (typeof api[k] !== "function" || /^(session|me|appSettings|setProfile|setRemember|signInPassword|hasPassword|mustChangePassword|setPassword|localPeople|localSignIn|checkEmail|sendCode|verifyCode|signOut|onSignedOut|publicUnits|requestAccess|completeSignup|updateProfile|requestRole|myRoleRequests|withdrawRoleRequest|signOutEverywhere|approveRoleWithCode|admin\w+|uploadEvidence|evidenceUrl|evidenceBlob|readAll)$/.test(k)) continue;
     const f = api[k]; api[k] = (_ignored, ...rest) => f(A(), ...rest);
   }
 

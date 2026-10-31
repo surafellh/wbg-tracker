@@ -93,15 +93,15 @@ export function startGate(api, current) {
     }
 
     // Choose a password (after a code sign-in)
-    async function screenPassword(p) {
+    async function screenPassword(p, force) {
       let has = false; try { has = await api.hasPassword(); } catch (x) {}
-      shell(`<p><b>${has ? "Choose a new password" : "Create your password"}</b></p><p class="small muted">Use it with your email next time, so you do not need a code. At least 6 characters; a short sentence is a good password.</p>
+      shell(`<p><b>${force ? "Choose your own password" : has ? "Choose a new password" : "Create your password"}</b></p><p class="small muted">${force ? "You signed in with a temporary password. Choose your own now; you will use it with your email from now on. " : "Use it with your email next time, so you do not need a code. "}At least 6 characters; a short sentence is a good password.</p>
         <form id="gForm"><label for="pw1">New password</label><input id="pw1" type="password" autocomplete="new-password" required minlength="6">
         <label for="pw2">Repeat it</label><input id="pw2" type="password" autocomplete="new-password" required minlength="6">
         <div class="gate-err small" role="alert"></div><button class="btn primary" type="submit">Save password</button></form>
-        <div class="small" style="margin-top:14px"><a href="#" id="gSkip">Skip for now</a> (you will use a code next time)</div>`);
+        ${force ? "" : `<div class="small" style="margin-top:14px"><a href="#" id="gSkip">Skip for now</a> (you will use a code next time)</div>`}`);
       root.querySelector("#pw1").focus();
-      root.querySelector("#gSkip").onclick = async (e) => { e.preventDefault(); await after(p); };
+      const skip = root.querySelector("#gSkip"); if (skip) skip.onclick = async (e) => { e.preventDefault(); await after(p); };
       root.querySelector("#gForm").onsubmit = async (e) => {
         e.preventDefault(); const a = root.querySelector("#pw1").value, c = root.querySelector("#pw2").value, b = e.submitter;
         if (a.length < 6) return err("Use at least 6 characters.");
@@ -116,6 +116,8 @@ export function startGate(api, current) {
     async function after(p) {
       if (!p || p.status === "none") return screenStatus("none");
       if (p.status === "disabled") return screenStatus("disabled");
+      // a temporary password given by an administrator must be replaced before anything else
+      if (p.status === "active") { let must = false; try { must = await api.mustChangePassword(); } catch (x) {} if (must) return screenPassword(p, true); }
       if (!p.setupDone) return screenSetup(p);
       done(p);
     }
