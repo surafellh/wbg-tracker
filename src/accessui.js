@@ -6,12 +6,15 @@ const BASE_ROLES = [["executive", "CEO / DCEO"], ["leader", "Chief, GM, director
 const FINE_ROLES = [["chief", "Chief"], ["gm", "General manager"], ["director", "Director"], ["lea", "Lead exec. assistant"], ["divhead", "Division head"], ["title:CEO", "Title: CEO"], ["title:DCEO", "Title: DCEO"]];
 const LEVEL_LABEL = { none: "No", dept: "Own departments", own: "Own unit", all: "Everyone / all units" };
 const LEVEL_SHORT = { none: "No", dept: "Dept", own: "Own unit", all: "All" };
+const CAP_LEVEL = { projects_read: { dept: ["Owned only", "Only projects owned by their unit"], own: ["Own + involved", "Projects owned by their unit or where it is involved"] } };
+const lvShort = (cap, l) => (CAP_LEVEL[cap] && CAP_LEVEL[cap][l] ? CAP_LEVEL[cap][l][0] : LEVEL_SHORT[l]);
+const lvLabel = (cap, l) => (CAP_LEVEL[cap] && CAP_LEVEL[cap][l] ? CAP_LEVEL[cap][l][1] : LEVEL_LABEL[l]);
 const FIELD_LABEL = { title: "Task title", kind: "Type", dept: "Department", outcome: "Expected outcome", priority: "Priority", owner: "Owner", due: "Due date" };
 const TABS = [["roles", "Roles"], ["exceptions", "People, units and titles"], ["flow", "Approvals and task rules"], ["history", "History and safety"]];
 
 export function createAccessPage(c) {
   const { state, esc } = c;
-  const X = (state.ax = { data: null, loading: false, tab: "roles", pend: {}, note: "", ex: { kind: "user", subject: "", cap: "", value: "all" }, who: "", whoCaps: null, error: "" });
+  const X = (state.ax = { data: null, loading: false, tab: "roles", pend: {}, note: "", ex: { kind: "user", subject: "", cap: "", value: "all", urole: "" }, who: "", whoCaps: null, error: "" });
   const key = (k, s, cap) => `${k}|${s}|${cap}`;
   const grantMap = () => { const m = {}; ((X.data && X.data.grants) || []).forEach((g) => { m[key(g.kind, g.subject, g.cap)] = g.value; }); return m; };
   const defMap = () => { const m = {}; ((X.data && X.data.defaults) || []).forEach((g) => { m[key(g.kind, g.subject, g.cap)] = g.value; }); return m; };
@@ -33,7 +36,7 @@ export function createAccessPage(c) {
 
   const selFor = (cap, value, attrs, inherit) => {
     const lv = levelsOf(cap);
-    return `<select class="ax-sel" ${attrs} aria-label="${esc(cap)}">${inherit ? `<option value="" ${value === "" ? "selected" : ""}>(same as role)</option>` : ""}${lv.map((l) => `<option value="${l}" ${value === l || (!inherit && value === "" && l === "none") ? "selected" : ""}>${esc(LEVEL_SHORT[l])}</option>`).join("")}</select>`;
+    return `<select class="ax-sel" ${attrs} aria-label="${esc(cap)}">${inherit ? `<option value="" ${value === "" ? "selected" : ""}>(same as role)</option>` : ""}${lv.map((l) => `<option value="${l}" ${value === l || (!inherit && value === "" && l === "none") ? "selected" : ""}>${esc(lvShort(cap, l))}</option>`).join("")}</select>`;
   };
 
   function matrixTable() {
@@ -42,9 +45,9 @@ export function createAccessPage(c) {
     const head = `<tr><th>What they can do</th><th class="ax-c" title="Cannot be changed">Group Strategy<br><span class="muted small">locked</span></th>${BASE_ROLES.map(([r, l]) => `<th class="ax-c">${esc(l)}</th>`).join("")}</tr>`;
     const body = groups.map((g) => `<tr class="ax-grp"><td colspan="${BASE_ROLES.length + 2}">${esc(g.name)}</td></tr>` + g.caps.map((cp) => {
       const sa = grantMap()[key("role", "super_admin", cp.cap)] || "none";
-      return `<tr><td><b>${esc(cp.label)}</b>${cp.help ? `<div class="small muted">${esc(cp.help)}</div>` : ""}</td><td class="ax-c"><span class="pill ${sa === "none" ? "s-none" : "s-done"}">${esc(LEVEL_SHORT[sa])}</span></td>${BASE_ROLES.map(([r]) => {
+      return `<tr><td><b>${esc(cp.label)}</b>${cp.help ? `<div class="small muted">${esc(cp.help)}</div>` : ""}</td><td class="ax-c"><span class="pill ${sa === "none" ? "s-none" : "s-done"}">${esc(lvShort(cp.cap, sa))}</span></td>${BASE_ROLES.map(([r]) => {
         const v = cur("role", r, cp.cap), dv = def[key("role", r, cp.cap)] || "", changedFromDefault = (v || "none") !== (dv || "none"), pend = key("role", r, cp.cap) in X.pend;
-        return `<td class="ax-c ${pend ? "ax-pend" : changedFromDefault ? "ax-mod" : ""}">${selFor(cp.cap, v || "none", `data-ax="cell" data-k="role" data-s="${r}" data-cap="${cp.cap}"`, false)}${changedFromDefault && !pend ? `<div class="small muted">default: ${esc(LEVEL_SHORT[dv || "none"])}</div>` : ""}</td>`;
+        return `<td class="ax-c ${pend ? "ax-pend" : changedFromDefault ? "ax-mod" : ""}">${selFor(cp.cap, v || "none", `data-ax="cell" data-k="role" data-s="${r}" data-cap="${cp.cap}"`, false)}${changedFromDefault && !pend ? `<div class="small muted">default: ${esc(lvShort(cp.cap, dv || "none"))}</div>` : ""}</td>`;
       }).join("")}</tr>`;
     }).join("")).join("");
     return `<div class="ax-scroll"><table class="ax-t">${head}${body}</table></div>`;
@@ -53,11 +56,11 @@ export function createAccessPage(c) {
   function exceptionList() {
     const d = X.data, rows = d.grants.filter((g) => g.kind !== "role" || !(["super_admin", ...BASE_ROLES.map((x) => x[0])].includes(g.subject)));
     const unitName = (id) => c.unitName(id), person = (id) => { const u = peopleList().find((p) => p.id === id); return u ? (u.name || u.email) : id.slice(0, 8); };
-    const who = (g) => g.kind === "user" ? "Person: " + person(g.subject) : g.kind === "unit" ? "Unit: " + unitName(g.subject) : "Job: " + ((FINE_ROLES.find((r) => r[0] === g.subject) || [])[1] || g.subject);
+    const who = (g) => g.kind === "user" ? "Person: " + person(g.subject) : g.kind === "unit" ? "Unit: " + unitName(g.subject.split("|")[0]) + (g.subject.includes("|") ? " · " + g.subject.split("|")[1] + " only" : "") : "Job: " + ((FINE_ROLES.find((r) => r[0] === g.subject) || [])[1] || g.subject);
     const capL = (cap) => (d.caps.find((x) => x.cap === cap) || {}).label || cap;
     const list = rows.length ? `<table class="ax-t"><tr><th>Applies to</th><th>Capability</th><th>Level</th><th></th></tr>${rows.map((g) => {
       const dv = defMap()[key(g.kind, g.subject, g.cap)], fromDefault = dv === g.value;
-      return `<tr><td>${esc(who(g))}</td><td>${esc(capL(g.cap))}</td><td>${esc(LEVEL_LABEL[g.value] || g.value)}${fromDefault ? ' <span class="small muted">(original rule)</span>' : ""}</td><td><button class="btn small ghost" data-ax="del-rule" data-k="${g.kind}" data-s="${esc(g.subject)}" data-cap="${g.cap}">Remove</button></td></tr>`;
+      return `<tr><td>${esc(who(g))}</td><td>${esc(capL(g.cap))}</td><td>${esc(lvLabel(g.cap, g.value) || g.value)}${fromDefault ? ' <span class="small muted">(original rule)</span>' : ""}</td><td><button class="btn small ghost" data-ax="del-rule" data-k="${g.kind}" data-s="${esc(g.subject)}" data-cap="${g.cap}">Remove</button></td></tr>`;
     }).join("")}</table>` : `<div class="small muted">No exceptions yet.</div>`;
     const e = X.ex;
     const subjects = e.kind === "user" ? peopleList().map((u) => [u.id, `${u.name || u.email} (${u.role})`]) : e.kind === "unit" ? c.sortedUnits().map((u) => [u.id, u.name]) : FINE_ROLES;
@@ -67,9 +70,10 @@ export function createAccessPage(c) {
       <select data-ax="ex-kind" aria-label="Applies to"><option value="user" ${e.kind === "user" ? "selected" : ""}>One person</option><option value="unit" ${e.kind === "unit" ? "selected" : ""}>Everyone in a unit</option><option value="role" ${e.kind === "role" ? "selected" : ""}>A specific job or title</option></select>
       <select data-ax="ex-subject" aria-label="Who"><option value="">Choose…</option>${subjects.map(([id, l]) => `<option value="${esc(id)}" ${e.subject === id ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>
       <select data-ax="ex-cap" aria-label="Capability"><option value="">Choose what…</option>${capOpts}</select>
-      <select data-ax="ex-value" aria-label="Level">${lv.map((l) => `<option value="${l}" ${e.value === l ? "selected" : ""}>${esc(LEVEL_LABEL[l])}</option>`).join("")}</select>
+      <select data-ax="ex-value" aria-label="Level">${lv.map((l) => `<option value="${l}" ${e.value === l ? "selected" : ""}>${esc(lvLabel(e.cap, l))}</option>`).join("")}</select>
+      ${e.kind === "unit" ? `<select data-ax="ex-urole" aria-label="Only this role"><option value="">Everyone in the unit</option>${[["leader", "Chief, GM, director only"], ["planning", "Planning head only"], ["manager", "Department heads only"], ["staff", "Employees only"]].map(([r, l]) => `<option value="${r}" ${e.urole === r ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>` : ""}
       <button class="btn primary" data-ax="add-rule" type="button">Add rule</button></div>
-      <div class="small muted" style="margin-top:6px">A rule for a person wins over everything. A rule for a job or title replaces its base role. A rule for a unit adds to what its members already have (it can only widen access). To give a DCEO, for example, the cash flow, choose "A specific job or title" → Title: DCEO.</div></div>`;
+      <div class="small muted" style="margin-top:6px">A rule for a person wins over everything. A rule for a job or title replaces its base role. A rule for a unit adds to what its members already have (it can only widen access); you can limit it to one role in that unit. To give a DCEO, for example, the cash flow, choose "A specific job or title" → Title: DCEO.</div></div>`;
     return list + form;
   }
 
@@ -135,6 +139,7 @@ export function createAccessPage(c) {
     else if (a === "ex-subject") { X.ex.subject = el.value; }
     else if (a === "ex-cap") { X.ex.cap = el.value; X.ex.value = levelsOf(el.value).includes(X.ex.value) ? X.ex.value : levelsOf(el.value).slice(-1)[0]; c.render(); }
     else if (a === "ex-value") { X.ex.value = el.value; }
+    else if (a === "ex-urole") { X.ex.urole = el.value; }
     else if (a === "who") { X.who = el.value; X.whoCaps = null; if (el.value) { const r = await act(() => c.api().adminPermPreview(el.value)); if (r) X.whoCaps = r.caps; } c.render(); }
     else if (a === "route") { const r = await act(() => c.api().adminSetSetting(el.dataset.key, el.checked), "Saved"); if (r) { X.data.settings = r.settings; setSettings(r.settings); } else el.checked = !el.checked; c.render(); }
   });
@@ -152,7 +157,7 @@ export function createAccessPage(c) {
     }
     else if (a === "add-rule") {
       const e2 = X.ex; if (!e2.subject || !e2.cap) { c.toast("Choose who and what first"); return; }
-      const r = await act(() => api.adminPermSet([{ kind: e2.kind, subject: e2.subject, cap: e2.cap, value: e2.value }], "Added a rule"), "Rule added");
+      const r = await act(() => api.adminPermSet([{ kind: e2.kind, subject: e2.kind === "unit" && e2.urole ? e2.subject + "|" + e2.urole : e2.subject, cap: e2.cap, value: e2.value }], "Added a rule"), "Rule added");
       if (r) { X.ex.subject = ""; X.data = null; await load(true); }
     }
     else if (a === "del-rule") {

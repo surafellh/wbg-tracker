@@ -1,5 +1,6 @@
 // Projects: status and progress follow-up for business and capital (physical) projects.
 // Progress comes either from phases and activities (an activity can be linked to a weekly task) or from a cumulative physical % reported each month.
+import { projectsCanSee, projectsCanEdit, projectsCanCreate } from "./access.js";
 import { TYPES, STATUSES, RAGS, ACT_STATUSES, isCapital, latestUpdate, sortedUpdates, activityState, phasePct, projectProgress, progressSource, timeElapsed, daysUsed, daysToEnd, suggestRag, currentPeriod, monthChange, monthsSinceUpdate, needsUpdate, pendingDecisions, openRisks, latestTasks } from "./projectcalc.js";
 
 const RISK_TYPES = ["Risk", "Issue"];
@@ -21,11 +22,10 @@ export function createProjects(c) {
   //  all projects: Group Strategy, CEO / DCEO, the lead executive assistant and the Group PMO function
   //  a unit's own projects (and those that list the unit as involved): its chief / GM / director and planning head; for Niyat Consultancy also its department heads
   //  edit: Group PMO and Group Strategy, and the planning head of the unit that owns the project (add and delete stay with Group PMO and Group Strategy)
-  const inPmo = () => { const a = A(); return a.unit === "pmo" && ["leader", "planning", "manager"].includes(a.role); };
-  const seesAll = () => { const a = A(); return ["super_admin", "executive"].includes(a.role) || (a.raw || a.role) === "lea" || inPmo(); };
-  const canSee = () => { const a = A(); return seesAll() || (["leader", "planning"].includes(a.role) && !!a.unit) || (a.role === "manager" && a.unit === NIYAT); };
-  const canEditP = (p) => { const a = A(); return a.role === "super_admin" || inPmo() || (a.role === "planning" && !!p && !!a.unit && p.unit === a.unit); };
-  const canCreate = () => A().role === "super_admin" || inPmo();
+  const AP = () => ({ ...A(), roleRaw: A().raw });
+  const canSee = () => projectsCanSee(AP());
+  const canEditP = (p) => projectsCanEdit(AP(), p);
+  const canCreate = () => projectsCanCreate(AP());
   const unitChoices = () => c.sortedUnits();
   const money = (n) => (num(n) === null ? "–" : "ETB " + Math.round(Number(n)).toLocaleString("en-US"));
   const pctTxt = (n) => (n === null || n === undefined ? "–" : n + "%");

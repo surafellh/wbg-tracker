@@ -5,7 +5,7 @@ import { applyPlugin } from "jspdf-autotable";
 import { createData, configError, planFromRow, EVIDENCE, fileType, IS_TEST_ENV, VIEWAS_KEY } from "./data.js";
 import { startGate } from "./gate.js";
 import { groupTasks, rollupOf, rolledPlan, leafPlan, leafTasks, parentChoices, weightOf } from "./rollup.js";
-import { ROLES, ROLE_LABEL, ROLE_HELP, baseRole, isAdmin, unitMember, unitLead, deptOk, canUndo, canFeedback, canReplyFeedback, canEditDepartments, roleText, canDecide, STAGE_LABEL, matrixOn, fullEdit, canSave, canDiscuss, isSuper, canAdminAny, canAdminPeople, canAdminSettings, canAdminBackups } from "./access.js";
+import { ROLES, ROLE_LABEL, ROLE_HELP, baseRole, isAdmin, unitMember, unitLead, deptOk, canUndo, canFeedback, canReplyFeedback, canEditDepartments, roleText, canDecide, STAGE_LABEL, matrixOn, fullEdit, canSave, canDiscuss, decidesAny, isSuper, canAdminAny, canAdminPeople, canAdminSettings, canAdminBackups } from "./access.js";
 import { assess, actions as ceoActions, letter as ceoLetter, INTERNAL, fmtD, addDaysIso } from "./ceoaction.js";
 import { createHelp } from "./help.js";
 import { GUIDES_VERSION } from "./guides.js";
@@ -1100,23 +1100,23 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   // what concerns me: requests I can decide, my own, and my own unit's. Chiefs of other units can read everything, but it is not shown to them.
   const mineVisible = r => isAppr() || r.unit === (me && me.unit) || (me && r.by === me.name) || (me && canDecide(me, r));
   const pendingMine = () => pendingFor().filter(mineVisible);
-  const canDecideAny = () => !!me && (isAppr() || ["leader", "planning", "manager"].includes(me.role));
+  const canDecideAny = () => decidesAny(me);
   const toDecide = () => canDecideAny() ? state.requests.filter(r => r.status === "pending" && canDecide(me, r)) : [];
   const seenFyi = () => { try { return JSON.parse(store.get("wp-fyi-seen") || "[]"); } catch (e) { return []; } };
   const markSeenFyi = ids => { const x = new Set([...seenFyi(), ...ids]); store.set("wp-fyi-seen", JSON.stringify([...x].slice(-80))); };
   // planning heads are told when a chief has approved something in their unit
-  const fyiForMe = () => (me && me.role === "planning") ? state.requests.filter(r => r.status === "approved" && r.stage === "chief" && r.unit === me.unit && r.decidedBy && r.decidedBy !== me.name && !seenFyi().includes(r.id) && Date.now() - Date.parse(r.decidedAt || 0) < 7 * 864e5) : [];
+  const fyiForMe = () => (me && (matrixOn(me) ? canDecide(me, { unit: me.unit, stage: "planning", kind: "change", by: "" }) && !isAppr() : me.role === "planning")) ? state.requests.filter(r => r.status === "approved" && r.stage === "chief" && r.unit === me.unit && r.decidedBy && r.decidedBy !== me.name && !seenFyi().includes(r.id) && Date.now() - Date.parse(r.decidedAt || 0) < 7 * 864e5) : [];
   // ----- notification history: kept on this device, read ones stay in the panel -----
   const nlogKey = () => "wp-nlog-" + ((me && (me.email || me.id)) || "x");
   const readLog = () => { try { return JSON.parse(store.get(nlogKey()) || "null"); } catch (e) { return null; } };
   const msgCandidates = () => {
     if (!me) return [];
     const out = [], now = Date.now(), DAY = 864e5;
-    if (me.role === "planning") state.requests.filter(r => r.status === "approved" && r.stage === "chief" && r.unit === me.unit && r.decidedBy && r.decidedBy !== me.name && now - Date.parse(r.decidedAt || 0) < 14 * DAY)
+    if (matrixOn(me) ? (canDecide(me, { unit: me.unit, stage: "planning", kind: "change", by: "" }) && !isAppr()) : me.role === "planning") state.requests.filter(r => r.status === "approved" && r.stage === "chief" && r.unit === me.unit && r.decidedBy && r.decidedBy !== me.name && now - Date.parse(r.decidedAt || 0) < 14 * DAY)
       .forEach(r => out.push({ id: "fyi:" + r.id, ts: r.decidedAt, n: 1, html: `<b>${esc(r.decidedBy)}</b> approved ${esc((KIND_LABEL[r.kind] || "plan").toLowerCase())} changes for <b>${esc(deptLabel(r))}</b><div class="small muted">${esc(r.summary)} · asked by ${esc(r.by)}</div>`, go: { t: "approvals" } }));
     (state.myRR || []).filter(x => (x.status === "approved" || x.status === "rejected") && now - Date.parse(x.decidedAt || 0) < 30 * DAY)
       .forEach(x => out.push({ id: "rr:" + x.id, ts: x.decidedAt, n: 1, html: `Your role request was <b>${x.status === "approved" ? "approved" : "not approved"}</b><div class="small muted">${esc(ROLE_LABEL[x.role] || x.role)}${x.note ? " · “" + esc(x.note) + "”" : ""}</div>`, go: { t: "menu" } }));
-    (state.fbs || []).filter(f => f.toLead && f.by !== me.name && ((me.role === "leader" || me.role === "planning") ? f.unit === me.unit : ["super_admin", "executive"].includes(me.role)) && now - Date.parse(f.createdAt || 0) < 60 * DAY)
+    (state.fbs || []).filter(f => f.toLead && f.by !== me.name && (matrixOn(me) ? canReplyFeedback(me, f.unit) : ((me.role === "leader" || me.role === "planning") ? f.unit === me.unit : ["super_admin", "executive"].includes(me.role))) && now - Date.parse(f.createdAt || 0) < 60 * DAY)
       .forEach(f => out.push({ id: "fb:" + f.id, ts: f.createdAt, n: 1, html: `<b>${esc(f.from)}</b> sent a letter ${me.role === "leader" ? "to the head of" : "(copy) to the head of"} <b>${esc(unitName(f.unit))}</b><div class="small muted">${esc((f.body || "").split("\n")[0].slice(0, 110))}</div>`, go: { t: "fb", unit: f.unit } }));
     // progress updates travel up: staff and managers to their chiefs, chiefs to planning, Group Strategy, the CEO and the DCEO
     const groups = new Map(), cur = thisMonday();
@@ -1310,12 +1310,12 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     return `<div class="slimnote warn"><b>You are working in ${esc(unitName(u))}</b>, not your own unit. Changes you make here are recorded as yours.</div>`;
   }
   function askBox(u){
-    if (!me || me.role !== "staff" || u !== me.unit) return "";
+    if (!me || (matrixOn(me) ? (canSave(me, u) || !unitMember(me, u)) : me.role !== "staff") || u !== me.unit) return "";
     const mine = state.requests.filter(r => r.kind === "ask" && r.status === "pending" && r.unit === u && r.week === state.week && r.by === me.name);
     return `<div class="slimnote ask-box"><span><b>View only.</b> To change progress, ask your department head to update it.</span><textarea id="askTxt" rows="2" placeholder="What should be updated? For example: Task A is done, Task B is at 60%." aria-label="What should be updated"></textarea><button class="btn small primary" type="button" id="askSend">Ask for an update</button>${mine.length ? `<span class="small muted">${mine.length} waiting for your department head</span>` : ""}</div>`;
   }
   function asksPanel(u){
-    if (!me || me.role === "staff") return "";
+    if (!me || (matrixOn(me) ? !canDecideAny() : me.role === "staff")) return "";
     const list = pendingFor(u, state.week).filter(r => r.kind === "ask" && canDecide(me, r)); if (!list.length) return "";
     return `<div class="banner info" style="margin:12px 16px 0"><b>${list.length} request${list.length === 1 ? "" : "s"} from your team to update progress.</b>
       ${list.map(r => `<div class="req-mini"><span>${esc(r.summary)} <span class="muted small">· ${esc(r.by)}${r.dept ? " · " + esc(r.dept) : ""} · ${esc(fmt((r.createdAt || "").slice(0, 10)))}</span></span><button class="btn small" data-askdone="${esc(r.id)}">Mark done</button></div>`).join("")}</div>`;

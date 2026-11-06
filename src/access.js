@@ -68,6 +68,16 @@ export const canFeedback = (p) => matrixOn(p) ? cap(p, "feedback_write") : !!p &
 export const canReplyFeedback = (p, unit) => matrixOn(p) ? cap(p, "feedback_reply", unit) : !!p && (["super_admin", "executive"].includes(p.role) || (["leader", "planning"].includes(p.role) && p.unit === unit));
 export const canEditDepartments = (p, unit) => matrixOn(p) ? cap(p, "edit_departments", unit) : !!p && (p.role === "super_admin" || ((p.role === "leader" || p.role === "planning") && p.unit === unit));
 export const canEditPeople = (p, unit) => matrixOn(p) ? cap(p, "unit_lists", unit) : !!p && (p.role === "super_admin" || (["leader", "planning", "manager"].includes(p.role) && p.unit === unit));
+// projects: who sees them, who edits (the group PMO function, the lead executive assistant and Niyat's managers are rules of the default matrix)
+export const projectsLevel = (p) => matrixOn(p) ? capLevel(p, "projects_read") : !p ? "none" : (["super_admin", "executive"].includes(p.role) || (p.raw || p.roleRaw || p.role) === "lea" || (p.unit === "pmo" && ["leader", "planning", "manager"].includes(p.role))) ? "all" : (["leader", "planning"].includes(p.role) && p.unit) ? "own" : (p.role === "manager" && p.unit === "niyat-consultancy") ? "dept" : "none";
+export const projectsSeeAll = (p) => projectsLevel(p) === "all";
+export const projectsCanSee = (p) => projectsLevel(p) !== "none";
+export const projectsCanEdit = (p, proj) => matrixOn(p) ? cap(p, "projects_write", proj ? proj.unit : undefined) && (!proj || capLevel(p, "projects_write") === "all" || !!proj.unit) : !!p && (p.role === "super_admin" || (p.unit === "pmo" && ["leader", "planning", "manager"].includes(p.role)) || (p.role === "planning" && !!proj && !!p.unit && proj.unit === p.unit));
+export const projectsCanCreate = (p) => matrixOn(p) ? capLevel(p, "projects_write") === "all" : !!p && (p.role === "super_admin" || (p.unit === "pmo" && ["leader", "planning", "manager"].includes(p.role)));
+// business support: may log a request / see their own unit's requests
+export const supportMember = (p) => matrixOn(p) ? !!p.unit && capLevel(p, "support_log") !== "none" : !!p && ["leader", "planning", "manager", "staff"].includes(p.role) && !!p.unit;
+// does this person decide any kind of request at all? (shows the Approvals counters)
+export const decidesAny = (p) => matrixOn(p) ? ["decide_group", "decide_chief", "decide_planning", "decide_ask"].some((k) => capLevel(p, k) !== "none") || isAdmin(p) : !!p && (isAdmin(p) || ["leader", "planning", "manager"].includes(p.role));
 // May this person see the cash flow / change it? (the group finance function and the DCEO are rules of the default matrix)
 export const cashView = (p) => matrixOn(p) ? cap(p, "cash_view") : !!p && (p.role === "super_admin" || p.unit === "group-finance-function" || (p.roleRaw === "executive" && p.title === "DCEO"));
 export const cashWrite = (p) => matrixOn(p) ? cap(p, "cash_write") : !!p && (p.role === "super_admin" || p.unit === "group-finance-function");

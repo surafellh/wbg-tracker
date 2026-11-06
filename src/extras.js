@@ -1,5 +1,6 @@
 // Version 3 additions: Business support log, Feedback (CEO / DCEO / Group Strategy) and Corrective actions.
 // Everything the screens need from the main app is passed in as `c`.
+import { supportMember, canReplyFeedback } from "./access.js";
 
 export const SUP_STATUS = ["Open", "In progress", "On hold", "Responded", "Closed"];
 const ACTIVE = ["Open", "In progress", "On hold"];
@@ -61,7 +62,7 @@ export function createExtras(c) {
       && (!f.from || (r.requested && r.requested >= f.from)) && (!f.to || (r.requested && r.requested <= f.to))
       && (!q || `${r.ref} ${r.requester} ${r.description} ${r.action} ${r.respondedBy} ${r.remarks} ${r.category}`.toLowerCase().includes(q)));
   }
-  const isMember = () => { const a = c.auth(); return !!a && ["leader", "planning", "manager", "staff"].includes(a.role) && !!a.unit; };
+  const isMember = () => supportMember(c.auth());
   const canRespond = (fn) => c.isAppr() || c.canLead(fn);
   const canEditReq = (r) => canRespond(r.function) || (isMember() && !!r.requesterUnit && r.requesterUnit === c.myUnit() && r.status === "Open");
   function renderSupport() {
@@ -129,7 +130,7 @@ export function createExtras(c) {
 
   // ---------------- Feedback & corrective actions ----------------
   // Who may answer: the chief / GM and the planning head of that unit, and Group Strategy, the CEO and the DCEO
-  const canReply = (x) => { const a = A(); return !!a && (["super_admin", "executive"].includes(a.role) || (["leader", "planning"].includes(a.role) && a.unit === x.unit)); };
+  const canReply = (x) => canReplyFeedback(A(), x.unit);
   const repsOf = (id) => state.reps.filter((r) => r.feedbackId === id).sort((a, b) => ((a.createdAt || "") < (b.createdAt || "") ? -1 : 1));
   function replyHtml(r) {
     const who = `${esc(r.by)}${r.title ? " · " + esc(r.title) : r.role === "leader" ? " · Chief / GM" : r.role === "planning" ? " · Planning head" : ""}`;
