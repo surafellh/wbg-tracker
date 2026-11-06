@@ -10,15 +10,19 @@ export const LOCKED = ["title", "kind", "dept", "outcome", "priority"];   // the
 //   graceTime   - time on Saturday (Addis Ababa) until which the week that just ended can still be updated directly
 //   extendUntil - optional "YYYY-MM-DDTHH:MM" (Addis Ababa): the week that just ended stays open until then
 //   allowRename - false: a saved task keeps its name once the week has started; true: the name can be changed
-const cfg = { graceTime: "14:00", extendUntil: "", allowRename: false };
+const cfg = { graceTime: "14:00", extendUntil: "", allowRename: false, lockedFields: null, routeChief: true, routePlanning: true, permMode: "legacy" };
 export function setSettings(s) {
   if (!s || typeof s !== "object") return;
   if (/^\d{1,2}:\d{2}$/.test(String(s.graceTime || ""))) cfg.graceTime = s.graceTime;
   if (s.extendUntil !== undefined) cfg.extendUntil = String(s.extendUntil || "");
   if (s.allowRename !== undefined) cfg.allowRename = !!s.allowRename;
+  if (Array.isArray(s.lockedFields)) cfg.lockedFields = s.lockedFields.map(String);
+  if (s.routeChief !== undefined) cfg.routeChief = !!s.routeChief;
+  if (s.routePlanning !== undefined) cfg.routePlanning = !!s.routePlanning;
+  if (s.permMode) cfg.permMode = String(s.permMode);
 }
 export const getSettings = () => ({ ...cfg });
-export const lockedFields = () => (cfg.allowRename ? LOCKED.filter((f) => f !== "title") : LOCKED);
+export const lockedFields = () => (Array.isArray(cfg.lockedFields) ? cfg.lockedFields : cfg.allowRename ? LOCKED.filter((f) => f !== "title") : LOCKED);
 // "14:00" -> "2:00 PM"
 export const timeLabel = (t) => { const [h, m] = String(t || "14:00").split(":").map(Number); return `${((h + 11) % 12) + 1}:${String(m || 0).padStart(2, "0")} ${h >= 12 ? "PM" : "AM"}`; };
 export const graceLabel = () => `Saturday ${timeLabel(cfg.graceTime)}`;

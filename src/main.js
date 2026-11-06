@@ -5,7 +5,7 @@ import { applyPlugin } from "jspdf-autotable";
 import { createData, configError, planFromRow, EVIDENCE, fileType, IS_TEST_ENV, VIEWAS_KEY } from "./data.js";
 import { startGate } from "./gate.js";
 import { groupTasks, rollupOf, rolledPlan, leafPlan, leafTasks, parentChoices, weightOf } from "./rollup.js";
-import { ROLES, ROLE_LABEL, ROLE_HELP, baseRole, isAdmin, unitMember, deptOk, canUndo, canFeedback, canEditDepartments, roleText, canDecide, STAGE_LABEL } from "./access.js";
+import { ROLES, ROLE_LABEL, ROLE_HELP, baseRole, isAdmin, unitMember, unitLead, deptOk, canUndo, canFeedback, canReplyFeedback, canEditDepartments, roleText, canDecide, STAGE_LABEL, matrixOn, fullEdit, canSave, canDiscuss, isSuper, canAdminAny, canAdminPeople, canAdminSettings, canAdminBackups } from "./access.js";
 import { assess, actions as ceoActions, letter as ceoLetter, INTERNAL, fmtD, addDaysIso } from "./ceoaction.js";
 import { createHelp } from "./help.js";
 import { GUIDES_VERSION } from "./guides.js";
@@ -15,6 +15,7 @@ import { renderDashboard } from "./dashboard.js";
 import { FINAL_LABELS, FINAL_CLASS, FINAL_COLOR, FINAL_BANDS, RATING_BANDS, ratingOf, weekClosed, finalLabel, finalSummary, pctOf as finalPct } from "./finalstatus.js";
 import { createExtras } from "./extras.js";
 import { createProjects } from "./projects.js";
+import { createAccessPage } from "./accessui.js";
 import { createCash } from "./cash.js";
 import { createMessages } from "./messages.js";
 import { openViewer, canPreview } from "./viewer.js";
@@ -54,11 +55,11 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   // The signed-in person (from the database). The database checks every save again.
   state.requests = []; state.dash = { type: "", units: [], period: "week", pop: false, range: 8 }; state.dashData = null; state.dashKey = "";
   state.level = "tasks"; state.history = null; state.lastSave = null; state.base = {}; state.unlock = new Set(); state.reqNotes = {}; state.people = null; state.pu = {};
-  const auth = () => me ? { id: me.id || "", raw: me.roleRaw || me.role, name: me.name || "", role: me.role, title: me.title || "", unit: me.unit || "", departments: me.departments || [] } : {};
+  const auth = () => me ? { id: me.id || "", raw: me.roleRaw || me.role, name: me.name || "", role: me.role, title: me.title || "", unit: me.unit || "", departments: me.departments || [], caps: me.caps, permMode: me.permMode } : {};
   const isAppr = () => isAdmin(me);
-  const isLenient = () => !!me && (me.role === "leader" || me.role === "planning");
-  const canEdit = u => isAppr() || (unitMember(me, u) && me.role !== "staff");   // employees and division heads are view-only
-  const canLead = u => !!u && (isAppr() || (!!me && ["leader", "planning", "manager"].includes(me.role) && me.unit === u));
+  const isLenient = () => matrixOn(me) ? fullEdit(me, me.unit) : !!me && (me.role === "leader" || me.role === "planning");
+  const canEdit = u => matrixOn(me) ? canSave(me, u) : (isAppr() || (unitMember(me, u) && me.role !== "staff"));   // employees and division heads are view-only
+  const canLead = u => !!u && (isAppr() || unitLead(me, u));
   const myUnit = () => me && unitMember(me, me.unit) ? me.unit : "";
   const mayUndo = () => canUndo(me);
   const mayDepts = u => canEditDepartments(me, u);
@@ -150,7 +151,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     if (!me || !unit) return "";
     const own = me.unit || "", mine = me.departments || [], out = [...new Set((depts || []).map(d => d || "").filter(d => d && mine.length && !mine.includes(d)))];
     if (unit !== own) return `This goes into ${unitName(unit)}, not your own${own ? " (" + unitName(own) + ")" : " unit"}.`;
-    if (!isAppr() && !["planning", "leader"].includes(me.role)) return "";
+    if (!isAppr() && !fullEdit(me, unit)) return "";
     return out.length ? `Some of these tasks belong to other departments than yours (${out.slice(0, 3).join(", ")}${out.length > 3 ? "…" : ""}).` : "";
   }
   const confirmCross = (unit, depts, what) => { const w = crossWarn(unit, depts); return !w || window.confirm(`${w}\n\n${what}\n\nContinue?`); };
@@ -195,7 +196,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     draft.tasks = (draft.tasks || []).filter(t => (t.title || "").trim());
     const unnumbered = draft.tasks.filter(t => !t.ref);
     if (unnumbered.length) { const r = await api.allocRefs(auth(), u, unnumbered.length); if (r.error) return { error: r.error }; unnumbered.forEach((t, i) => { t.ref = `${r.prefix}-${String(r.start + i).padStart(4, "0")}`; }); }
-    if (me && me.role === "staff") return { error: "view_only_role" };
+    if (me && !canSave(me, u)) return { error: me.role === "staff" ? "view_only_role" : "not_allowed" };
     const ops = planOps(saved, draft);
     if (!ops.length) return { nothing: true };
     const monday = thisMonday(), appr = isAppr();
@@ -785,7 +786,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
 
   const GROUPS = { dashboard: ["dashboard"], plans: ["update", "plan", "mplan", "approvals"], delivery: ["support", "fb"], reports: ["tasks", "monthly", "ceo"], projects: ["projects"], cashflow: ["cashflow"] };
   const SUB_LABEL = { update: "Progress update", plan: "Next plan", mplan: "Monthly plan", approvals: "Approvals", support: "Business support", fb: "Feedback", tasks: "Weekly report", monthly: "Monthly report", ceo: "Actions for the CEO", projects: "Projects", cashflow: "Cash flow" };
-  const PAGE_TITLE = { cashflow: ["Cash flow", "Bank balances, collections, payments and the financing needed."], projects: ["Projects", "Status and progress of business and capital projects."], dashboard: ["Dashboards", "How every unit and function is doing this week."], update: ["Plans", "Update progress on this week's tasks."], plan: ["Plans", "Plan the tasks for next week."], mplan: ["Plans", "Plan the month once and split it across its weeks."], approvals: ["Plans", "Changes waiting for approval."], support: ["Delivery", "Support requested from group functions."], fb: ["Delivery", "Feedback and corrective actions."], tasks: ["Reports", "Every task, filtered and downloadable."], monthly: ["Reports", "Consolidated by Ethiopian calendar month."], ceo: ["Reports", "What the CEO should do about each unit."], follow: ["Follow-up", ""], activity: ["Activity log", "Who changed what, and when."], units: ["Settings · Units", "Group Strategy only."], people: ["Settings · People", "Group Strategy only."] };
+  const PAGE_TITLE = { cashflow: ["Cash flow", "Bank balances, collections, payments and the financing needed."], projects: ["Projects", "Status and progress of business and capital projects."], dashboard: ["Dashboards", "How every unit and function is doing this week."], update: ["Plans", "Update progress on this week's tasks."], plan: ["Plans", "Plan the tasks for next week."], mplan: ["Plans", "Plan the month once and split it across its weeks."], approvals: ["Plans", "Changes waiting for approval."], support: ["Delivery", "Support requested from group functions."], fb: ["Delivery", "Feedback and corrective actions."], tasks: ["Reports", "Every task, filtered and downloadable."], monthly: ["Reports", "Consolidated by Ethiopian calendar month."], ceo: ["Reports", "What the CEO should do about each unit."], follow: ["Follow-up", ""], activity: ["Activity log", "Who changed what, and when."], units: ["Settings · Units", "Group Strategy only."], people: ["Settings · People", "Group Strategy only."], access: ["Settings · Access rules", "Decide who can see and do what. Group Strategy only."] };
   const groupOf = t => Object.keys(GROUPS).find(g => GROUPS[g].includes(t)) || "";
   const SM = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   const weekShort = w => { const a = parse(w), b = parse(weekEndOf(w)); return a.getMonth() === b.getMonth() ? `${SM[a.getMonth()]} ${a.getDate()} – ${b.getDate()}` : `${SM[a.getMonth()]} ${a.getDate()} – ${SM[b.getMonth()]} ${b.getDate()}`; };
@@ -810,7 +811,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     $("#thisWeek").textContent = mo ? "This month" : "This week";
     $("#prevWeek").setAttribute("aria-label", mo ? "Previous month" : "Previous week"); $("#nextWeek").setAttribute("aria-label", mo ? "Next month" : "Next week");
     document.querySelectorAll("nav.tabs button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab===state.tab)));
-    $("#unitsTabBtn").hidden = !isAppr(); $("#peopleTabBtn").hidden = !isAppr();
+    $("#unitsTabBtn").hidden = !isSuper(me); $("#peopleTabBtn").hidden = !canAdminAny(me); { const ab = $("#accessTabBtn"); if (ab) ab.hidden = !isSuper(me); }
     renderNav();
     const nb = X.badgeCount(), fbb = $("#fbCount"); if (fbb) { fbb.textContent = nb; fbb.hidden = !nb; }
     const np = canDecideAny() ? toDecide().length : pendingMine().length, ab = $("#apprCount"); const nm = (state.mentions || []).length, nr = (state.rr ? state.rr.count + state.rr.access : 0) + unreadMsgs().length, bb = $("#bellBtn"); if (ab) { ab.textContent = np + nm + nr > 9 ? "9+" : np + nm + nr; ab.hidden = !(np + nm + nr); } if (bb) { bb.classList.toggle("has", !!(np + nm + nr)); bb.title = np + nm + nr ? [nm ? nm + " mention" + (nm === 1 ? "" : "s") : "", np ? np + (canDecideAny() ? " waiting for your approval" : " waiting for approval") : "", nr ? nr + " other update" + (nr === 1 ? "" : "s") : ""].filter(Boolean).join(" · ") : "Notifications"; bb.setAttribute("aria-label", "Notifications: " + bb.title); }
@@ -1068,6 +1069,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     newPdf: (...a) => newPdf(...a), pdfStyle: () => pdfStyle(), save: (...a) => save(...a) });
   const CF = createCash({ state, esc, fmt, sortedUnits: () => sortedUnits(), unitName: id => unitName(id), todayIso, toast: (...a) => toast(...a), errText: e => errText(e), render: () => render(), db: () => db, api: () => api, auth: () => auth(),
     libsReady: k => libsReady(k), sheetFromRows: (...a) => sheetFromRows(...a), writeXlsx: (...a) => writeXlsx(...a), saveFile: (...a) => save(...a), save: (...a) => save(...a), newPdf: (...a) => newPdf(...a), pdfStyle: () => pdfStyle(), XLSX: () => XLSX });
+  const AXP = createAccessPage({ state, esc, api: () => api, toast: (...a) => toast(...a), errText: e => errText(e), render: () => render(), sortedUnits: () => sortedUnits(), unitName: id => unitName(id), reloadMe: () => setTimeout(() => location.reload(), 700) });
   const DM = createMessages({
     esc, toast: (...a) => toast(...a), errText: e => errText(e), db: () => db, api: () => api, auth: () => auth(), unitName: id => unitName(id),
     badge: () => { const n = DM.unreadCount(), b = $("#msgCount"); if (b) { b.textContent = n; b.hidden = !n; } },
@@ -1555,9 +1557,10 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     else if (state.tab==="cashflow") html += CF.renderCash();
     else if (state.tab==="activity") html += renderActivity();
     else if (state.tab==="approvals") html += renderApprovals();
-    else if (state.tab==="units" && isAppr()) html += renderUnits();
-    else if (state.tab==="people" && isAppr()) html += renderPeople();
-    else if (state.tab==="units" || state.tab==="people") html += `<div class="panel"><div class="empty"><b>Group Strategy only</b>Only Group Strategy can manage units and people.</div></div>`;
+    else if (state.tab==="units" && isSuper(me)) html += renderUnits();
+    else if (state.tab==="people" && canAdminAny(me)) html += renderPeople();
+    else if (state.tab==="access" && isSuper(me)) html += AXP.render();
+    else if (state.tab==="units" || state.tab==="people" || state.tab==="access") html += `<div class="panel"><div class="empty"><b>Group Strategy only</b>Only Group Strategy can manage units and people.</div></div>`;
     main.innerHTML = html;
     growAll();
     if (active) { const el = document.getElementById(active); if (el && el.focus) { el.focus(); if (el.setSelectionRange && el.type==="text") { const n = el.value.length; try { el.setSelectionRange(n,n); } catch(e){} } } }
@@ -1971,7 +1974,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     state.tab = to; state.confirmDelete = null;
     if (to === "plan" && state.week < nextMonday() && !state.dirty) { state.week = nextMonday(); state.draft = null; state.allDrafts = null; subscribePlans(); }
     else if (to === "update" && state.week > thisMonday() && !state.dirty) { state.week = thisMonday(); state.draft = null; state.allDrafts = null; subscribePlans(); }
-    if ((state.tab==="update"||state.tab==="plan") && !hasDraft()) loadDraft(); if (state.tab==="activity") subscribeActivity(); if (state.tab==="people") loadPeople(); if (state.tab==="monthly" && db && !state.monthLoading && (!state.monthData || state.monthKey !== `${state.eth.y}-${state.eth.m}${state.monthBasis}`)) { render(); loadMonth(); return; } render(); });
+    if ((state.tab==="update"||state.tab==="plan") && !hasDraft()) loadDraft(); if (state.tab==="activity") subscribeActivity(); if (state.tab==="people") loadPeople(); if (state.tab==="access" && !state.people) loadPeople(); if (state.tab==="monthly" && db && !state.monthLoading && (!state.monthData || state.monthKey !== `${state.eth.y}-${state.eth.m}${state.monthBasis}`)) { render(); loadMonth(); return; } render(); });
 
   document.addEventListener("click", e => { const rp = document.querySelector("details.reminders[open]"); if (rp && !e.target.closest("details.reminders")) rp.open = false; });
   const main = $("#main");
@@ -2278,7 +2281,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     const role = roleText(me) + (me.unit ? " · " + unitName(me.unit) : "");
     m.innerHTML = `<div class="acct-who"><b>${esc(me.name)}</b><span class="small muted">${esc(me.email || "")}</span><span class="small muted">${esc(role)}</span></div>
       <button role="menuitem" data-a="profile">Profile and settings</button>
-      ${isAppr() ? `<div class="acct-sep">Settings</div><button role="menuitem" data-a="units">Units</button><button role="menuitem" data-a="people">People and roles</button>` : ""}
+      ${canAdminAny(me) ? `<div class="acct-sep">Settings</div>${isSuper(me) ? `<button role="menuitem" data-a="units">Units</button>` : ""}<button role="menuitem" data-a="people">People and roles</button>${isSuper(me) ? `<button role="menuitem" data-a="access">Access rules</button>` : ""}` : ""}
       <button role="menuitem" data-a="activity">Activity log</button>
       ${canViewAs(realMe) ? `<div class="acct-sep"></div><button role="menuitem" data-a="viewas">${viewAs ? "Change or exit view as" : "View as another role"}</button>` : ""}
       <div class="acct-sep"></div><button role="menuitem" data-a="out">Sign out</button>`;
@@ -3244,7 +3247,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   async function refreshRR(){
     if (!me || !api) return;
     try {
-      if (isAppr()) { const r = await api.adminRoleRequests(); if (!r.error) state.rr = { list: r.requests || [], count: (r.requests || []).length, access: Number(r.accessCount) || 0 }; }
+      if (canAdminPeople(me)) { const r = await api.adminRoleRequests(); if (!r.error) state.rr = { list: r.requests || [], count: (r.requests || []).length, access: Number(r.accessCount) || 0 }; }
       else {
         const r = await api.myRoleRequests(); if (!r.error) state.myRR = r.requests || [];
         if (state.myRR.some(x => x.status === "approved" && !seenRR().includes(x.id))) applyMe(await api.me());
@@ -3349,7 +3352,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   const UNIT_OPTS = (cur) => `<option value="">No unit</option>` + sortedUnits().map(u => `<option value="${esc(u.id)}" ${u.id === cur ? "selected" : ""}>${esc(u.name)}</option>`).join("");
   state.pp = { q: "", unit: "", role: "", st: "", edit: null };
   async function loadPeople(){
-    if (!isAppr() || !api) return;
+    if (!canAdminAny(me) || !api) return;
     state.people = state.people || { loading: true };
     try { const r = await api.adminUsers(); state.people = r.error ? { error: r.error } : { ...r }; } catch (e) { state.people = { error: e.code || "error" }; }
     try { const c = await api.adminApprovalCodeStatus(); state.appCode = c && !c.error ? c : {}; } catch (e) { state.appCode = {}; }

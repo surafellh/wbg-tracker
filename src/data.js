@@ -254,6 +254,13 @@ function createSupabaseData() {
     async setPassword(password) { const { error } = await sb.auth.updateUser({ password, data: { has_password: true, must_change_password: false } }); return error ? { error: error.message } : { ok: true }; },
     adminResetPassword: (id) => rpc("wbg_admin_reset_password", { p_user: id }),
     adminTempPassword: (id) => rpc("wbg_admin_temp_password", { p_user: id }),
+    adminPermGet: () => rpc("wbg_admin_perm_get"),
+    adminPermSet: (changes, note) => rpc("wbg_admin_perm_set", { p_changes: changes, p_note: note || "" }),
+    adminPermRevert: (batch) => rpc("wbg_admin_perm_revert", { p_batch: batch }),
+    adminPermReset: () => rpc("wbg_admin_perm_reset"),
+    adminPermRestore: (id) => rpc("wbg_admin_perm_restore", { p_snapshot: id }),
+    adminPermMode: (mode) => rpc("wbg_admin_perm_mode", { p_mode: mode }),
+    adminPermPreview: (id) => rpc("wbg_admin_perm_preview", { p_user: id }),
     // ----- profile settings and role requests -----
     updateProfile: (data) => rpc("wbg_update_profile", { p_data: data }),
     requestRole: (r) => rpc("wbg_request_role", { p_role: r.role, p_unit: r.unit || "", p_departments: r.departments || [], p_reason: r.reason || "", p_kind: r.kind || "upgrade" }),
@@ -862,6 +869,7 @@ function createLocalData() {
       r.status = approve ? "approved" : "rejected"; write("wbg_local_access", l); return ok();
     },
     async appSettings() { return { graceTime: "14:00", extendUntil: "", allowRename: false, ...(read("wbg_local_settings") || {}) }; },
+    async adminPermGet() { return { error: "This needs the live database." }; },
     async adminSetSetting(key, value) {
       if (!isAppr(A())) return err("not_allowed");
       const cur = { graceTime: "14:00", extendUntil: "", allowRename: false, ...(read("wbg_local_settings") || {}) };
