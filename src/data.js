@@ -118,7 +118,7 @@ function scopeRows(a, c, items) {
   if (c === "messages") return a.id ? items.filter((x) => x.fromId === a.id || x.toId === a.id) : [];
   if (c === "actions") return items.filter((x) => own(x.unit));
   if (c.startsWith("cf")) {
-    const all = a.role === "super_admin" || a.unit === "group-finance-function";
+    const all = a.role === "super_admin" || a.unit === "group-finance-function" || (a.role === "executive" && a.title === "DCEO");
     return all ? items : [];
   }
   if (c === "projects") { const raw = a.rawRole || a.role; return items.filter((x) => ["super_admin", "executive"].includes(a.role) || raw === "lea" || (["leader", "planning", "manager"].includes(a.role) && a.unit === "pmo") || (["leader", "planning"].includes(a.role) && (a.unit === x.unit || (x.involved || []).includes(a.unit))) || (a.role === "manager" && x.unit === "niyat-consultancy" && a.unit === x.unit)); }

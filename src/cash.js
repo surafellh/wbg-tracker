@@ -20,7 +20,7 @@ export function createCash(c) {
   const S = (state.cf = { items: [], itemsAll: [], logAll: [], undo: null, calOpen: false, calMonth: "", types: [], bank: [], log: [], plan: [], settings: {}, loaded: 0, view: "summary", asOf: c.todayIso, scope: "all", bk: { 1: true, 2: true, 3: true }, typeOn: {}, mode: "month", day: c.todayIso, range: 60, dr: {}, bd: {}, dq: { kind: "", q: "", show: 30 }, busy: false, m: null, week: [], wk: weekStartOf(c.todayIso), rc: { range: 14, all: false }, rp: { from: "" },
     lf: { kind: "", type: "", status: "active", q: "", show: 40 }, pf: { from: "", unit: "all" } });
   const A = () => c.auth() || {};
-  const full = () => A().role === "super_admin" || A().unit === "group-finance-function";
+  const full = () => A().role === "super_admin" || A().unit === "group-finance-function" || (A().role === "executive" && A().title === "DCEO"); // the DCEO can view everything but not change it
   const admin = () => A().role === "super_admin" || A().unit === "group-finance-function";
   const canSee = () => full();
   const canWrite = () => admin();
