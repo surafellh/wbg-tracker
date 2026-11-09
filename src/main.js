@@ -49,7 +49,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     confirmDelete: null,
     names: {}, activity: [], actLoaded: false, actErr: "", actFilter: { unit: "", who: "", action: "" }, actTab: "log", actWeek: "",
     imp: null, impUnit: "", impPrefill: false, impDefaultUnit: "", importing: false,
-    monthBasis: "end", monthByDept: false, monthData: null, monthLoading: false, monthKey: "",
+    monthBasis: "end", monthView: "tasks", monthByDept: false, monthData: null, monthLoading: false, monthKey: "",
   };
   let db = null, api = null, downloads = null, myId = null, isOwner = false, me = null, dataMode = "", realMe = null, viewAs = null;
   // The signed-in person (from the database). The database checks every save again.
@@ -698,13 +698,43 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
       return { u, tasks, all: [...uniqAll.values()], entries, kpi, reported, texts, s: mk(tasks), dept: Object.entries(byDept).map(([d, ts]) => ({ d, s: mk(ts) })).sort((a, b) => a.d.localeCompare(b.d)) };
     });
   }
+  // Weekly performance: how much of each week's plan was reached inside that week (average % reached of the tasks planned for the week).
+  // Only closed weeks count in the average. The month's number is the average of the weekly numbers.
+  function weeklyPerf(){
+    const md = state.monthData; if (!md) return null;
+    return sortedUnits().map(u => {
+      const weeks = md.weeks.map(w => {
+        const p = md.data[w] && md.data[w][u.id], ts = p ? realTasks(p) : [], sm = finalSummary(ts), closed = weekClosed(w);
+        return { w, has: ts.length > 0, closed, sm };
+      });
+      const used = weeks.filter(x => x.has && x.closed && x.sm.avg !== null);
+      return { u, weeks, avg: used.length ? Math.round(used.reduce((a, x) => a + x.sm.avg, 0) / used.length) : null, n: used.length };
+    });
+  }
+  function renderWeeklyPerf(){
+    const wp = weeklyPerf(), md = state.monthData;
+    const bar = v => v === null ? '<span class="muted small">–</span>' : `<div class="prog"><div class="bar"><i style="width:${v}%"></i></div><span class="num">${v}%</span></div>`;
+    const wk = x => `${esc(weekLabel(x.w))} <span class="small muted">${esc(ethWeekLabel(x.w))}</span>`;
+    const body = wp.map(r => {
+      const key = "wp:" + r.u.id, open = state.expanded.has(key);
+      let h = `<tr class="clickable" data-tgl="${esc(key)}" tabindex="0"><td><b>${open ? "▾" : "▸"} ${esc(r.u.name)}</b></td><td class="num">${r.n} of ${md.weeks.length}</td><td colspan="5"></td><td>${bar(r.avg)}</td></tr>`;
+      if (open) h += r.weeks.map(x => { const c = x.sm.counts; return x.has
+        ? `<tr class="sub"><td><span class="muted">↳ </span>${wk(x)}${x.closed ? "" : ' <span class="tag">still open</span>'}</td><td class="num">${x.sm.total}</td><td class="num">${c["Achieved"]}</td><td class="num">${c["Well performed"]}</td><td class="num">${c["Partially achieved"]}</td><td class="num">${c["Under performed"]}</td><td class="num">${c["Cancelled"]}</td><td>${x.closed ? bar(x.sm.avg) : '<span class="muted small">not counted yet</span>'}</td></tr>`
+        : `<tr class="sub"><td><span class="muted">↳ </span>${wk(x)}</td><td colspan="7" class="muted small">No plan entered</td></tr>`; }).join("");
+      return h;
+    }).join("");
+    const avgs = wp.filter(r => r.avg !== null), all = avgs.length ? Math.round(avgs.reduce((a, r) => a + r.avg, 0) / avgs.length) : null;
+    return `<div class="panel" style="margin-bottom:16px"><div class="scroll"><table><thead><tr><th>Unit</th><th>Weeks counted</th><th>Achieved (100%)</th><th>Well performed</th><th>Partially achieved</th><th>Under performed</th><th>Cancelled</th><th>Average performance</th></tr></thead><tbody>${body}<tr><td><b>All units</b></td><td class="num">${avgs.length} units</td><td colspan="5"></td><td>${bar(all)}</td></tr></tbody></table></div>
+      <div class="small muted" style="padding:10px 16px">Select a unit to see each week. A week's performance is the average % reached on the tasks planned for that week, judged inside that week: finishing a task later does not change an earlier week. A unit's number is the average of its weekly numbers. Only weeks whose update period has closed are counted, and weeks with no plan are skipped. All units is the average of the unit numbers. Cancelled tasks are left out.</div></div>`;
+  }
   function renderMonthly(){
     const e = state.eth, rng = ethMonthRange(e);
     const head = `<div class="panel-head"><div class="toolbar"><h2>${esc(ethName(e))}</h2><span class="muted small">${esc(fmt(rng.start))} – ${esc(fmt(rng.end))} ${parse(rng.end).getFullYear()}</span>
       <label class="small muted" for="mBasis">A week counts in the month it</label><select id="mBasis"><option value="end" ${state.monthBasis === "end" ? "selected" : ""}>ends in (last day)</option><option value="start" ${state.monthBasis === "start" ? "selected" : ""}>starts in (first day)</option></select></div>
-      <div class="toolbar"><label class="small"><input type="checkbox" id="mDept" ${state.monthByDept ? "checked" : ""}> Show departments</label><button class="btn" id="mRefresh">Refresh</button>${downloads && state.monthData ? `<button class="btn primary" id="mPdf">Monthly report (PDF)</button><button class="btn" id="mXlsx">Excel</button>` : ""}</div></div>`;
+      <div class="toolbar"><select id="mView" aria-label="Report view"><option value="tasks" ${state.monthView === "tasks" ? "selected" : ""}>Tasks (latest status)</option><option value="weekly" ${state.monthView === "weekly" ? "selected" : ""}>Weekly performance</option></select>${state.monthView === "weekly" ? "" : `<label class="small"><input type="checkbox" id="mDept" ${state.monthByDept ? "checked" : ""}> Show departments</label>`}<button class="btn" id="mRefresh">Refresh</button>${downloads && state.monthData ? `<button class="btn primary" id="mPdf">Monthly report (PDF)</button><button class="btn" id="mXlsx">Excel</button>` : ""}</div></div>`;
     if (!db) return `<div class="panel">${head}<div class="empty"><b>No data</b>The shared store is not available in this view.</div></div>`;
     if (state.monthLoading || !state.monthData) return `<div class="panel">${head}<div class="empty"><b>Collecting the weeks of ${esc(ETH_M[e.m - 1])}…</b></div></div>`;
+    if (state.monthView === "weekly") return `<div class="panel" style="margin-bottom:16px">${head}</div>${renderWeeklyPerf()}`;
     const st = monthStats(), md = state.monthData;
     const tot = st.reduce((a, r) => { const s = r.s; return { uniq: a.uniq + s.total, done: a.done + s.done, prog: a.prog + s.prog, ns: a.ns + s.notStarted + s.noStatus, blk: a.blk + s.blocked + s.delayed, entries: a.entries + r.entries, rep: a.rep + (r.reported ? 1 : 0), high: a.high + s.high, highDone: a.highDone + s.highDone }; }, { uniq: 0, done: 0, prog: 0, ns: 0, blk: 0, entries: 0, rep: 0, high: 0, highDone: 0 });
     const gAvg = avgOf(st.flatMap(r => r.tasks));
@@ -745,6 +775,9 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     XLSX.utils.book_append_sheet(wb, wt, "Distinct tasks");
     const rp = []; st.forEach(r => r.texts.forEach(t => rp.push([r.u.name, weekLabel(t.week) + " (" + ethWeekLabel(t.week) + ")", t.wins, t.blockers, t.asks])));
     XLSX.utils.book_append_sheet(wb, sheetFromRows([["Unit","Week","Key results","Blockers","Asks"], ...rp], [30,34,60,50,50]), "Weekly reports");
+    const wpRows = []; (weeklyPerf() || []).forEach(r => r.weeks.forEach(x => { if (!x.has) return; const c = x.sm.counts; wpRows.push([r.u.name, weekLabel(x.w) + " (" + ethWeekLabel(x.w) + ")", x.closed ? "Closed" : "Still open", x.sm.total, c["Achieved"], c["Well performed"], c["Partially achieved"], c["Under performed"], c["Cancelled"], x.closed && x.sm.avg !== null ? x.sm.avg / 100 : ""]); }));
+    const wpS = sheetFromRows([["Unit","Week","Update period","Tasks","Achieved","Well performed","Partially achieved","Under performed","Cancelled","Week performance"], ...wpRows], [30,34,14,8,10,14,17,16,11,16]); pctFormat(wpS, 9, 1);
+    XLSX.utils.book_append_sheet(wb, wpS, "Weekly performance");
     await writeXlsx(wb, `Wagwago monthly report ${monthFile()}.xlsx`, "Monthly workbook saved");
   }
   async function exportMonthPdf(){
@@ -2172,6 +2205,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     else if (el.id==="aWho") { state.actFilter.who = el.value; render(); }
     else if (el.id==="aAct") { state.actFilter.action = el.value; render(); }
     else if (el.id==="mBasis") { state.monthBasis = el.value; loadMonth(); }
+    else if (el.id==="mView") { state.monthView = el.value; render(); }
     else if (el.id==="mDept") { state.monthByDept = el.checked; render(); }
     else if (el.dataset.unitName) { const v = el.value.trim(), id = el.dataset.unitName; if (v) api.saveUnit(auth(), "update", { id, name: v }, `Renamed unit to "${v}"`).then(r => toast(r.error ? errText(r) : "Unit renamed")); }
     else if (el.dataset.unitType) { const id = el.dataset.unitType; api.saveUnit(auth(), "update", { id, type: el.value }, `Unit type set to ${el.value}`).then(r => toast(r.error ? errText(r) : "Unit type updated")); }
