@@ -732,7 +732,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     const e = state.eth, rng = ethMonthRange(e);
     const head = `<div class="panel-head"><div class="toolbar"><h2>${esc(ethName(e))}</h2><span class="muted small">${esc(fmt(rng.start))} – ${esc(fmt(rng.end))} ${parse(rng.end).getFullYear()}</span>
       <label class="small muted" for="mBasis">A week counts in the month it</label><select id="mBasis"><option value="end" ${state.monthBasis === "end" ? "selected" : ""}>ends in (last day)</option><option value="start" ${state.monthBasis === "start" ? "selected" : ""}>starts in (first day)</option></select></div>
-      <div class="toolbar"><select id="mView" aria-label="Report view"><option value="tasks" ${state.monthView === "tasks" ? "selected" : ""}>Tasks (latest status)</option><option value="weekly" ${state.monthView === "weekly" ? "selected" : ""}>Weekly performance</option></select>${state.monthView === "weekly" ? "" : `<label class="small"><input type="checkbox" id="mDept" ${state.monthByDept ? "checked" : ""}> Show departments</label>`}<button class="btn" id="mRefresh">Refresh</button>${downloads && state.monthData ? `<button class="btn primary" id="mPdf">Monthly report (PDF)</button><button class="btn" id="mXlsx">Excel</button>` : ""}</div></div>`;
+      <div class="toolbar"><select id="mView" aria-label="Report view"><option value="tasks" ${state.monthView === "tasks" ? "selected" : ""}>Tasks (latest status)</option><option value="weekly" ${state.monthView === "weekly" ? "selected" : ""}>Weekly performance</option></select>${state.monthView === "weekly" ? "" : `<label class="small"><input type="checkbox" id="mDept" ${state.monthByDept ? "checked" : ""}> Show departments</label>`}<button class="btn" id="mRefresh">Refresh</button>${downloads && state.monthData ? `<button class="btn primary" id="mPdf">${state.monthView === "weekly" ? "Weekly performance (PDF)" : "Monthly report (PDF)"}</button><button class="btn" id="mXlsx">Excel</button>` : ""}</div></div>`;
     if (!db) return `<div class="panel">${head}<div class="empty"><b>No data</b>The shared store is not available in this view.</div></div>`;
     if (state.monthLoading || !state.monthData) return `<div class="panel">${head}<div class="empty"><b>Collecting the weeks of ${esc(ETH_M[e.m - 1])}…</b></div></div>`;
     if (state.monthView === "weekly") return `<div class="panel" style="margin-bottom:16px">${head}</div>${renderWeeklyPerf()}`;
@@ -787,8 +787,24 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     if (state.monthView === "weekly") wb.SheetNames = ["Weekly performance", "Weekly performance by week", ...wb.SheetNames.filter(n => n !== "Weekly performance" && n !== "Weekly performance by week")];
     await writeXlsx(wb, `Wagwago monthly report ${monthFile()}.xlsx`, "Monthly workbook saved");
   }
+  async function exportWeeklyPerfPdf(){
+    const wp = weeklyPerf(), md = state.monthData, label = ethName(state.eth), pc = v => v === null ? "–" : v + "%";
+    const doc = newPdf(`Weekly Performance · ${label}`, `Weeks: ${md.weeks.map(w => fmt(w) + " (" + ethWeekLabel(w).replace(/, \d+ EC$/, "") + ")").join(", ")}  ·  Generated ${fmt(todayIso)} ${new Date().getFullYear()}`);
+    const av = wp.filter(r => r.avg !== null), all = av.length ? Math.round(av.reduce((a, r) => a + r.avg, 0) / av.length) : null;
+    doc.autoTable({ startY: 92, margin: { left: 36, right: 36 }, head: [["Unit","Weeks counted","Tasks",...FINAL_LABELS,"Average performance"]],
+      body: [...wp.map(r => [r.u.name, `${r.n} of ${md.weeks.length}`, r.tasks, ...FINAL_LABELS.map(l => r.sum[l]), pc(r.avg)]), ["All units (average of units)", `${av.length} units`, av.reduce((a, r) => a + r.tasks, 0), ...FINAL_LABELS.map(l => av.reduce((a, r) => a + r.sum[l], 0)), pc(all)]],
+      columnStyles: { 0: { cellWidth: 150, fontStyle: "bold" } }, ...tableStyle() });
+    let y0 = sectionTitle(doc, "Each week", doc.lastAutoTable.finalY + 24);
+    const body = []; wp.forEach(r => r.weeks.forEach(x => { if (!x.has) return; const c = x.sm.counts; body.push([r.u.name, fmt(x.w), x.closed ? "Closed" : "Still open", x.sm.total, ...FINAL_LABELS.map(l => c[l]), x.closed ? pc(x.sm.avg) : "not counted"]); }));
+    doc.autoTable({ startY: y0, margin: { left: 36, right: 36 }, head: [["Unit","Week","Update period","Tasks",...FINAL_LABELS,"Performance"]], body: body.length ? body : [["No weekly plans","","","","","","","","",""]], columnStyles: { 0: { cellWidth: 120, fontStyle: "bold" } }, ...tableStyle() });
+    doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(...Y.muted);
+    const n = doc.getNumberOfPages(), H = doc.internal.pageSize.getHeight();
+    for (let i = 1; i <= n; i++) { doc.setPage(i); doc.setFontSize(8); doc.text(`Weekly performance · ${label} · average % reached on the tasks planned for each week, judged inside that week; closed weeks only · Page ${i} of ${n}`, 36, H - 18); }
+    await save(`Wagwago weekly performance ${monthFile()}.pdf`, doc.output("arraybuffer"), "Weekly performance saved. Open it to print.");
+  }
   async function exportMonthPdf(){
     if (!libsReady("pdf") || !state.monthData) return;
+    if (state.monthView === "weekly") return exportWeeklyPerfPdf();
     const st = monthStats(), md = state.monthData, label = ethName(state.eth);
     const doc = newPdf(`Monthly Report · ${label}`, `Weeks: ${md.weeks.map(w => fmt(w) + " (" + ethWeekLabel(w).replace(/, \d+ EC$/, "") + ")").join(", ")}  ·  Generated ${fmt(todayIso)} ${new Date().getFullYear()}`);
     doc.autoTable({ startY: 92, margin: { left: 36, right: 36 }, head: [["Unit","Weeks reported","Distinct tasks","Done","In progress","Not started / no status","Blocked / delayed","High done","Avg. complete"]],
@@ -1644,7 +1660,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     const attList = attScope ? alerts.filter(a => a.unit === attScope)
       : alerts.filter(a => (!state.dash.type || unitOf(a.unit).type === state.dash.type) && (!state.dash.units.length || state.dash.units.includes(a.unit)));
     const w = ($("#main").clientWidth || 1000);
-    return renderDashboard({ weeks: state.dashData.weeks, byWeek: by, byWeekAll: byAll, units: sortedUnits(), week: state.week, today: todayIso, filter: { ...state.dash, level: state.level },
+    return renderDashboard({ monthWeeks: monthWeeks(state.eth, state.monthBasis), monthLabel: ethName(state.eth), weeks: state.dashData.weeks, byWeek: by, byWeekAll: byAll, units: sortedUnits(), week: state.week, today: todayIso, filter: { ...state.dash, level: state.level },
       alerts: attList, attScope: attScope ? unitName(attScope) : "", pending: pendingFor().length, downloads, canUpdate: !!(me && !["executive"].includes(me.role)),
       width: w > 900 ? Math.floor((w - 16) * 2 / 3) - 34 : w - 34, unitName, h: { esc, fmt, weekLabel, toEth, ethMonth: w => ethName(toEth(w)), ethWeek: w => ethWeekLabel(w) } });
   }

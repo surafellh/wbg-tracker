@@ -1,6 +1,7 @@
 // Executive dashboard: headline figures, trends and unit comparisons drawn as plain SVG / HTML (no chart library).
 // Colours come from the --viz-* tokens in style.css (validated for colour-blind separation in light and dark mode).
 
+const nk = (s) => String(s ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 const real = (p) => ((p && p.tasks) || []).filter((t) => t.kind !== "KPI / OKR" && t.status !== "Closed");
 // A task with no status or no % counts as 0, so the average cannot look better than the work really is.
 const pctOf = (t) => (t.status === "Done" ? 100 : typeof t.pct === "number" ? t.pct : 0);
@@ -42,11 +43,12 @@ export function renderDashboard(c) {
   const series = c.weeks.map((w) => ({ w, ...weekMetrics(c.byWeek[w] || {}, units, asOf(w)) }));
   let cur = series.find((s) => s.w === c.week) || series[series.length - 1];
   const prev = per0 === "week" ? series[series.indexOf(cur) - 1] : null;
-  const winWeeks = per0 === "week" ? [c.week] : per0 === "quarter" ? c.weeks : c.weeks.filter((w) => { const a = c.h.toEth(w), b = c.h.toEth(c.week); return a.y === b.y && a.m === b.m; });
-  const byU = {}, winTasks = [];
-  units.forEach((u) => { const m = new Map(); let last = null; winWeeks.forEach((w) => { const p = (c.byWeek[w] || {})[u.id]; if (!p) return; last = p; real(p).forEach((t) => m.set(t.ref || t.id, t)); }); if (last) { byU[u.id] = { ...last, tasks: [...m.values()] }; m.forEach((t) => winTasks.push({ ...t, _u: u })); } });
+  const winWeeks = per0 === "week" ? [c.week] : per0 === "quarter" ? c.weeks : (c.monthWeeks ? c.monthWeeks.filter((w) => c.byWeek[w]) : c.weeks.filter((w) => { const a = c.h.toEth(w), b = c.h.toEth(c.week); return a.y === b.y && a.m === b.m; }));
+  const key = (t) => `${nk(t.title)}|${nk(t.dept)}`, byU = {}, winTasks = [];   // the same task key as the monthly report: title and department
+  
+  units.forEach((u) => { const m = new Map(); let last = null; winWeeks.forEach((w) => { const p = (c.byWeek[w] || {})[u.id]; if (!p) return; last = p; real(p).forEach((t) => m.set(key(t), t)); }); if (last) { byU[u.id] = { ...last, tasks: [...m.values()] }; m.forEach((t) => winTasks.push({ ...t, _u: u })); } });
   if (per0 !== "week" || true) cur = { w: c.week, ...weekMetrics(byU, units, asOf(c.week)) };
-  const perLabel = per0 === "week" ? "this week" : per0 === "month" ? "this month" : "this quarter (last 13 weeks)";
+  const perLabel = per0 === "week" ? "this week" : per0 === "month" ? (c.monthLabel || "this month") : "this quarter (last 13 weeks)";
   const delta = prev && prev.donePct !== null && cur.donePct !== null ? cur.donePct - prev.donePct : null;
 
   const nSel = sel.length, selLbl = !nSel ? "All units and functions" : nSel === 1 ? esc(c.unitName(sel[0])) : nSel + " selected";
