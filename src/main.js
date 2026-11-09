@@ -708,7 +708,8 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
         return { w, has: ts.length > 0, closed, sm };
       });
       const used = weeks.filter(x => x.has && x.closed && x.sm.avg !== null);
-      return { u, weeks, avg: used.length ? Math.round(used.reduce((a, x) => a + x.sm.avg, 0) / used.length) : null, n: used.length };
+      const sum = Object.fromEntries(FINAL_LABELS.map(l => [l, used.reduce((a, x) => a + x.sm.counts[l], 0)])), tasks = used.reduce((a, x) => a + x.sm.total, 0);
+      return { u, weeks, sum, tasks, avg: used.length ? Math.round(used.reduce((a, x) => a + x.sm.avg, 0) / used.length) : null, n: used.length };
     });
   }
   function renderWeeklyPerf(){
@@ -717,14 +718,14 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     const wk = x => `${esc(weekLabel(x.w))} <span class="small muted">${esc(ethWeekLabel(x.w))}</span>`;
     const body = wp.map(r => {
       const key = "wp:" + r.u.id, open = state.expanded.has(key);
-      let h = `<tr class="clickable" data-tgl="${esc(key)}" tabindex="0"><td><b>${open ? "▾" : "▸"} ${esc(r.u.name)}</b></td><td class="num">${r.n} of ${md.weeks.length}</td><td colspan="5"></td><td>${bar(r.avg)}</td></tr>`;
+      let h = `<tr class="clickable" data-tgl="${esc(key)}" tabindex="0"><td><b>${open ? "▾" : "▸"} ${esc(r.u.name)}</b></td><td class="num">${r.n} of ${md.weeks.length}</td>${r.n ? FINAL_LABELS.map(l => `<td class="num">${r.sum[l]}</td>`).join("") : '<td colspan="5"></td>'}<td>${bar(r.avg)}</td></tr>`;
       if (open) h += r.weeks.map(x => { const c = x.sm.counts; return x.has
         ? `<tr class="sub"><td><span class="muted">↳ </span>${wk(x)}${x.closed ? "" : ' <span class="tag">still open</span>'}</td><td class="num">${x.sm.total}</td><td class="num">${c["Achieved"]}</td><td class="num">${c["Well performed"]}</td><td class="num">${c["Partially achieved"]}</td><td class="num">${c["Under performed"]}</td><td class="num">${c["Cancelled"]}</td><td>${x.closed ? bar(x.sm.avg) : '<span class="muted small">not counted yet</span>'}</td></tr>`
         : `<tr class="sub"><td><span class="muted">↳ </span>${wk(x)}</td><td colspan="7" class="muted small">No plan entered</td></tr>`; }).join("");
       return h;
     }).join("");
     const avgs = wp.filter(r => r.avg !== null), all = avgs.length ? Math.round(avgs.reduce((a, r) => a + r.avg, 0) / avgs.length) : null;
-    return `<div class="panel" style="margin-bottom:16px"><div class="scroll"><table><thead><tr><th>Unit</th><th>Weeks counted</th><th>Achieved (100%)</th><th>Well performed</th><th>Partially achieved</th><th>Under performed</th><th>Cancelled</th><th>Average performance</th></tr></thead><tbody>${body}<tr><td><b>All units</b></td><td class="num">${avgs.length} units</td><td colspan="5"></td><td>${bar(all)}</td></tr></tbody></table></div>
+    return `<div class="panel" style="margin-bottom:16px"><div class="scroll"><table><thead><tr><th>Unit</th><th>Weeks counted</th><th>Achieved</th><th>Well performed</th><th>Partially achieved</th><th>Under performed</th><th>Cancelled</th><th>Average performance</th></tr></thead><tbody>${body}<tr><td><b>All units</b></td><td class="num">${avgs.length} units</td>${FINAL_LABELS.map(l => `<td class="num">${avgs.reduce((a, r) => a + r.sum[l], 0)}</td>`).join("")}<td>${bar(all)}</td></tr></tbody></table></div>
       <div class="small muted" style="padding:10px 16px">Select a unit to see each week. A week's performance is the average % reached on the tasks planned for that week, judged inside that week: finishing a task later does not change an earlier week. A unit's number is the average of its weekly numbers. Only weeks whose update period has closed are counted, and weeks with no plan are skipped. All units is the average of the unit numbers. Cancelled tasks are left out.</div></div>`;
   }
   function renderMonthly(){
@@ -777,7 +778,13 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     XLSX.utils.book_append_sheet(wb, sheetFromRows([["Unit","Week","Key results","Blockers","Asks"], ...rp], [30,34,60,50,50]), "Weekly reports");
     const wpRows = []; (weeklyPerf() || []).forEach(r => r.weeks.forEach(x => { if (!x.has) return; const c = x.sm.counts; wpRows.push([r.u.name, weekLabel(x.w) + " (" + ethWeekLabel(x.w) + ")", x.closed ? "Closed" : "Still open", x.sm.total, c["Achieved"], c["Well performed"], c["Partially achieved"], c["Under performed"], c["Cancelled"], x.closed && x.sm.avg !== null ? x.sm.avg / 100 : ""]); }));
     const wpS = sheetFromRows([["Unit","Week","Update period","Tasks","Achieved","Well performed","Partially achieved","Under performed","Cancelled","Week performance"], ...wpRows], [30,34,14,8,10,14,17,16,11,16]); pctFormat(wpS, 9, 1);
-    XLSX.utils.book_append_sheet(wb, wpS, "Weekly performance");
+    XLSX.utils.book_append_sheet(wb, wpS, "Weekly performance by week");
+    const wpa = weeklyPerf() || [], wpAv = wpa.filter(r => r.avg !== null);
+    const wpU = sheetFromRows([[`Weekly performance · ${label}`], ["Average % reached on the tasks planned for each week, judged inside that week. Only closed weeks are counted."], [], ["Unit","Weeks counted","Tasks in counted weeks",...FINAL_LABELS,"Average performance"],
+      ...wpa.map(r => [r.u.name, `${r.n} of ${md.weeks.length}`, r.tasks, ...FINAL_LABELS.map(l => r.sum[l]), r.avg === null ? "" : r.avg / 100]),
+      ["All units (average of units)", `${wpAv.length} units`, wpAv.reduce((a, r) => a + r.tasks, 0), ...FINAL_LABELS.map(l => wpAv.reduce((a, r) => a + r.sum[l], 0)), wpAv.length ? Math.round(wpAv.reduce((a, r) => a + r.avg, 0) / wpAv.length) / 100 : ""]], [34,14,20,10,14,17,16,11,20]); pctFormat(wpU, 8, 4);
+    XLSX.utils.book_append_sheet(wb, wpU, "Weekly performance");
+    if (state.monthView === "weekly") wb.SheetNames = ["Weekly performance", "Weekly performance by week", ...wb.SheetNames.filter(n => n !== "Weekly performance" && n !== "Weekly performance by week")];
     await writeXlsx(wb, `Wagwago monthly report ${monthFile()}.xlsx`, "Monthly workbook saved");
   }
   async function exportMonthPdf(){
