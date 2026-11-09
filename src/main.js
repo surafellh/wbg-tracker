@@ -626,7 +626,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
         const ws = sheetFromRows(sum, [34, 18, 8, 12, 14, 18, 16, 12, 18]); pctFormat(ws, 8, 4); XLSX.utils.book_append_sheet(wb, ws, "Summary");
         const head = ["Unit", ...taskHead.slice(1)]; head[6] = fin ? "Final status" : "Status";
         const rows = units.flatMap(u => u.tasks.map((t, i) => [u.name, ...xlsxTask({ ...t, status: stOf(t) }, i).slice(1)]));
-        const wt = sheetFromRows([head, ...rows], [30, ...taskWidths.slice(1)]); pctFormat(wt, 7, 1); XLSX.utils.book_append_sheet(wb, wt, "Tasks");
+        const wt = sheetFromRows([head, ...rows], [30, ...taskWidths.slice(1)]); pctFormat(wt, 7, 1); pctFormat(wt, 22, 1); XLSX.utils.book_append_sheet(wb, wt, "Tasks");
         await writeXlsx(wb, `Wagwago weekly performance ${stamp}.xlsx`, "Excel saved");
       } else {
         if (!libsReady("pdf")) return;
@@ -637,7 +637,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
         const list = units.flatMap(u => u.tasks.map(t => ({ ...t, unitName: u.name, status: stOf(t) })));
         let y = sectionTitle(doc, "Tasks", doc.lastAutoTable.finalY + 26);
         doc.autoTable({ startY: y, margin: { left: 30, right: 30 }, head: [pdfHead(true)], body: list.map((t, i) => pdfTask({ ...t, prevStatus: "" }, i, t.unitName)),
-          columnStyles: { 0: { cellWidth: 62, fontStyle: "bold" }, 1: { cellWidth: 104, fontStyle: "bold" }, 2: { cellWidth: 90 }, 3: { cellWidth: 48 }, 4: { cellWidth: 50 }, 5: { cellWidth: 38 }, 6: { cellWidth: 34 }, 7: { cellWidth: 48 }, 8: { cellWidth: 24 }, 9: { cellWidth: 46 }, 10: { cellWidth: 56 } }, ...pdfStyle() });
+          columnStyles: { 0: { cellWidth: 62, fontStyle: "bold" }, 1: { cellWidth: 104, fontStyle: "bold" }, 2: { cellWidth: 90 }, 3: { cellWidth: 48 }, 4: { cellWidth: 50 }, 5: { cellWidth: 38 }, 6: { cellWidth: 34 }, 7: { cellWidth: 48 }, 8: { cellWidth: 24 }, 9: { cellWidth: 46 }, 10: { cellWidth: 56 }, 11: { cellWidth: 58 } }, ...pdfStyle() });
         pdfFooter(doc, "Weekly performance");
         await save(`Wagwago weekly performance ${stamp}.pdf`, doc.output("arraybuffer"), "PDF saved. Open it to print.");
       }
@@ -2632,8 +2632,8 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
 
   async function exportCsv(){
     const cell = v => { const s = String(v ?? ""); return /[",\n]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s; };
-    const head = ["Week","Unit","Task","Department","Owner (name)","Due","Priority","Status","% complete","Notes","Expected outcome","Previous status","Completed on","Depends on (unit)","Dependency details","Evidence files"];
-    const lines = [head.join(",")].concat(filteredTasks().map(t => [state.week, t.unitName, t.title, t.dept||"", t.owner, t.due, t.priority, t.status||"No status", t.pct ?? "", t.notes, t.outcome||"", t.prevStatus||"", t.completedAt||"", t.depUnit ? unitName(t.depUnit) : "", t.dep||"", (t.ev||[]).map(e => e.name).join("; ")].map(cell).join(",")));
+    const head = ["Week","Unit","Task","Department","Owner (name)","Due","Priority","Status","% complete","Notes","Expected outcome","Previous status","Completed on","Depends on (unit)","Dependency details","Evidence files","Target","Unit of measure","Actual","Actual vs target %"];
+    const lines = [head.join(",")].concat(filteredTasks().map(t => [state.week, t.unitName, t.title, t.dept||"", t.owner, t.due, t.priority, t.status||"No status", t.pct ?? "", t.notes, t.outcome||"", t.prevStatus||"", t.completedAt||"", t.depUnit ? unitName(t.depUnit) : "", t.dep||"", (t.ev||[]).map(e => e.name).join("; "), ...tgtCols(t).map((v, k) => k === 3 && v !== "" ? Math.round(v * 1000) / 10 + "%" : v)].map(cell).join(",")));
     try { await downloads.save({ filename: `Wagwago weekly plans ${state.week}.csv`, data: "﻿" + lines.join("\n") }); toast("CSV saved"); }
     catch (e) { if (e && e.code !== "declined") toast("Could not export the file here"); }
   }
@@ -2773,12 +2773,13 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   const depText = t => [t.depUnit ? unitName(t.depUnit) : "", t.dep || ""].filter(Boolean).join(": ");
   const taskRow = (t,i) => [i+1, titleOut(t), t.dept||"", t.owner||"", fmt(t.due), t.priority||"", t.prevStatus||"", t.status||"No status", typeof t.pct==="number" ? t.pct+"%" : "", fmt(t.completedAt||""), [t.notes||"", depText(t) && "Depends on " + depText(t), (t.ev||[]).length ? `${t.ev.length} evidence file(s)` : ""].filter(Boolean).join("\n")];
   // PDF: every field of a task, in its own labelled column (landscape A4)
-  const pdfHead = withUnit => [...(withUnit ? ["Unit"] : ["#"]), "Task / deliverable", "Expected outcome", "Department", "Owner (name)", "Due", "Priority", "Status (previous)", "%", "Completed", "Depends on", "Notes / next step · evidence"];
+  const tgtTxt = t => { const [tg, m, ac, pc] = tgtCols(t); if (tg === "" && ac === "") return ""; const n = v => v === "" ? "–" : Number(v).toLocaleString("en-US"); return `${n(ac === "" ? 0 : ac)} / ${n(tg)}${m ? " " + m : ""}${pc !== "" ? `\n(${Math.round(pc * 100)}%)` : ""}`; };
+  const pdfHead = withUnit => [...(withUnit ? ["Unit"] : ["#"]), "Task / deliverable", "Expected outcome", "Department", "Owner (name)", "Due", "Priority", "Status (previous)", "%", "Completed", "Depends on", "Target / actual", "Notes / next step · evidence"];
   const pdfTask = (t, i, unitName_) => [unitName_ !== undefined ? unitName_ : i + 1,
     (t.kind === "KPI / OKR" ? "[KPI / OKR] " : "") + (t.title || "") + (t.carried ? "\n(carried forward)" : ""),
     t.outcome || "", t.dept || "", t.owner || "", fmt(t.due), t.priority || "",
     (t.status || "No status") + (t.prevStatus ? `\n(was: ${t.prevStatus}${typeof t.prevPct === "number" ? " " + t.prevPct + "%" : ""})` : ""),
-    (typeof t.pct === "number" ? t.pct + "%" : "") + (baseOf(t) ? `\n(overall ${overallOf(t)}%)` : ""), fmt(t.completedAt || ""), depText(t),
+    (typeof t.pct === "number" ? t.pct + "%" : "") + (baseOf(t) ? `\n(overall ${overallOf(t)}%)` : ""), fmt(t.completedAt || ""), depText(t), tgtTxt(t),
     [t.notes || "", (t.ev || []).length ? "Evidence: " + t.ev.map(e => e.name).join(", ") : ""].filter(Boolean).join("\n")];
   const pdfStyle = () => { const b = tableStyle(); b.styles = { ...b.styles, fontSize: 7.5, cellPadding: 3 }; b.headStyles = { ...b.headStyles, fontSize: 7.5 }; return b; };
   const safeName = s => s.replace(/[\\/:*?"<>|]/g,"").slice(0,60);
@@ -2794,8 +2795,8 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     const kw = (W - 72 - 40)/5;
     kpis.forEach((k,i) => { const x = 36 + i*(kw+10); doc.setFillColor(...Y.soft); doc.roundedRect(x, 88, kw, 46, 5, 5, "F"); doc.setTextColor(...Y.ink); doc.setFont("helvetica","bold"); doc.setFontSize(15); doc.text(k[0], x+10, 109); doc.setFont("helvetica","normal"); doc.setFontSize(8.5); doc.text(k[1], x+10, 125); });
     doc.autoTable({ startY: 148, margin: { left: 30, right: 30 }, head: [pdfHead(false)],
-      body: (p.tasks||[]).length ? p.tasks.map((t,i) => pdfTask(t,i)) : [["","No tasks entered","","","","","","","","","",""]],
-      columnStyles: { 0: { cellWidth: 18 }, 1: { cellWidth: 120, fontStyle: "bold" }, 2: { cellWidth: 94 }, 3: { cellWidth: 52 }, 4: { cellWidth: 54 }, 5: { cellWidth: 40 }, 6: { cellWidth: 36 }, 7: { cellWidth: 50 }, 8: { cellWidth: 26 }, 9: { cellWidth: 48 }, 10: { cellWidth: 62 } }, ...pdfStyle() });
+      body: (p.tasks||[]).length ? p.tasks.map((t,i) => pdfTask(t,i)) : [["","No tasks entered","","","","","","","","","","",""]],
+      columnStyles: { 0: { cellWidth: 18 }, 1: { cellWidth: 120, fontStyle: "bold" }, 2: { cellWidth: 94 }, 3: { cellWidth: 52 }, 4: { cellWidth: 54 }, 5: { cellWidth: 40 }, 6: { cellWidth: 36 }, 7: { cellWidth: 50 }, 8: { cellWidth: 26 }, 9: { cellWidth: 48 }, 10: { cellWidth: 62 }, 11: { cellWidth: 58 } }, ...pdfStyle() });
     let y = doc.lastAutoTable.finalY + 24;
     y = sectionTitle(doc, "Key results, blockers and asks", y);
     doc.autoTable({ startY: y, margin: { left: 36, right: 36 }, head: [["Key results this week","Blockers and issues","Asks to top management or other units"]], body: [[p.wins||"–", p.blockers||"–", p.asks||"–"]], ...tableStyle() });
@@ -2807,9 +2808,10 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   }
 
   function sheetFromRows(rows, widths){ const ws = XLSX.utils.aoa_to_sheet(rows); ws["!cols"] = widths.map(w => ({ wch: w })); return ws; }
-  const taskHead = ["#","Task / deliverable","Department","Owner (name)","Due","Priority","Status","% complete","Notes / next step","Type","Expected outcome","Previous status","Completed on","Depends on (unit)","Dependency details","Evidence files","Task code","Done in earlier weeks","Overall %"];
-  const taskWidths = [5,55,18,22,12,10,13,11,50,11,40,14,13,24,30,30,14,14,11];
-  const xlsxTask = (t,i) => [i+1, t.title||"", t.dept||"", t.owner||"", t.due||"", t.priority||"", t.status||"No status", typeof t.pct==="number" ? t.pct/100 : "", t.notes||"", t.kind||"Task", t.outcome||"", t.prevStatus||"", t.completedAt||"", t.depUnit ? unitName(t.depUnit) : "", t.dep||"", (t.ev||[]).map(e => e.name).join(", "), t.ref||"", baseOf(t) ? baseOf(t)/100 : "", baseOf(t) ? overallOf(t)/100 : ""];
+  const taskHead = ["#","Task / deliverable","Department","Owner (name)","Due","Priority","Status","% complete","Notes / next step","Type","Expected outcome","Previous status","Completed on","Depends on (unit)","Dependency details","Evidence files","Task code","Done in earlier weeks","Overall %","Target","Unit of measure","Actual","Actual vs target %"];
+  const taskWidths = [5,55,18,22,12,10,13,11,50,11,40,14,13,24,30,30,14,14,11,12,14,12,14];
+  const tgtCols = t => { const hasT = t.target !== "" && t.target != null && isFinite(Number(t.target)), hasA = t.actual !== "" && t.actual != null && isFinite(Number(t.actual)); return [hasT ? Number(t.target) : "", hasT || hasA ? (t.measure || "") : "", hasA ? Number(t.actual) : "", hasT && Number(t.target) > 0 ? (Number(t.actual) || 0) / Number(t.target) : ""]; };
+  const xlsxTask = (t,i) => [i+1, t.title||"", t.dept||"", t.owner||"", t.due||"", t.priority||"", t.status||"No status", typeof t.pct==="number" ? t.pct/100 : "", t.notes||"", t.kind||"Task", t.outcome||"", t.prevStatus||"", t.completedAt||"", t.depUnit ? unitName(t.depUnit) : "", t.dep||"", (t.ev||[]).map(e => e.name).join(", "), t.ref||"", baseOf(t) ? baseOf(t)/100 : "", baseOf(t) ? overallOf(t)/100 : "", ...tgtCols(t)];
   function pctFormat(ws, col, firstRow){ const r = XLSX.utils.decode_range(ws["!ref"]); for (let R = firstRow; R <= r.e.r; R++) { const c = ws[XLSX.utils.encode_cell({ r: R, c: col })]; if (c && typeof c.v === "number") c.z = "0%"; } }
   async function writeXlsx(wb, filename, msg){ const buf = XLSX.write(wb, { bookType: "xlsx", type: "array" }); await save(filename, buf, msg); }
 
@@ -2817,7 +2819,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     if (!libsReady("xlsx") || !state.editUnit) return;
     const p = currentPlan(), name = unitName(state.editUnit);
     const rows = [[`${name} · Weekly Plan`], [`Week of ${weekLabel(state.week)}`], [], taskHead, ...(p.tasks||[]).map(xlsxTask), [], ["Key results this week", p.wins||""], ["Blockers and issues", p.blockers||""], ["Asks", p.asks||""]];
-    const ws = sheetFromRows(rows, taskWidths); pctFormat(ws, 7, 4);
+    const ws = sheetFromRows(rows, taskWidths); pctFormat(ws, 7, 4); pctFormat(ws, 22, 4);
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Weekly plan");
     await writeXlsx(wb, `${safeName(name)} weekly plan ${state.week}.xlsx`, "Excel plan saved");
   }
@@ -2828,8 +2830,8 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     const filt = [f.unit && unitName(f.unit), f.status && (f.status==="none"?"No status":f.status), f.priority, f.q && `"${f.q}"`].filter(Boolean).join(", ");
     const doc = newPdf("Weekly Tasks", `Week of ${weekLabel(state.week)}  ·  ${list.length} tasks${filt ? "  ·  Filter: " + filt : ""}`);
     doc.autoTable({ startY: 92, margin: { left: 30, right: 30 }, head: [pdfHead(true)],
-      body: list.length ? list.map((t,i) => pdfTask(t, i, t.unitName)) : [["","No tasks match","","","","","","","","","",""]],
-      columnStyles: { 0: { cellWidth: 62, fontStyle: "bold" }, 1: { cellWidth: 104, fontStyle: "bold" }, 2: { cellWidth: 90 }, 3: { cellWidth: 48 }, 4: { cellWidth: 50 }, 5: { cellWidth: 38 }, 6: { cellWidth: 34 }, 7: { cellWidth: 48 }, 8: { cellWidth: 24 }, 9: { cellWidth: 46 }, 10: { cellWidth: 56 } }, ...pdfStyle() });
+      body: list.length ? list.map((t,i) => pdfTask(t, i, t.unitName)) : [["","No tasks match","","","","","","","","","","",""]],
+      columnStyles: { 0: { cellWidth: 62, fontStyle: "bold" }, 1: { cellWidth: 104, fontStyle: "bold" }, 2: { cellWidth: 90 }, 3: { cellWidth: 48 }, 4: { cellWidth: 50 }, 5: { cellWidth: 38 }, 6: { cellWidth: 34 }, 7: { cellWidth: 48 }, 8: { cellWidth: 24 }, 9: { cellWidth: 46 }, 10: { cellWidth: 56 }, 11: { cellWidth: 58 } }, ...pdfStyle() });
     pdfFooter(doc, "Weekly tasks");
     await save(`Wagwago weekly tasks ${state.week}.pdf`, doc.output("arraybuffer"), "Task list saved. Open it to print.");
   }
@@ -2838,7 +2840,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     if (!libsReady("xlsx")) return;
     const list = filteredTasks().map(t => finalOn() ? { ...t, status: finalLabel(t) } : t);
     const rows = [["Unit", ...taskHead.slice(1)], ...list.map((t,i) => [t.unitName, ...xlsxTask(t,i).slice(1)])];
-    const ws = sheetFromRows(rows, [30, ...taskWidths.slice(1)]); pctFormat(ws, 7, 1);
+    const ws = sheetFromRows(rows, [30, ...taskWidths.slice(1)]); pctFormat(ws, 7, 1); pctFormat(ws, 22, 1);
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Tasks");
     await writeXlsx(wb, `Wagwago weekly tasks ${state.week}.xlsx`, "Excel task list saved");
   }
@@ -2853,13 +2855,13 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     const ws = sheetFromRows(sum, [34,18,12,8,8,13,11,9,9,16,13]); pctFormat(ws, 9, 4);
     XLSX.utils.book_append_sheet(wb, ws, "Summary");
     const all = allTasks();
-    const wsAll = sheetFromRows([["Unit", ...taskHead.slice(1)], ...all.map((t,i) => [t.unitName, ...xlsxTask(t,i).slice(1)])], [30, ...taskWidths.slice(1)]); pctFormat(wsAll, 7, 1);
+    const wsAll = sheetFromRows([["Unit", ...taskHead.slice(1)], ...all.map((t,i) => [t.unitName, ...xlsxTask(t,i).slice(1)])], [30, ...taskWidths.slice(1)]); pctFormat(wsAll, 7, 1); pctFormat(wsAll, 22, 1);
     XLSX.utils.book_append_sheet(wb, wsAll, "All tasks");
     const asks = units.filter(u => state.plans[u.id] && (state.plans[u.id].wins || state.plans[u.id].blockers || state.plans[u.id].asks)).map(u => { const p = state.plans[u.id]; return [u.name, p.wins||"", p.blockers||"", p.asks||""]; });
     XLSX.utils.book_append_sheet(wb, sheetFromRows([["Unit","Key results","Blockers","Asks"], ...asks], [30,50,50,50]), "Results, blockers, asks");
     const used = new Set();
     units.forEach(u => { const p = state.plans[u.id]; if (!p || !(p.tasks||[]).length) return; let n = u.name.replace(/[\\/?*\[\]:]/g,"").slice(0,31); while (used.has(n)) n = n.slice(0,29) + "_" + used.size; used.add(n);
-      const w = sheetFromRows([taskHead, ...p.tasks.map(xlsxTask)], taskWidths); pctFormat(w, 7, 1); XLSX.utils.book_append_sheet(wb, w, n); });
+      const w = sheetFromRows([taskHead, ...p.tasks.map(xlsxTask)], taskWidths); pctFormat(w, 7, 1); pctFormat(w, 22, 1); XLSX.utils.book_append_sheet(wb, w, n); });
     await writeXlsx(wb, `Wagwago weekly plans ${state.week}.xlsx`, "Excel workbook saved");
   }
 
