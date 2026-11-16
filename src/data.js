@@ -19,7 +19,7 @@ const isSupabaseConfigured = () => !!(URL_ && KEY_ && !URL_.includes("YOUR-PROJE
 
 // document field -> column. `ts` lists timestamp fields (normalised to ISO strings); `nullText` maps "" <-> NULL.
 const COLLECTIONS = {
-  units: { table: "units", map: { name: "name", type: "type", order: "sort_order", departments: "departments", people: "people" }, ts: [] },
+  units: { table: "units", map: { name: "name", type: "type", reportsTo: "reports_to", order: "sort_order", departments: "departments", people: "people" }, ts: [] },
   plans: { table: "plans", map: { week: "week", unit: "unit_id", tasks: "tasks", wins: "wins", blockers: "blockers", asks: "asks", updatedAt: "updated_at", updatedBy: "updated_by", source: "source" }, ts: ["updatedAt"] },
   activity: { table: "activity", map: { ts: "ts", by: "by_name", unit: "unit_id", week: "week", action: "action", summary: "summary", details: "details", role: "by_role" }, ts: ["ts"], nullText: ["week"] },
   requests: { table: "change_requests", map: { createdAt: "created_at", unit: "unit_id", week: "week", planId: "plan_id", by: "requested_by", status: "status", summary: "summary", details: "details", patch: "patch", decidedBy: "decided_by", decidedAt: "decided_at", note: "decision_note", dept: "dept", kind: "req_kind", stage: "stage" }, ts: ["createdAt", "decidedAt"] },
@@ -555,8 +555,8 @@ function createLocalData() {
       const appr = isAppr(auth), units = getStore("units"), u = units.find((x) => x.id === data.id);
       if (op === "lists") { if (!appr && !leadOk(auth, data.id)) return err("not_allowed"); if (data.departments && !canEditDepartments(auth, data.id)) return err("not_allowed"); if (!u) return err("not_found"); put("units", { ...u, ...(data.departments ? { departments: data.departments } : {}), ...(data.people ? { people: data.people } : {}) }); }
       else if (!appr) return err("not_allowed");
-      else if (op === "add") { if (!u) put("units", { id: data.id, name: data.name, type: data.type || "Business unit", order: data.order || 99, departments: [], people: [] }); }
-      else if (op === "update") { if (u) put("units", { ...u, ...(data.name ? { name: data.name } : {}), ...(data.type ? { type: data.type } : {}) }); }
+      else if (op === "add") { if (!u) put("units", { id: data.id, name: data.name, type: data.type || "Business unit", reportsTo: data.reports_to || "", order: data.order || 99, departments: [], people: [] }); }
+      else if (op === "update") { if (u) put("units", { ...u, ...(data.name ? { name: data.name } : {}), ...(data.type ? { type: data.type } : {}), ...(data.reports_to ? { reportsTo: data.reports_to } : {}) }); }
       else if (op === "remove") del("units", data.id);
       addActivity(auth.name, data.id, "", { action: op === "lists" ? "lists" : "unit", summary: summary || op + " unit" });
       return ok();

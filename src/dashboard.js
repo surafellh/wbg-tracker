@@ -7,6 +7,7 @@ const real = (p) => ((p && p.tasks) || []).filter((t) => t.kind !== "KPI / OKR" 
 const pctOf = (t) => (t.status === "Done" ? 100 : typeof t.pct === "number" ? t.pct : 0);
 const avg = (a) => (a.length ? Math.round(a.reduce((x, y) => x + y, 0) / a.length) : null);
 import { weekEndOf } from "./rules.js";
+import { PORTFOLIOS, portfolioOf } from "./portfolio.js";
 
 export function unitMetrics(plan, asOf) {
   const t = real(plan);
@@ -47,10 +48,21 @@ export function renderDashboard(c) {
   const key = (t) => `${nk(t.title)}|${nk(t.dept)}`, byU = {}, winTasks = [];   // the same task key as the monthly report: title and department
   
   units.forEach((u) => { const m = new Map(); let last = null; winWeeks.forEach((w) => { const p = (c.byWeek[w] || {})[u.id]; if (!p) return; last = p; real(p).forEach((t) => m.set(key(t), t)); }); if (last) { byU[u.id] = { ...last, tasks: [...m.values()] }; m.forEach((t) => winTasks.push({ ...t, _u: u })); } });
+  const byUAll = {};   // every unit's plan for the same window, for the portfolio summary
+  c.units.forEach((u) => { const m = new Map(); let last = null; winWeeks.forEach((w) => { const p = (c.byWeek[w] || {})[u.id]; if (!p) return; last = p; real(p).forEach((t) => m.set(key(t), t)); }); if (last) byUAll[u.id] = { ...last, tasks: [...m.values()] }; });
   if (per0 !== "week" || true) cur = { w: c.week, ...weekMetrics(byU, units, asOf(c.week)) };
   const perLabel = per0 === "week" ? "this week" : per0 === "month" ? (c.monthLabel || "this month") : "this quarter (last 13 weeks)";
   const delta = prev && prev.donePct !== null && cur.donePct !== null ? cur.donePct - prev.donePct : null;
 
+  const idsOf = (k) => c.units.filter((u) => portfolioOf(u) === k).map((u) => u.id);
+  const tabs = PORTFOLIOS.filter((p) => idsOf(p.key).length);
+  const sameSet = (a, b) => a.length === b.length && a.every((x) => b.includes(x));
+  const activeP = !sel.length ? "all" : (tabs.find((p) => sameSet(sel, idsOf(p.key))) || {}).key || "";
+  const pTabs = `<div class="seg" role="tablist" aria-label="Reporting line" style="margin:0 0 12px;flex-wrap:wrap"><button role="tab" data-dgrp="all" aria-selected="${activeP === "all"}">Group (consolidated)</button>${tabs.map((p) => `<button role="tab" data-dgrp="rt:${p.key}" aria-selected="${activeP === p.key}">${esc(p.label)}</button>`).join("")}</div>`;
+  const summary = activeP !== "all" ? "" : (() => {
+    const row = (lbl, us, strong) => { const m = weekMetrics(byUAll, us, asOf(c.week)); return `<tr${strong ? ' style="font-weight:600"' : ""}><td>${esc(lbl)}</td><td class="num">${m.reporting} of ${us.length}</td><td class="num">${m.done} of ${m.total}</td><td class="num">${m.donePct === null ? "–" : m.donePct + "%"}</td><td class="num">${m.avg === null ? "–" : m.avg + "%"}</td><td class="num">${m.blk + m.overdue}</td></tr>`; };
+    return `<div class="panel" style="margin-bottom:16px"><div class="panel-head"><h2>Consolidated performance by reporting line</h2><span class="small muted">${perLabel}</span></div><div class="scroll"><table class="dtbl"><thead><tr><th>Reporting line</th><th>Units with a plan</th><th>Tasks done</th><th>% done</th><th>Average % complete</th><th>Blocked / overdue</th></tr></thead><tbody>${tabs.map((p) => row(p.label, c.units.filter((u) => portfolioOf(u) === p.key))).join("")}${row("Whole group", c.units, true)}</tbody></table></div></div>`;
+  })();
   const nSel = sel.length, selLbl = !nSel ? "All units and functions" : nSel === 1 ? esc(c.unitName(sel[0])) : nSel + " selected";
   const grp = (t, lbl) => { const us = c.units.filter((u) => (u.type || "") === t); return us.length ? `<div class="dpop-g">${lbl}</div>${us.map((u) => `<label><input type="checkbox" data-dunit="${esc(u.id)}" ${sel.includes(u.id) ? "checked" : ""}>${esc(u.name)}</label>`).join("")}` : ""; };
   const types = [...new Set(c.units.map((u) => u.type || ""))];
@@ -125,10 +137,11 @@ export function renderDashboard(c) {
 
   const { nowList, oldList } = splitAlerts(c);
   const nowN = nowList.length, oldN = oldList.length;
-  const title = !nSel ? "Wagwago Business Group" : nSel === 1 ? esc(c.unitName(sel[0])) : nSel + " units selected";
+  const pActive = tabs.find((p) => p.key === activeP);
+  const title = !nSel ? "Wagwago Business Group" : pActive ? esc(pActive.label) : nSel === 1 ? esc(c.unitName(sel[0])) : nSel + " units selected";
   const sub = per0 === "week" ? `Week of ${esc(weekLabel(c.week))} · ${esc(c.h.ethWeek(c.week))}` : per0 === "month" ? esc(c.h.ethMonth(c.week)) : `13 weeks to ${esc(fmt(c.week))}`;
   return `<div class="dh"><div>${single ? `<button class="lnk back" data-dgrp="all">← Whole group</button>` : ""}<h1>${title}</h1><p>${sub}</p></div>${filters}</div>
-    ${kpis}
+    ${pTabs}${summary}${kpis}
     <div class="dgrid dgrid3"><div class="panel"><div class="panel-head"><h2>${single ? "Completion by department" : "Completion by unit"}</h2><span class="small muted">${single ? "Average % complete" : "Click a unit to drill in"}</span></div>${single ? deptBars : bullets}</div>
       <div class="panel"><div class="panel-head"><h2>Task status</h2><span class="small muted">${perLabel}</span></div><div class="pad">${donut}</div></div>
       <div class="panel"><div class="panel-head"><h2>Tasks done against planned</h2><span class="small muted">Last 8 weeks</span></div><div class="pad">${planned}</div></div></div>

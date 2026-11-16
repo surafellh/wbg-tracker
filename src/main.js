@@ -12,6 +12,7 @@ import { GUIDES_VERSION } from "./guides.js";
 import { WEEK_CUTOVER, LOCKED, lockedFields, setSettings, getSettings, graceLabel, planOps, needsApproval, applyOps, addisToday, addisWeekStart, addisLockWeek, calcPct, CATEGORIES, weekStartOf, weekEndOf, nextWeekOf, prevWeekOf } from "./rules.js";
 import { unitAlerts, levelRank, BLOCKED_DAYS } from "./alerts.js";
 import { renderDashboard } from "./dashboard.js";
+import { PORTFOLIOS, portfolioOf } from "./portfolio.js";
 import { FINAL_LABELS, FINAL_CLASS, FINAL_COLOR, FINAL_BANDS, RATING_BANDS, ratingOf, weekClosed, finalLabel, finalSummary, pctOf as finalPct } from "./finalstatus.js";
 import { createExtras } from "./extras.js";
 import { createProjects } from "./projects.js";
@@ -725,7 +726,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
       return h;
     }).join("");
     const avgs = wp.filter(r => r.avg !== null), all = avgs.length ? Math.round(avgs.reduce((a, r) => a + r.avg, 0) / avgs.length) : null;
-    return `<div class="panel" style="margin-bottom:16px"><div class="scroll"><table><thead><tr><th>Unit</th><th>Weeks counted</th><th>Achieved</th><th>Well performed</th><th>Partially achieved</th><th>Under performed</th><th>Cancelled</th><th>Average performance</th></tr></thead><tbody>${body}<tr><td><b>All units</b></td><td class="num">${avgs.length} units</td>${FINAL_LABELS.map(l => `<td class="num">${avgs.reduce((a, r) => a + r.sum[l], 0)}</td>`).join("")}<td>${bar(all)}</td></tr></tbody></table></div>
+    return `<div class="panel" style="margin-bottom:16px"><div class="scroll"><table><thead><tr><th>Unit</th><th>Weeks counted</th><th>Achieved</th><th>Well performed</th><th>Partially achieved</th><th>Under performed</th><th>Cancelled</th><th>Average performance</th></tr></thead><tbody>${body}${PORTFOLIOS.map(pf => { const rs = avgs.filter(r => portfolioOf(r.u) === pf.key); return rs.length ? `<tr><td><b>${esc(pf.label)}</b> <span class="small muted">(average of units)</span></td><td class="num">${rs.length} units</td>${FINAL_LABELS.map(l => `<td class="num">${rs.reduce((a, r) => a + r.sum[l], 0)}</td>`).join("")}<td>${bar(Math.round(rs.reduce((a, r) => a + r.avg, 0) / rs.length))}</td></tr>` : ""; }).join("")}<tr><td><b>All units</b></td><td class="num">${avgs.length} units</td>${FINAL_LABELS.map(l => `<td class="num">${avgs.reduce((a, r) => a + r.sum[l], 0)}</td>`).join("")}<td>${bar(all)}</td></tr></tbody></table></div>
       <div class="small muted" style="padding:10px 16px">Select a unit to see each week. A week's performance is the average % reached on the tasks planned for that week, judged inside that week: finishing a task later does not change an earlier week. A unit's number is the average of its weekly numbers. Only weeks whose update period has closed are counted, and weeks with no plan are skipped. All units is the average of the unit numbers. Cancelled tasks are left out.</div></div>`;
   }
   function renderMonthly(){
@@ -1555,10 +1556,11 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     const rows = sortedUnits().map(u => `<tr>
       <td><input type="text" id="u-name-${esc(u.id)}" data-unit-name="${esc(u.id)}" value="${esc(u.name)}" aria-label="Unit name"></td>
       <td><select data-unit-type="${esc(u.id)}" id="u-type-${esc(u.id)}" aria-label="Unit type"><option ${u.type==="Corporate function"?"selected":""}>Corporate function</option><option ${u.type==="Business unit"?"selected":""}>Business unit</option></select></td>
+      <td><select data-unit-rt="${esc(u.id)}" aria-label="Reports to">${PORTFOLIOS.map(p => `<option value="${p.key}" ${portfolioOf(u)===p.key?"selected":""}>${esc(p.label)}</option>`).join("")}</select></td>
       <td>${state.confirmDelete==="unit:"+u.id ? `<span class="confirm">Remove unit? Past plans stay saved. <button class="btn danger" data-unit-del-yes="${esc(u.id)}">Remove</button><button class="btn" data-del-no>Cancel</button></span>` : `<button class="btn ghost danger" data-unit-del="${esc(u.id)}">Remove</button>`}</td></tr>`).join("");
     return `<div class="panel" style="margin-bottom:16px">
       <div class="panel-head"><h2>Reporting units</h2><span class="muted small">Group Strategy only. People are assigned to units in the People tab.</span></div>
-      <div class="scroll"><table><thead><tr><th>Name</th><th>Type</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+      <div class="scroll"><table><thead><tr><th>Name</th><th>Type</th><th>Reports to</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
       <div class="save-bar"><div class="toolbar"><input type="text" id="newUnitName" placeholder="New unit name"><select id="newUnitType"><option>Corporate function</option><option>Business unit</option></select><button class="btn primary" id="addUnit">Add unit</button></div></div>
     </div>
     <div class="grid2 even">
@@ -2077,7 +2079,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     if (t.dataset.dtbl) { state.dash.tbl = t.dataset.dtbl; render(); return; }
     if (t.dataset.dper) { state.dash.period = t.dataset.dper; state.dash.range = t.dataset.dper === "quarter" ? 13 : 8; render(); ensureDash(); return; }
     if (t.id === "dPopBtn") { state.dash.pop = !state.dash.pop; render(); return; }
-    if (t.dataset.dgrp) { const g = t.dataset.dgrp; state.dash.units = g === "all" ? [] : state.units.filter(u => (u.type || "") === g).map(u => u.id); render(); return; }
+    if (t.dataset.dgrp) { const g = t.dataset.dgrp; state.dash.units = g === "all" ? [] : g.startsWith("rt:") ? state.units.filter(u => portfolioOf(u) === g.slice(3)).map(u => u.id) : state.units.filter(u => (u.type || "") === g).map(u => u.id); render(); return; }
     if (t.dataset.goto) { goTab(t.dataset.goto); return; }
     if (t.dataset.unlock) { state.unlock.add(t.dataset.unlock); render(); const el = document.getElementById("t-title-" + t.dataset.unlock); if (el) el.focus(); toast("Edit the task. Saving sends the change to Group Strategy for approval."); return; }
     if (t.id === "askSend") {
@@ -2231,6 +2233,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     else if (el.id==="mView") { state.monthView = el.value; render(); }
     else if (el.id==="mDept") { state.monthByDept = el.checked; render(); }
     else if (el.dataset.unitName) { const v = el.value.trim(), id = el.dataset.unitName; if (v) api.saveUnit(auth(), "update", { id, name: v }, `Renamed unit to "${v}"`).then(r => toast(r.error ? errText(r) : "Unit renamed")); }
+    else if (el.dataset.unitRt) { const id = el.dataset.unitRt; api.saveUnit(auth(), "update", { id, reports_to: el.value }, `Reports to set to ${el.value}`).then(r => toast(r.error ? errText(r) : "Reporting line updated")); }
     else if (el.dataset.unitType) { const id = el.dataset.unitType; api.saveUnit(auth(), "update", { id, type: el.value }, `Unit type set to ${el.value}`).then(r => toast(r.error ? errText(r) : "Unit type updated")); }
     else if (el.dataset.evAdd) { if (el.files && el.files.length) addEvidence(el.dataset.evAdd, el.files); el.value = ""; }
     else if (el.id === "restoreFile") { if (el.files && el.files[0]) readRestore(el.files[0]); }
