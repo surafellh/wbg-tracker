@@ -4,6 +4,7 @@ import { jsPDF } from "jspdf";
 import { applyPlugin } from "jspdf-autotable";
 import { createData, configError, planFromRow, EVIDENCE, fileType, IS_TEST_ENV, VIEWAS_KEY } from "./data.js";
 import { startGate } from "./gate.js";
+import { wavg, ptsOf, hasPts, weightsOf, weightScale, watchMin } from "./weights.js";
 import { groupTasks, rollupOf, rolledPlan, leafPlan, leafTasks, parentChoices, weightOf } from "./rollup.js";
 import { ROLES, ROLE_LABEL, ROLE_HELP, baseRole, isAdmin, unitMember, unitLead, deptOk, canUndo, canFeedback, canReplyFeedback, canEditDepartments, roleText, canDecide, STAGE_LABEL, matrixOn, fullEdit, canSave, canDiscuss, decidesAny, isSuper, canAdminAny, canAdminPeople, canAdminSettings, canAdminBackups } from "./access.js";
 import { assess, actions as ceoActions, letter as ceoLetter, INTERNAL, fmtD, addDaysIso } from "./ceoaction.js";
@@ -93,7 +94,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     const highDone = t.filter(x => x.priority==="High" && x.status==="Done").length;
     // Every task counts: Done = 100, otherwise the % entered, and no status or no % counts as 0.
     const nums = t.map(x => x.status==="Done" ? 100 : (typeof x.pct==="number" ? x.pct : 0));
-    const avg = nums.length ? Math.round(nums.reduce((a,b)=>a+b,0)/nums.length) : null;
+    const avg = wavg(t, x => x.status==="Done" ? 100 : (typeof x.pct==="number" ? x.pct : 0));   // weighted when planning gave shares
     const noStatus = t.filter(x => !x.status).length;
     const overdue = t.filter(x => x.due && x.due < todayIso && x.status!=="Done").length;
     return { total: t.length, kpi, done, blocked, high, highDone, avg, noStatus, overdue };
@@ -868,7 +869,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     $("#thisWeek").textContent = mo ? "This month" : "This week";
     $("#prevWeek").setAttribute("aria-label", mo ? "Previous month" : "Previous week"); $("#nextWeek").setAttribute("aria-label", mo ? "Next month" : "Next week");
     document.querySelectorAll("nav.tabs button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab===state.tab)));
-    $("#unitsTabBtn").hidden = !isSuper(me); $("#peopleTabBtn").hidden = !canAdminAny(me); { const ab = $("#accessTabBtn"); if (ab) ab.hidden = !isSuper(me); }
+    { const lb = $("#leaTabBtn"); if (lb) lb.hidden = !(me && (me.role === "lea" || isSuper(me))); } $("#unitsTabBtn").hidden = !isSuper(me); $("#peopleTabBtn").hidden = !canAdminAny(me); { const ab = $("#accessTabBtn"); if (ab) ab.hidden = !isSuper(me); }
     renderNav();
     const nb = X.badgeCount(), fbb = $("#fbCount"); if (fbb) { fbb.textContent = nb; fbb.hidden = !nb; }
     const np = canDecideAny() ? toDecide().length : pendingMine().length, ab = $("#apprCount"); const nm = (state.mentions || []).length, nr = (state.rr ? state.rr.count + state.rr.access : 0) + unreadMsgs().length, bb = $("#bellBtn"); if (ab) { ab.textContent = np + nm + nr > 9 ? "9+" : np + nm + nr; ab.hidden = !(np + nm + nr); } if (bb) { bb.classList.toggle("has", !!(np + nm + nr)); bb.title = np + nm + nr ? [nm ? nm + " mention" + (nm === 1 ? "" : "s") : "", np ? np + (canDecideAny() ? " waiting for your approval" : " waiting for approval") : "", nr ? nr + " other update" + (nr === 1 ? "" : "s") : ""].filter(Boolean).join(" · ") : "Notifications"; bb.setAttribute("aria-label", "Notifications: " + bb.title); }
@@ -969,6 +970,16 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     return { txt: fmt(t.due), cls: "", sub: "" };
   };
   const priPill = p => p ? `<span class="pill ${p === "High" ? "s-bad" : p === "Medium" ? "s-not" : "s-none"}">${esc(p)}</span>` : '<span class="muted">–</span>';
+  // Weight chip: points given to the task and the share of 100 it carries in this unit's plan. Full-edit roles pick the points; others see the result once any are set.
+  function wChip(u, t){
+    const pl = (planFor(u) || {}).tasks || [], list = pl.filter(x => x.kind !== "KPI / OKR" && !x.parent), can = !!me && fullEdit(me, u) && !isAll() && rowEd(u, t);
+    if (t.kind === "KPI / OKR" || t.parent) return "";
+    if (!can && !hasPts(list)) return "";
+    const w = weightsOf(list)[list.indexOf(t)], pts = ptsOf(t), pc = w === undefined ? "" : (Math.round(w * 10) / 10) + "%", n = weightScale();
+    const key = t.pts !== undefined && t.pts !== null && t.pts !== "" ? "" : " (default 1)";
+    if (!can) return `<span class="pill s-none wchip" title="Weight ${pts} of ${n}. Counts ${pc} of this plan's score">⚖ ${pts}/${n} · ${pc}</span>`;
+    return `<label class="wchip small" title="Weight points, 1 to ${n}. The app converts them to a share of 100 across the plan${key}">⚖ <select id="t-pts-${t.id}" data-f="pts" aria-label="Weight points">${Array.from({ length: n }, (_, k) => `<option value="${k + 1}" ${pts === k + 1 ? "selected" : ""}>${k + 1}</option>`).join("")}</select>/${n} <b>${pc}</b></label>`;
+  }
   function taskRowHtml(u, t, i, ind = 0){
     if (state.tab === "plan") return planRowHtml(u, t, i);
     if (pf().kind === "fin") return finRowHtml(u, t, i);
@@ -986,6 +997,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
       t.kind === "KPI / OKR" ? '<span class="pill s-prog">KPI / OKR</span>' : "",
       carriedN ? `<span class="pill s-not" title="Brought forward from an earlier week">Carried${carriedN > 1 ? " ×" + carriedN : ""}</span>` : "",
       pend ? '<span class="pill s-not">Change waiting for approval</span>' : "",
+      wChip(u, t),
       t.owner ? `<span class="who" title="Owner">${esc(t.owner)}</span>` : "",
       hasTgt(t) ? `<span class="pill s-none" title="Actual against target">${esc(String(t.actual ?? 0))} / ${esc(String(t.target))} ${esc(t.measure || "")}</span>` : "",
       (t.depUnit || t.dep) ? `<span class="mi" title="Depends on ${esc(depText(t))}">${ico(IC.link)}</span>` : "",
@@ -1025,7 +1037,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   function planRowHtml(u, t, i){
     const ed = rowEd(u, t), lk = isLocked(u, t), free = ed && !lk, key = `${u}|${i}`;
     const dis = free ? "" : "disabled", fin = t.category === "Revenue";
-    const sub = [t.ref ? `<span class="ref">${esc(t.ref)}</span>` : '<span class="pill s-none">New</span>', t.unplanned ? '<span class="pill s-prog">Unplanned</span>' : "", t.carried ? '<span class="pill s-not">Carried</span>' : "", t.parent ? `<span class="pill s-none">↳ ${esc(t.parent)}</span>` : "", t.owner ? `<span class="who">${esc(t.owner)}</span>` : "", lk ? `<span class="mi" title="Fixed task">${ico(IC.lock)}</span>` : ""].filter(Boolean).join("");
+    const sub = [t.ref ? `<span class="ref">${esc(t.ref)}</span>` : '<span class="pill s-none">New</span>', t.unplanned ? '<span class="pill s-prog">Unplanned</span>' : "", t.carried ? '<span class="pill s-not">Carried</span>' : "", t.parent ? `<span class="pill s-none">↳ ${esc(t.parent)}</span>` : "", wChip(u, t), t.owner ? `<span class="who">${esc(t.owner)}</span>` : "", lk ? `<span class="mi" title="Fixed task">${ico(IC.lock)}</span>` : ""].filter(Boolean).join("");
     const main = (free || (ed && lk && getSettings().allowRename)) ? `<textarea class="grow title-in" rows="1" id="t-title-${t.id}" data-f="title" placeholder="Task or product" aria-label="Task">${esc(t.title)}</textarea>` : `<div class="tt">${esc(t.title) || '<span class="muted">(no title)</span>'}</div>`;
     const act = `<button class="icon-btn ib" type="button" data-open-task="${esc(u)}|${esc(t.id)}" aria-label="Open details" title="Open details">${ico(IC.open)}</button>` + (ed ? (state.confirmDelete === t.id ? `<span class="confirm">Remove? <button class="btn danger small" data-del-yes="${esc(key)}">Yes</button><button class="btn small" data-del-no>No</button></span>` : `<button class="icon-btn ib bad" type="button" data-del="${t.id}" aria-label="Remove task" title="Remove">${ico(IC.trash)}</button>`) : "");
     return `<tr class="task-row" data-u="${esc(u)}" data-i="${i}" data-id="${esc(t.id)}">
@@ -1142,8 +1154,8 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   const nameOf = id => (id ? (state.names[id] || "") : "");
 
   // ---------- accountability: who changed what ----------
-  const FIELDS = ["title","dept","owner","due","priority","status","pct","notes","kind","outcome","depUnit","dep","category","target","measure","actual","lower","parent","weight"];
-  const FLAB = { ref:"Reference", parent:"Part of", weight:"Weight", category:"Category", target:"Target", measure:"Target unit", actual:"Actual", lower:"Lower is better", title:"Task", dept:"Department", owner:"Owner", due:"Due", priority:"Priority", status:"Status", pct:"%", notes:"Notes", kind:"Type", outcome:"Expected outcome", prevStatus:"Previous status", prevPct:"Previous %", completedAt:"Completed on", depUnit:"Depends on", dep:"Dependency", ev:"Evidence", carried:"Carried", carriedCount:"Weeks carried", blockedSince:"Blocked since" };
+  const FIELDS = ["title","dept","owner","due","priority","status","pct","notes","kind","outcome","depUnit","dep","category","target","measure","actual","lower","parent","weight","pts"];
+  const FLAB = { pts:"Weight points", ref:"Reference", parent:"Part of", weight:"Weight", category:"Category", target:"Target", measure:"Target unit", actual:"Actual", lower:"Lower is better", title:"Task", dept:"Department", owner:"Owner", due:"Due", priority:"Priority", status:"Status", pct:"%", notes:"Notes", kind:"Type", outcome:"Expected outcome", prevStatus:"Previous status", prevPct:"Previous %", completedAt:"Completed on", depUnit:"Depends on", dep:"Dependency", ev:"Evidence", carried:"Carried", carriedCount:"Weeks carried", blockedSince:"Blocked since" };
   const showV = v => (v === null || v === undefined || v === "") ? "–" : String(v);
   // Requests (approvals) are shared state: everyone sees pending ones; approvers act on them.
   let unsubReq = null;
@@ -1615,6 +1627,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     else if (state.tab==="cashflow") html += CF.renderCash();
     else if (state.tab==="activity") html += renderActivity();
     else if (state.tab==="approvals") html += renderApprovals();
+    else if (state.tab==="lea" && me && (me.role === "lea" || isSuper(me))) html += renderLea();
     else if (state.tab==="units" && isSuper(me)) html += renderUnits();
     else if (state.tab==="people" && canAdminAny(me)) html += renderPeople();
     else if (state.tab==="access" && isSuper(me)) html += AXP.render();
@@ -1626,7 +1639,22 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     if (state.panel) renderPanel();
     if (state.pendingOpen && state.plansLoaded && state.pendingOpen.week === state.week) { const po = state.pendingOpen; state.pendingOpen = null; const hit = ((state.plans[po.unit] || {}).tasks || []).find(t => t.ref === po.ref); if (hit) { state.panel = { u: po.unit, id: hit.id }; renderPanel(); } else toast("This task was not found in that week."); }
     if (state.pendingPanel && (state.tab === "update" || state.tab === "plan")) { const pp = state.pendingPanel; state.pendingPanel = null; if (panelDraft(pp.u) && panelDraft(pp.u).tasks.some(x => x.id === pp.id)) { state.panel = { u: pp.u, id: pp.id }; renderPanel(); } }
-    if (state.tab === "dashboard") ensureDash();
+    if (state.tab === "dashboard") { ensureDash(); setTimeout(cwPopup, 0); }
+  }
+  // Once a day, when the dashboard opens for the CEO, a DCEO or planning, say which key activities are overdue.
+  function cwPopup(){
+    try {
+      if (!me || !["executive", "super_admin", "planning"].includes(me.role) || document.querySelector(".cw-modal")) return;
+      const d = document.getElementById("cwData"); if (!d || !Number(d.dataset.over)) return;
+      const key = `wbg_cw_${me.uid || me.name}_${todayIso}`;
+      let seen = ""; try { seen = localStorage.getItem(key) || ""; } catch (e) {}
+      if (seen === d.dataset.sig) return;
+      let list = []; try { list = JSON.parse(d.dataset.list || "[]"); } catch (e) {}
+      const m = document.createElement("div"); m.className = "cw-modal"; m.setAttribute("role", "dialog"); m.setAttribute("aria-modal", "true");
+      m.innerHTML = `<div><h3>${d.dataset.over} key ${Number(d.dataset.over) === 1 ? "activity is" : "activities are"} overdue</h3><div class="small muted">These carry a high weight. The full list is on the dashboard.</div><ul>${list.map(x => `<li><b>${esc(x[1])}</b> <span class="muted">${esc(x[0])} · ${x[2]} day${x[2] === 1 ? "" : "s"} late</span></li>`).join("")}</ul><button class="btn" type="button">Got it</button></div>`;
+      m.addEventListener("click", e => { if (e.target === m || e.target.tagName === "BUTTON") { m.remove(); try { localStorage.setItem(key, d.dataset.sig); } catch (e2) {} } });
+      document.body.appendChild(m); m.querySelector("button").focus();
+    } catch (e) {}
   }
   function growAll(){ document.querySelectorAll("#main textarea.grow").forEach(grow); }
   function grow(el){ el.style.height = "auto"; el.style.height = Math.max(el.classList.contains("out-in") ? 50 : 62, el.scrollHeight + 2) + "px"; }
@@ -1663,7 +1691,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
       : alerts.filter(a => (!state.dash.type || unitOf(a.unit).type === state.dash.type) && (!state.dash.units.length || state.dash.units.includes(a.unit)));
     const w = ($("#main").clientWidth || 1000);
     return renderDashboard({ monthWeeks: monthWeeks(state.eth, state.monthBasis), monthLabel: ethName(state.eth), weeks: state.dashData.weeks, byWeek: by, byWeekAll: byAll, units: sortedUnits(), week: state.week, today: todayIso, filter: { ...state.dash, level: state.level },
-      alerts: attList, attScope: attScope ? unitName(attScope) : "", pending: pendingFor().length, downloads, canUpdate: !!(me && !["executive"].includes(me.role)),
+      alerts: attList, attScope: attScope ? unitName(attScope) : "", attUnit: attScope, pending: pendingFor().length, downloads, canUpdate: !!(me && !["executive"].includes(me.role)),
       width: w > 900 ? Math.floor((w - 16) * 2 / 3) - 34 : w - 34, unitName, h: { esc, fmt, weekLabel, toEth, ethMonth: w => ethName(toEth(w)), ethWeek: w => ethWeekLabel(w) } });
   }
 
@@ -2181,6 +2209,18 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     else if (el.id==="ovQ") { state.ov.q = el.value; render(); }
     else if (el.dataset.reqNote) { state.reqNotes[el.dataset.reqNote] = el.value; }
   });
+  main.addEventListener("change", e => { if (e.target.id === "lea-unit") { state.lea = { unit: e.target.value }; render(); } });
+  main.addEventListener("click", async e => {
+    const b = e.target.closest("[data-lea]"); if (!b) return;
+    if (b.dataset.lea === "copy") { const t = leaText(leaBlockers()); try { await navigator.clipboard.writeText(t); toast("Copied. Paste it where you brief the CEO."); } catch (x) { toast("Could not copy. Select the text and copy it by hand."); } return; }
+    const g = id => ($("#" + id) || {}).value || "", unit = g("lea-unit");
+    if (!unit) { toast("Choose the unit"); return; } if (!g("lea-title").trim()) { toast("Write the action"); return; }
+    b.disabled = true;
+    const r = await api.leaAssignTask(unit, { title: g("lea-title"), dept: g("lea-dept"), owner: g("lea-owner"), due: g("lea-due"), pts: Number(g("lea-pts")), meeting: g("lea-meet"), note: g("lea-note"), priority: "High" });
+    b.disabled = false;
+    if (r && r.error) { toast(errText(r)); return; }
+    toast(`Added as ${r.ref} in this week's plan. ${r.notified} ${r.notified === 1 ? "person" : "people"} told.`); state.lea = { unit }; render();
+  });
   main.addEventListener("keydown", e => { if (e.key === "Enter" && e.target.matches("textarea.title-in, textarea.out-in")) e.preventDefault(); });
   main.addEventListener("toggle", e => { if (e.target.id === "remPanel") state.remOpen = e.target.open; if (e.target.id === "impDet") state.impOpen = e.target.open; }, true);
   // chart tooltips: any element with data-tip
@@ -2257,6 +2297,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
       if (c !== null) { task.pct = c; if (c === 100 && task.status !== "Done") { task.status = "Done"; statusSideEffects(task); return true; } if (f !== "measure") { document.querySelectorAll(`#t-pct-${task.id}, #p-pct`).forEach(pe => { pe.value = c; }); } }
       return false;
     }
+    if (f==="pts") { const w = Math.round(Number(el.value)); if (isFinite(w) && w > 1) task.pts = Math.min(w, weightScale()); else delete task.pts; return true; }
     if (f==="weight") { const w = Number(el.value); task.weight = isFinite(w) && w > 0 ? w : 1; return false; }
     if (f==="parent") { task.parent = el.value; return true; }
     task[f] = el.value;
@@ -3514,7 +3555,38 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     return `<div class="panel pp-set"><div class="panel-head"><div><h2>Update deadline and renaming</h2><div class="small muted">Weeks run Saturday to Friday. The week that just ended can still be updated until the Saturday time below (Addis Ababa time). After that, edits need approval.</div></div></div>
       <div class="asks"><div class="toolbar" style="flex-wrap:wrap;gap:10px"><label for="setGrace" class="small"><b>Saturday cut-off</b></label><input type="time" id="setGrace" value="${esc(c.graceTime)}"><button class="btn" type="button" data-pe="set-grace">Save time</button><span class="small muted">Now: ${esc(graceLabel())}</span></div>
       <div class="toolbar" style="flex-wrap:wrap;gap:10px;margin-top:10px"><label for="setExt" class="small"><b>Keep last week open until</b></label><input type="datetime-local" id="setExt" value="${esc(c.extendUntil)}"><button class="btn" type="button" data-pe="set-ext">Save date</button><button class="btn ghost" type="button" data-pe="set-ext-clear">Clear</button><span class="small muted">${c.extendUntil ? "Open until " + esc(c.extendUntil.replace("T", " ")) : "Off"}</span></div>
+      <div class="toolbar" style="flex-wrap:wrap;gap:10px;margin-top:14px;padding-top:12px;border-top:1px solid var(--line,#ddd)"><label for="setWScale" class="small"><b>Weight scale</b></label><select id="setWScale">${[5, 10, 15, 20].map(n => `<option ${c.weightScale === n ? "selected" : ""}>${n}</option>`).join("")}</select><span class="small muted">Each task gets points from 1 to this number (1 when not set). The app converts them to a share of 100 for the plan.</span></div>
+      <div class="toolbar" style="flex-wrap:wrap;gap:10px;margin-top:10px"><label for="setWWatch" class="small"><b>DCEO watch list from</b></label><input type="number" id="setWWatch" min="1" max="${c.weightScale}" value="${c.weightWatchMin}" style="width:70px"><span class="small muted">points or more (for example 7 of 10). Overdue, soon-due and blocked tasks at or above this weight are flagged for the DCEOs. Every task still counts in performance.</span><button class="btn" type="button" data-pe="set-weights">Save weights</button></div>
       <label class="small" style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" id="setRename" ${c.allowRename ? "checked" : ""}> <span><b>Allow renaming saved tasks</b> <span class="muted">(off by default; turn on for a short time when needed)</span></span></label></div></div>`;
+  }
+  // Lead executive assistant: add an action straight into a unit's current-week plan, and see the blockers across all units.
+  function leaBlockers(){
+    const out = [];
+    sortedUnits().forEach(u => { const p = state.plans[u.id]; if (!p) return;
+      ((p.tasks || []).filter(t => t.status === "Blocked")).forEach(t => out.push({ unit: u.name, title: t.title || "", ref: t.ref || "", owner: t.owner || "", dept: t.dept || "", due: t.due || "", note: t.notes || "" }));
+      if ((p.blockers || "").trim()) out.push({ unit: u.name, title: "", text: p.blockers.trim() }); });
+    return out;
+  }
+  function leaText(list){
+    return `Blockers needing the CEO · ${weekLabel(state.week)}\n\n` + (list.map((b, i) => `${i + 1}. ${b.unit}: ${b.text || b.title + (b.ref ? " (" + b.ref + ")" : "") + (b.owner ? ", owner " + b.owner : "") + (b.due ? ", due " + fmt(b.due) : "") + (b.note ? ". " + b.note : "")}`).join("\n") || "No blockers reported.");
+  }
+  function renderLea(){
+    const L = state.lea = state.lea || { unit: "" }, u = unitOf(L.unit), deps = u.departments || [], bl = leaBlockers();
+    const uopts = `<option value="">Choose unit</option>` + sortedUnits().map(x => `<option value="${esc(x.id)}" ${x.id === L.unit ? "selected" : ""}>${esc(x.name)}</option>`).join("");
+    const sc = weightScale();
+    return `<div class="panel"><div class="panel-head"><div><h2>Assign an action</h2><div class="small muted">It goes straight into the unit's plan for this week, with no approval. The chief, planning head and department head are told by message.</div></div></div>
+      <div class="asks"><div class="pf-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px">
+        <label class="small">Unit<select id="lea-unit">${uopts}</select></label>
+        <label class="small">Department<select id="lea-dept"><option value="">${L.unit ? "Whole unit" : "Choose a unit first"}</option>${deps.map(d => `<option>${esc(d)}</option>`).join("")}</select></label>
+        <label class="small">Action<input type="text" id="lea-title" maxlength="300" placeholder="What must be done"></label>
+        <label class="small">Owner<input type="text" id="lea-owner" maxlength="120" placeholder="Name"></label>
+        <label class="small">Due<input type="date" id="lea-due"></label>
+        <label class="small">Weight (1 to ${sc})<select id="lea-pts">${Array.from({ length: sc }, (_, k) => `<option ${k === 0 ? "selected" : ""}>${k + 1}</option>`).join("")}</select></label>
+        <label class="small">From the meeting<input type="text" id="lea-meet" maxlength="120" placeholder="Optional"></label>
+        <label class="small">Note<input type="text" id="lea-note" maxlength="500" placeholder="Optional"></label></div>
+      <div style="margin-top:12px"><button class="btn primary" type="button" data-lea="assign">Add to this week's plan</button></div></div></div>
+    <div class="panel"><div class="panel-head"><div><h2>Blockers across units</h2><div class="small muted">Blocked tasks and the blockers written in each unit's plan for ${esc(weekLabel(state.week))}.</div></div><button class="btn" type="button" data-lea="copy">Copy for the CEO</button></div>
+      <div class="asks">${bl.length ? bl.map(b => `<div class="ask"><div class="who">${esc(b.unit)}${b.dept ? " · " + esc(b.dept) : ""}</div><p>${b.text ? esc(b.text) : `<b>${esc(b.title)}</b>${b.ref ? ` <span class="small muted">${esc(b.ref)}</span>` : ""}${b.owner ? ` · ${esc(b.owner)}` : ""}${b.due ? ` · due ${esc(fmt(b.due))}` : ""}${b.note ? `<br><span class="small muted">${esc(b.note)}</span>` : ""}`}</p></div>`).join("") : `<div class="empty">No blockers reported this week.</div>`}</div></div>`;
   }
   function renderPeople(){
     const p = state.people;
@@ -3534,7 +3606,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
       <div class="pp-invite-form"><div class="pf-f"><label for="inv-email">Email</label><input type="email" id="inv-email" placeholder="email@company.com"></div><div class="pf-f"><label for="inv-name">Full name (optional)</label><input type="text" id="inv-name"></div>
         <div class="pf-f"><label for="inv-role">Role</label><select id="inv-role">${ROLE_OPTS("staff")}</select></div><div class="pf-f" id="inv-title-wrap" hidden><label for="inv-title">Title</label><select id="inv-title"><option>CEO</option><option>DCEO</option></select></div>
         <div class="pf-f"><label for="inv-unit">Unit</label><select id="inv-unit">${UNIT_OPTS("")}</select></div><div class="pf-f"><label>Departments</label>${ddHtml("inv-dept", "", [], "Choose departments")}</div>
-        <div class="pf-f" style="align-self:end"><button class="btn primary" type="button" data-pe="invite">Send invite</button></div></div>
+        <div class="pf-f" style="align-self:end"><button class="btn primary" type="button" data-pe="invite">Send invite</button> <button class="btn" type="button" data-pe="create-pw" title="Creates the account now with a temporary password you pass on yourself. They choose their own at the first sign-in.">Create with temporary password</button></div></div>
       ${invs ? `<div class="scroll"><table><thead><tr><th>Waiting invites</th><th>Role</th><th>Unit</th><th>Departments</th><th></th></tr></thead><tbody>${invs}</tbody></table></div>` : ""}</details>
     ${ppDepts()}${ppCode()}${ppSettings()}
     <div class="grid2 even"><div class="panel"><div class="panel-head"><h2>Allowed email domains</h2></div><div class="asks"><p class="small">People with these company email domains can sign themselves up. They start as Staff in the unit they choose and can ask for a different role, which reaches you here and on the bell.</p>
@@ -3571,6 +3643,13 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
         toast(a === "code-off" ? "Approval code turned off" : "Approval code saved");
         const c = await api.adminApprovalCodeStatus(); state.appCode = c && !c.error ? c : {}; render(); return;
       }
+      if (a === "set-weights") {
+        const sc = Number($("#setWScale").value), wm = Number($("#setWWatch").value);
+        if (!(sc >= 2 && sc <= 20) || !(wm >= 1 && wm <= sc)) { toast("The watch level must be between 1 and the scale"); return; }
+        let r = await api.adminSetSetting("weight_scale", sc); if (r.error) { toast(errText(r)); return; }
+        r = await api.adminSetSetting("weight_watch_min", wm); if (r.error) { toast(errText(r)); return; }
+        setSettings(r.settings); help.redraw(); toast("Weight settings saved"); render(); return;
+      }
       if (a === "set-grace" || a === "set-ext" || a === "set-ext-clear") {
         const key = a === "set-grace" ? "grace_time" : "extend_until", v = a === "set-grace" ? ($("#setGrace").value || "") : a === "set-ext" ? ($("#setExt").value || "") : "";
         if (a !== "set-ext-clear" && !v) { toast("Pick a time first"); return; }
@@ -3595,6 +3674,13 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
       } else if (a === "invite") {
         const role = q("#inv-role").value, unit = q("#inv-unit").value || null, deps = ddValues(document, "inv-dept");
         await done(await api.adminInvite({ email: q("#inv-email").value, name: q("#inv-name").value, role, title: role === "executive" ? q("#inv-title").value : "", unit, departments: deps }), "Invite saved. They can now sign in with that email.");
+      } else if (a === "create-pw") {
+        const role = q("#inv-role").value, unit = q("#inv-unit").value || null, deps = ddValues(document, "inv-dept"), nm = q("#inv-name").value.trim(), em = q("#inv-email").value.trim();
+        if (!nm || !em) { toast("Enter the name and email first"); return; }
+        if (!confirm("Create the account for " + nm + " now? No email is sent. You will see a temporary password once, to pass on in person or by phone.")) return;
+        const r = await api.adminCreateWithPassword({ email: em, name: nm, role, title: role === "executive" ? q("#inv-title").value : "", unit, departments: deps });
+        if (r && r.error) { toast(errText(r)); return; }
+        if (r && r.password) { showTempPassword(r.name || nm, r.email || em, r.password); await done({ ok: true }, "Account created"); }
       } else if (a === "inv-del") await done(await api.adminDeleteInvite(id), "Invite removed");
       else if (a === "rr-yes" || a === "rr-no") {
         const card = q(`[data-rrc="${CSS.escape(id)}"]`), role = card.querySelector("[data-rr-role]").value, unit = card.querySelector("[data-rr-unit]").value || null, deps = ddValues(card, "rr-" + id), note = card.querySelector("[data-rr-note]").value;

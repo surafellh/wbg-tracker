@@ -10,7 +10,8 @@ export const LOCKED = ["title", "kind", "dept", "outcome", "priority"];   // the
 //   graceTime   - time on Saturday (Addis Ababa) until which the week that just ended can still be updated directly
 //   extendUntil - optional "YYYY-MM-DDTHH:MM" (Addis Ababa): the week that just ended stays open until then
 //   allowRename - false: a saved task keeps its name once the week has started; true: the name can be changed
-const cfg = { graceTime: "14:00", extendUntil: "", allowRename: false, lockedFields: null, routeChief: true, routePlanning: true, permMode: "legacy" };
+const cfg = { graceTime: "14:00", extendUntil: "", allowRename: false, lockedFields: null, routeChief: true, routePlanning: true, permMode: "legacy", weightScale: 10, weightWatchMin: 7 };
+import { setWeightConfig } from "./weights.js";
 export function setSettings(s) {
   if (!s || typeof s !== "object") return;
   if (/^\d{1,2}:\d{2}$/.test(String(s.graceTime || ""))) cfg.graceTime = s.graceTime;
@@ -20,6 +21,7 @@ export function setSettings(s) {
   if (s.routeChief !== undefined) cfg.routeChief = !!s.routeChief;
   if (s.routePlanning !== undefined) cfg.routePlanning = !!s.routePlanning;
   if (s.permMode) cfg.permMode = String(s.permMode);
+  if (s.weightScale !== undefined) { cfg.weightScale = Number(s.weightScale) || cfg.weightScale; cfg.weightWatchMin = Number(s.weightWatchMin) || cfg.weightWatchMin; setWeightConfig(cfg.weightScale, cfg.weightWatchMin); }
 }
 export const getSettings = () => ({ ...cfg });
 export const lockedFields = () => (Array.isArray(cfg.lockedFields) ? cfg.lockedFields : cfg.allowRename ? LOCKED.filter((f) => f !== "title") : LOCKED);
@@ -27,7 +29,7 @@ export const lockedFields = () => (Array.isArray(cfg.lockedFields) ? cfg.lockedF
 export const timeLabel = (t) => { const [h, m] = String(t || "14:00").split(":").map(Number); return `${((h + 11) % 12) + 1}:${String(m || 0).padStart(2, "0")} ${h >= 12 ? "PM" : "AM"}`; };
 export const graceLabel = () => `Saturday ${timeLabel(cfg.graceTime)}`;
 // Fields compared when working out what changed (lu / lb are "last updated" stamps, not content).
-export const TASK_FIELDS = ["title", "kind", "dept", "outcome", "owner", "due", "priority", "prevStatus", "prevPct", "basePct", "status", "pct", "completedAt", "depUnit", "dep", "notes", "ev", "carried", "carriedCount", "blockedSince", "category", "target", "measure", "actual", "lower", "ref", "parent", "weight", "unplanned"];
+export const TASK_FIELDS = ["title", "kind", "dept", "outcome", "owner", "due", "priority", "prevStatus", "prevPct", "basePct", "status", "pct", "completedAt", "depUnit", "dep", "notes", "ev", "carried", "carriedCount", "blockedSince", "category", "target", "measure", "actual", "lower", "ref", "parent", "weight", "pts", "unplanned"];
 export const DEFAULT_APPROVERS = ["Surafel", "Surafel Hailu", "Ataklti", "Ataklti Nega"];
 
 const pad = (n) => String(n).padStart(2, "0");

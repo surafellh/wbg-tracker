@@ -7,6 +7,7 @@ const real = (p) => ((p && p.tasks) || []).filter((t) => t.kind !== "KPI / OKR" 
 const pctOf = (t) => (t.status === "Done" ? 100 : typeof t.pct === "number" ? t.pct : 0);
 const avg = (a) => (a.length ? Math.round(a.reduce((x, y) => x + y, 0) / a.length) : null);
 import { weekEndOf } from "./rules.js";
+import { wavg, hasPts, ptsOf, weightsOf, weightScale, watchMin } from "./weights.js";
 import { PORTFOLIOS, portfolioOf } from "./portfolio.js";
 
 export function unitMetrics(plan, asOf) {
@@ -15,7 +16,7 @@ export function unitMetrics(plan, asOf) {
   const nums = t.map(pctOf).filter((v) => v !== null);
   const dated = done.filter((x) => x.due && x.completedAt);
   return {
-    total: t.length, done: done.length, avg: avg(nums),
+    total: t.length, done: done.length, avg: wavg(t, pctOf), weighted: hasPts(t),
     high: t.filter((x) => x.priority === "High").length, highDone: done.filter((x) => x.priority === "High").length,
     prog: t.filter((x) => x.status === "In progress").length,
     ns: t.filter((x) => x.status === "Not started" || !x.status).length,
@@ -30,10 +31,42 @@ function weekMetrics(byUnit, units, asOf) {
   const s = per.reduce((a, { m }) => { Object.keys(m).forEach((k) => { if (typeof m[k] === "number") a[k] = (a[k] || 0) + m[k]; }); return a; }, {});
   const nums = per.flatMap(({ u }) => real(byUnit[u.id]).map(pctOf).filter((v) => v !== null));
   return { per, total: s.total || 0, done: s.done || 0, prog: s.prog || 0, ns: s.ns || 0, high: s.high || 0, highDone: s.highDone || 0, blk: s.blk || 0, overdue: s.overdue || 0, onTime: s.onTime || 0, dated: s.dated || 0,
-    donePct: s.total ? Math.round((s.done / s.total) * 100) : null, avg: avg(nums), reporting: per.filter(({ m }) => m.total).length };
+    donePct: s.total ? Math.round((s.done / s.total) * 100) : null, avg: per.some(({ m }) => m.weighted) ? avg(per.filter(({ m }) => m.total).map(({ m }) => m.avg).filter((v) => v !== null)) : avg(nums), reporting: per.filter(({ m }) => m.total).length };
 }
 
 const heatBin = (v) => (v === null ? -1 : v < 20 ? 0 : v < 40 ? 1 : v < 60 ? 2 : v < 80 ? 3 : 4);
+
+// Key activities that need action: weighted at or above the level an admin sets (for example 7 of 10), and overdue, due within 3 days or blocked.
+// The latest state of each task across the weeks loaded. Every task still counts in performance; this list only keeps the DCEO's focus on the ones that weigh most.
+const dayN = (a, b) => Math.round((Date.parse(b + "T00:00:00Z") - Date.parse(a + "T00:00:00Z")) / 864e5);
+export function criticalWatch(c, units) {
+  const all = c.byWeekAll || c.byWeek, weeks = Object.keys(all).sort(), items = [], min = watchMin(); let marked = 0;
+  units.forEach((u) => {
+    const latest = new Map();
+    weeks.forEach((w) => (((all[w] || {})[u.id] || {}).tasks || []).forEach((t) => { if (t.kind !== "KPI / OKR") latest.set(t.ref || `${nk(t.title)}|${nk(t.dept)}`, { t, w }); }));
+    const cur = [...latest.values()].filter(({ t }) => t.status !== "Closed"), wts = new Map(cur.map(({ t }, i) => [t, weightsOf(cur.map((x) => x.t))[i]]));
+    cur.forEach(({ t, w }) => {
+      if (ptsOf(t) < min) return;
+      marked++;
+      if (t.status === "Done" || pctOf(t) >= 100) return;
+      const days = t.due ? dayN(c.today, t.due) : null, over = days !== null && days < 0, soon = days !== null && days >= 0 && days <= 3, blocked = t.status === "Blocked";
+      if (over || soon || blocked) items.push({ u, t, w, days, over, soon, blocked });
+    });
+  });
+  items.sort((a, b) => (b.over - a.over) || ((a.days ?? 99) - (b.days ?? 99)) || (b.blocked - a.blocked) || (ptsOf(b.t) - ptsOf(a.t)));
+  return { items, marked, over: items.filter((x) => x.over).length, min };
+}
+function criticalStrip(c, cw, esc, fmt) {
+  const lvl = `weighted ${cw.min} or more of ${weightScale()}`;
+  if (!cw.marked) return `<div class="crit-watch calm"><div class="cw-head"><span class="cw-dot ok"></span><h2>Key activities</h2><span class="small muted">No activity is ${lvl} yet. Planning heads and chiefs set weights under “Weights” on the plan pages.</span></div></div>`;
+  if (!cw.items.length) return `<div class="crit-watch calm"><div class="cw-head"><span class="cw-dot ok"></span><h2>Key activities</h2><span class="small muted">${cw.marked} ${cw.marked === 1 ? "activity is" : "activities are"} ${lvl}. None is overdue, due soon or blocked.</span></div></div>`;
+  const when = (x) => x.over ? `<span class="cw-badge cw-over">${-x.days} day${x.days === -1 ? "" : "s"} overdue</span>` : x.soon ? `<span class="cw-badge cw-soon">${x.days === 0 ? "due today" : "due in " + x.days + " day" + (x.days === 1 ? "" : "s")}</span>` : `<span class="cw-badge cw-soon">blocked</span>`;
+  const rows = cw.items.slice(0, 12).map((x) => `<tr><td>${when(x)}</td><td><b>${esc(x.t.title || "")}</b>${x.t.ref ? ` <span class="small muted">${esc(x.t.ref)}</span>` : ""}<div class="small muted">${esc(x.u.name)}${x.t.dept ? " · " + esc(x.t.dept) : ""}</div></td><td class="num"><b>${ptsOf(x.t)}</b><span class="small muted"> of ${weightScale()}</span></td><td class="small">${esc(x.t.owner || "–")}</td><td class="small">${x.t.due ? esc(fmt(x.t.due)) : "–"}</td><td class="small">${esc(x.t.status || "No status")}${x.t.status === "Blocked" ? "" : typeof x.t.pct === "number" ? " · " + x.t.pct + "%" : ""}</td></tr>`).join("");
+  const sig = cw.items.filter((x) => x.over).map((x) => x.t.id).sort().join(",");
+  return `<div class="crit-watch ${cw.over ? "is-over" : "is-soon"}" role="region" aria-label="Key activities needing action"><div class="cw-head"><span class="cw-dot"></span><h2>Key activities</h2><span class="cw-count">${cw.items.length} need${cw.items.length === 1 ? "s" : ""} action${cw.over ? " · <b>" + cw.over + " overdue</b>" : ""}</span><span class="small muted">weighted ${cw.min}+ of ${weightScale()}</span></div>
+    <div class="scroll"><table class="dtbl"><thead><tr><th>Status</th><th>Activity</th><th>Weight</th><th>Owner</th><th>Due</th><th>Progress</th></tr></thead><tbody>${rows}</tbody></table></div>${cw.items.length > 12 ? `<div class="small muted" style="padding:6px 14px">+ ${cw.items.length - 12} more</div>` : ""}
+    <span id="cwData" hidden data-over="${cw.over}" data-sig="${esc(sig)}" data-list="${esc(JSON.stringify(cw.items.filter((x) => x.over).slice(0, 8).map((x) => [x.u.name, x.t.title || "", -x.days])))}"></span></div>`;
+}
 
 export function renderDashboard(c) {
   const { esc, fmt, weekLabel } = c.h;
@@ -141,7 +174,7 @@ export function renderDashboard(c) {
   const title = !nSel ? "Wagwago Business Group" : pActive ? esc(pActive.label) : nSel === 1 ? esc(c.unitName(sel[0])) : nSel + " units selected";
   const sub = per0 === "week" ? `Week of ${esc(weekLabel(c.week))} · ${esc(c.h.ethWeek(c.week))}` : per0 === "month" ? esc(c.h.ethMonth(c.week)) : `13 weeks to ${esc(fmt(c.week))}`;
   return `<div class="dh"><div>${single ? `<button class="lnk back" data-dgrp="all">← Whole group</button>` : ""}<h1>${title}</h1><p>${sub}</p></div>${filters}</div>
-    ${pTabs}${summary}${kpis}
+    ${pTabs}${summary}${criticalStrip(c, criticalWatch(c, c.attUnit ? c.units.filter((u) => u.id === c.attUnit) : units), esc, fmt)}${kpis}
     <div class="dgrid dgrid3"><div class="panel"><div class="panel-head"><h2>${single ? "Completion by department" : "Completion by unit"}</h2><span class="small muted">${single ? "Average % complete" : "Click a unit to drill in"}</span></div>${single ? deptBars : bullets}</div>
       <div class="panel"><div class="panel-head"><h2>Task status</h2><span class="small muted">${perLabel}</span></div><div class="pad">${donut}</div></div>
       <div class="panel"><div class="panel-head"><h2>Tasks done against planned</h2><span class="small muted">Last 8 weeks</span></div><div class="pad">${planned}</div></div></div>

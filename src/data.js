@@ -286,6 +286,8 @@ function createSupabaseData() {
     adminUsers: () => rpc("wbg_admin_users"),
     adminSaveUser: (id, data) => rpc("wbg_admin_save_user", { p_user: id, p_data: data }),
     adminInvite: (data) => rpc("wbg_admin_invite", { p_data: data }),
+    adminCreateWithPassword: (data) => rpc("wbg_admin_create_with_password", { p_data: data }),
+    leaAssignTask: (unit, data) => rpc("wbg_lea_assign_task", { p_unit: unit, p_data: data }),
     adminDeleteInvite: (email) => rpc("wbg_admin_delete_invite", { p_email: email }),
     adminDecideAccess: (id, approve, data) => rpc("wbg_admin_decide_access", { p_id: id, p_approve: approve, p_data: data || {} }),
     adminSetDomains: (domains) => rpc("wbg_admin_set_domains", { p_domains: domains }),
@@ -865,6 +867,8 @@ function createLocalData() {
       Object.assign(p, { name: d.name ? d.name.trim() : p.name, role, title: d.title ?? p.title, unit: "unit" in d ? (d.unit || null) : p.unit, departments: d.departments ?? p.departments, status });
       setPeople(list); addActivity(a.name, p.unit || "", "", { action: "user", summary: `${status === "disabled" ? "Disabled " : "Updated "}${p.email} (${role})`, details: ["Before: " + before, `After: ${role} · ${p.unit || "-"} · ${status}`] }); return ok();
     },
+    async adminCreateWithPassword() { return err("not_allowed"); },
+    async leaAssignTask() { return err("not_allowed"); },
     async adminInvite(d) {
       const a = A(); if (!isAppr(a)) return err("not_allowed");
       const e = (d.email || "").trim().toLowerCase(); if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) return err("bad_email");
@@ -883,10 +887,12 @@ function createLocalData() {
     async adminPermGet() { return { error: "This needs the live database." }; },
     async adminSetSetting(key, value) {
       if (!isAppr(A())) return err("not_allowed");
-      const cur = { graceTime: "14:00", extendUntil: "", allowRename: false, ...(read("wbg_local_settings") || {}) };
+      const cur = { graceTime: "14:00", extendUntil: "", allowRename: false, weightScale: 10, weightWatchMin: 7, ...(read("wbg_local_settings") || {}) };
       if (key === "grace_time") { if (!/^([01]?\d|2[0-3]):[0-5]\d$/.test(String(value))) return err("bad_request"); cur.graceTime = String(value).padStart(5, "0"); }
       else if (key === "extend_until") cur.extendUntil = String(value || "").slice(0, 16);
       else if (key === "allow_rename") cur.allowRename = !!value;
+      else if (key === "weight_scale") { const n = Math.round(Number(value)); if (!(n >= 2 && n <= 20)) return err("bad_request"); cur.weightScale = n; cur.weightWatchMin = Math.min(cur.weightWatchMin || 7, n); }
+      else if (key === "weight_watch_min") { const n = Math.round(Number(value)); if (!(n >= 1)) return err("bad_request"); cur.weightWatchMin = Math.min(n, cur.weightScale || 10); }
       else return err("bad_request");
       write("wbg_local_settings", cur); return { ok: true, settings: cur };
     },

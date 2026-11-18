@@ -1244,3 +1244,20 @@ tr.dim td{opacity:.55}.fut td{opacity:.9}
 .rem-bar{flex:none;width:70px;height:6px;border-radius:3px;background:var(--line);overflow:hidden}
 .rem-bar i{display:block;height:100%;background:var(--brand,#f5c518)}
 .pc-of{margin-top:2px;white-space:nowrap}
+
+/* Weight chip and DCEO key-activities watch list */
+.wchip{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
+.wchip select{width:auto;min-width:0;padding:1px 4px}
+.crit-watch{margin:0 0 14px;border:1px solid var(--line,#d9dde3);border-left:4px solid #c0392b;border-radius:10px;background:var(--panel,#fff);overflow:hidden}
+.crit-watch.calm{border-left-color:#2e8b57}.crit-watch.is-soon{border-left-color:#d68910}
+.crit-watch .cw-head{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:10px 14px}
+.crit-watch h2{margin:0;font-size:15px}
+.cw-dot{width:10px;height:10px;border-radius:50%;background:#c0392b;animation:cwpulse 1.6s ease-in-out infinite}
+.is-soon .cw-dot{background:#d68910}.cw-dot.ok{background:#2e8b57;animation:none}
+.cw-badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
+.cw-over{background:#c0392b;color:#fff;animation:cwpulse 1.6s ease-in-out infinite}.cw-soon{background:#fdebd0;color:#7e5109}
+@keyframes cwpulse{0%,100%{opacity:1}50%{opacity:.45}}
+@media (prefers-reduced-motion:reduce){.cw-dot,.cw-over{animation:none}}
+.cw-modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:1000;padding:16px}
+.cw-modal>div{background:var(--panel,#fff);color:inherit;max-width:520px;width:100%;border-radius:12px;padding:18px 20px;border-top:4px solid #c0392b}
+.cw-modal h3{margin:0 0 8px}.cw-modal ul{margin:8px 0 14px;padding-left:18px}

@@ -2,6 +2,7 @@
 // Once a week's update period is over (the Saturday cut-off after the week ends, 2:00 PM Addis time unless a super admin changes it) the report shows a final
 // label based on the % reached instead. Closed tasks are shown as Cancelled and stay out of the score.
 import { addisLockWeek } from "./rules.js";
+import { wavg } from "./weights.js";
 
 export const FINAL_LABELS = ["Achieved", "Well performed", "Partially achieved", "Under performed", "Cancelled"];
 export const FINAL_CLASS = { "Achieved": "s-done", "Well performed": "s-well", "Partially achieved": "s-not", "Under performed": "s-bad", "Cancelled": "s-closed" };
@@ -27,10 +28,11 @@ export function finalLabel(t) {
 // Counts per label and the average % (cancelled tasks are not counted in the average).
 export function finalSummary(tasks) {
   const counts = Object.fromEntries(FINAL_LABELS.map((l) => [l, 0]));
-  let sum = 0, n = 0;
+  const counted = [];
   (tasks || []).forEach((t) => {
     const l = finalLabel(t); counts[l]++;
-    if (l !== "Cancelled") { sum += pctOf(t); n++; }
+    if (l !== "Cancelled") counted.push(t);
   });
-  return { counts, total: (tasks || []).length, counted: n, avg: n ? Math.round(sum / n) : null };
+  // weighted by the shares planning gave the tasks (equal when none were given)
+  return { counts, total: (tasks || []).length, counted: counted.length, avg: wavg(counted, pctOf) };
 }

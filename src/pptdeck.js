@@ -104,7 +104,7 @@ export async function buildDeck(units, opts) {
     const weak = u.tasks.filter((t) => finalLabel(t) === "Under performed").sort((a, b) => pctOf(a) - pctOf(b)).slice(0, 6);
     // Achieved and well performed work, the most important first (weight when set, else priority), so the slide shows more than a few
     const PRI = { High: 0, Medium: 1, Low: 2 };
-    const rankOf = (t) => (typeof t.weight === "number" && t.weight > 0 ? -t.weight : (PRI[t.priority] ?? 1));
+    const rankOf = (t) => (Number(t.pts) > 1 ? -Number(t.pts) : (PRI[t.priority] ?? 1));
     const goodAll = u.tasks.filter((t) => ["Achieved", "Well performed"].includes(finalLabel(t))).sort((a, b) => rankOf(a) - rankOf(b) || pctOf(b) - pctOf(a));
     const strong = goodAll.slice(0, 10);
     const txt = [];
