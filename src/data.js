@@ -300,6 +300,7 @@ function createSupabaseData() {
     withdrawRequest: (auth, id) => rpc("wbg_withdraw_request", { p_auth: auth, p_id: id }),
     restoreVersion: (auth, hid) => rpc("wbg_restore_version", { p_auth: auth, p_history_id: Number(hid) }),
     undoLast: (auth, planId) => rpc("wbg_undo_last_save", { p_auth: auth, p_plan_id: planId }),
+    renameDepartment: (unit, oldName, newName) => rpc("wbg_rename_department", { p_unit: unit, p_old: oldName, p_new: newName }),
     saveUnit: (auth, op, data, summary) => rpc("wbg_save_unit", { p_auth: auth, p_op: op, p_data: data, p_summary: summary || "" }),
     log: (auth, entry) => rpc("wbg_log", { p_auth: auth, p_entry: entry }),
     restoreBackup: (auth, backup) => rpc("wbg_restore_backup", { p_auth: auth, p_backup: backup }),
@@ -550,6 +551,16 @@ function createLocalData() {
       savePlanRaw(auth, { ...planFromRow(h.old), unit: p.unit, week: p.week }, "Undo");
       addActivity(auth.name, p.unit, p.week, { action: "restore", summary: "Undid the last save" });
       return ok();
+    },
+    renameDepartment(unit, oldName, newName) {
+      const a = A(), nm = (newName || "").trim(); if (!a || !(isAppr(a) || leadOk(a, unit)) || !canEditDepartments(a, unit)) return err("not_allowed");
+      const u = getStore("units").find((x) => x.id === unit); if (!u || !(u.departments || []).includes(oldName)) return err("not_found");
+      if (!nm || nm.length > 60) return err("bad_request"); if (nm === oldName) return ok();
+      if ((u.departments || []).some((x) => x !== oldName && x.toLowerCase() === nm.toLowerCase())) return err("already_exists");
+      put("units", { ...u, departments: u.departments.map((x) => (x === oldName ? nm : x)) });
+      setPeople(people().map((p) => (p.unit === unit && (p.departments || []).includes(oldName) ? { ...p, departments: p.departments.map((x) => (x === oldName ? nm : x)) } : p)));
+      getStore("plans").filter((pl) => pl.unit === unit && (pl.tasks || []).some((t) => t.dept === oldName)).forEach((pl) => put("plans", { ...pl, tasks: pl.tasks.map((t) => (t.dept === oldName ? { ...t, dept: nm } : t)) }));
+      addActivity(a.name, unit, "", { action: "lists", summary: `Renamed department "${oldName}" to "${nm}"` }); return ok();
     },
     saveUnit(auth, op, data, summary) {
       const appr = isAppr(auth), units = getStore("units"), u = units.find((x) => x.id === data.id);

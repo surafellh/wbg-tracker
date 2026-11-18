@@ -855,7 +855,7 @@ export const GUIDES = [
       "Use the filters at the top of the list to narrow by type, unit, colour or status, **Download PDF** for a short, readable summary of the list, and **Download Excel** to take the details away. Open a project and press **Download PDF** for a one project brief.",
     ],
     why: [
-      "The list shows the contract start and end, and the days used out of the contract length (for example 245 of 365 days). Open a project to see the same as a percentage. A project at 40% progress with 80% of its time used is behind.",
+      "The list shows the contract start and end, and the days used out of the contract length (for example 245 of 313 days). Sundays are not counted, as in the contracts. Open a project to see the same as a percentage. A project at 40% progress with 80% of its time used is behind.",
       "Who can read a project: Group PMO, Group Strategy, the CEO, the DCEO and the lead executive assistant read all of them. A unit's chief, GM or director and its planning head read that unit's projects, and projects that list their unit as involved. At Niyat Consultancy the department heads read its projects too.",
       "Who can change it: Group PMO and Group Strategy, and the planning head of the unit that owns the project (adding and deleting projects stay with Group PMO and Group Strategy).",
     ],

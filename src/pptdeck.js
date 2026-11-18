@@ -102,15 +102,20 @@ export async function buildDeck(units, opts) {
     kpi(s, 2.65, 1.2, 2.0, us.total, "tasks");
     doughnut(s, us.counts, 0.3, 2.4, 5.0, 3.4);
     const weak = u.tasks.filter((t) => finalLabel(t) === "Under performed").sort((a, b) => pctOf(a) - pctOf(b)).slice(0, 6);
-    const strong = u.tasks.filter((t) => finalLabel(t) === "Achieved").slice(0, 4);
+    // Achieved and well performed work, the most important first (weight when set, else priority), so the slide shows more than a few
+    const PRI = { High: 0, Medium: 1, Low: 2 };
+    const rankOf = (t) => (typeof t.weight === "number" && t.weight > 0 ? -t.weight : (PRI[t.priority] ?? 1));
+    const goodAll = u.tasks.filter((t) => ["Achieved", "Well performed"].includes(finalLabel(t))).sort((a, b) => rankOf(a) - rankOf(b) || pctOf(b) - pctOf(a));
+    const strong = goodAll.slice(0, 10);
     const txt = [];
     if (weak.length) {
       txt.push({ text: "Under performed", options: { bold: true, color: FINAL_COLOR["Under performed"], fontSize: 13, breakLine: true } });
       weak.forEach((t) => txt.push({ text: `${t.title}${t.dept ? " · " + t.dept : ""} (${pctOf(t)}%)`, options: { bullet: true, fontSize: 11, breakLine: true } }));
     }
     if (strong.length) {
-      txt.push({ text: "Achieved", options: { bold: true, color: FINAL_COLOR["Achieved"], fontSize: 13, breakLine: true } });
-      strong.forEach((t) => txt.push({ text: t.title, options: { bullet: true, fontSize: 11, breakLine: true } }));
+      txt.push({ text: "Achieved and well performed", options: { bold: true, color: FINAL_COLOR["Achieved"], fontSize: 13, breakLine: true } });
+      strong.forEach((t) => txt.push({ text: `${t.title}${t.dept ? " · " + t.dept : ""}${finalLabel(t) === "Achieved" ? "" : " (" + pctOf(t) + "%)"}${t.priority === "High" ? " · High priority" : ""}`, options: { bullet: true, fontSize: 11, breakLine: true } }));
+      if (goodAll.length > strong.length) txt.push({ text: `+ ${goodAll.length - strong.length} more in the Excel and PDF downloads`, options: { fontSize: 10, color: MUTED, italic: true, breakLine: true } });
     }
     s.addText(txt.length ? txt : [{ text: "Nothing to flag.", options: { fontSize: 12, color: MUTED } }], { x: 5.4, y: 1.2, w: 7.4, h: 4.6, fontFace: FONT, color: INK, valign: "top", fit: "shrink", paraSpaceAfter: 4 });
     const note = [u.blockers && "Blockers: " + u.blockers, u.asks && "Asks: " + u.asks].filter(Boolean).join("   ·   ");

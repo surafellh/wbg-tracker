@@ -790,7 +790,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   }
   async function exportWeeklyPerfPdf(){
     const wp = weeklyPerf(), md = state.monthData, label = ethName(state.eth), pc = v => v === null ? "–" : v + "%";
-    const doc = newPdf(`Weekly Performance · ${label}`, `Weeks: ${md.weeks.map(w => fmt(w) + " (" + ethWeekLabel(w).replace(/, \d+ EC$/, "") + ")").join(", ")}  ·  Generated ${fmt(todayIso)} ${new Date().getFullYear()}`);
+    const doc = newPdf(`Weekly Performance · ${label}`, `Weeks: ${md.weeks.map(w => fmt(w) + " (" + ethWeekLabel(w).replace(/, \d+ EC$/, "") + ")").join(", ")}  ·  Generated ${fmt(todayIso)} ${new Date().getFullYear()}`, "MONTHLY REPORT  ·  WEEKLY PERFORMANCE");
     const av = wp.filter(r => r.avg !== null), all = av.length ? Math.round(av.reduce((a, r) => a + r.avg, 0) / av.length) : null;
     doc.autoTable({ startY: 92, margin: { left: 36, right: 36 }, head: [["Unit","Weeks counted","Tasks",...FINAL_LABELS,"Average performance"]],
       body: [...wp.map(r => [r.u.name, `${r.n} of ${md.weeks.length}`, r.tasks, ...FINAL_LABELS.map(l => r.sum[l]), pc(r.avg)]), ["All units (average of units)", `${av.length} units`, av.reduce((a, r) => a + r.tasks, 0), ...FINAL_LABELS.map(l => av.reduce((a, r) => a + r.sum[l], 0)), pc(all)]],
@@ -807,7 +807,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     if (!libsReady("pdf") || !state.monthData) return;
     if (state.monthView === "weekly") return exportWeeklyPerfPdf();
     const st = monthStats(), md = state.monthData, label = ethName(state.eth);
-    const doc = newPdf(`Monthly Report · ${label}`, `Weeks: ${md.weeks.map(w => fmt(w) + " (" + ethWeekLabel(w).replace(/, \d+ EC$/, "") + ")").join(", ")}  ·  Generated ${fmt(todayIso)} ${new Date().getFullYear()}`);
+    const doc = newPdf(`Monthly Report · ${label}`, `Weeks: ${md.weeks.map(w => fmt(w) + " (" + ethWeekLabel(w).replace(/, \d+ EC$/, "") + ")").join(", ")}  ·  Generated ${fmt(todayIso)} ${new Date().getFullYear()}`, "MONTHLY REPORT");
     doc.autoTable({ startY: 92, margin: { left: 36, right: 36 }, head: [["Unit","Weeks reported","Distinct tasks","Done","In progress","Not started / no status","Blocked / delayed","High done","Avg. complete"]],
       body: st.map(r => [r.u.name, `${r.reported} of ${md.weeks.length}`, r.s.total, r.s.done, r.s.prog, r.s.notStarted + r.s.noStatus, r.s.blocked + r.s.delayed, `${r.s.highDone}/${r.s.high}`, r.s.avg === null ? "–" : r.s.avg + "%"]), columnStyles: { 0: { cellWidth: 150, fontStyle: "bold" } }, ...tableStyle() });
     let y0 = doc.lastAutoTable.finalY + 24; y0 = sectionTitle(doc, "Weekly reports: key results, blockers and asks", y0);
@@ -1335,7 +1335,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     const cnt = d => ((state.draft && state.draft.tasks) || []).filter(t => t.dept === d).length;
     const chips = depts.map(d => state.confirmDelete === "dept:" + d
       ? `<span class="confirm">Remove ${esc(d)}? <button class="btn danger" data-dept-yes="${esc(d)}">Remove</button><button class="btn" data-del-no>Keep</button></span>`
-      : `<span class="chip">${esc(d)} <span class="muted small">${cnt(d)} this week</span>${mayDepts(state.editUnit) ? `<button data-dept-del="${esc(d)}" aria-label="Remove ${esc(d)}">×</button>` : ""}</span>`).join("");
+      : `<span class="chip">${esc(d)} <span class="muted small">${cnt(d)} this week</span>${mayDepts(state.editUnit) ? `<button data-dept-ren="${esc(d)}" aria-label="Rename ${esc(d)}" title="Rename">✎</button><button data-dept-del="${esc(d)}" aria-label="Remove ${esc(d)}">×</button>` : ""}</span>`).join("");
     const ppl = people.map((p, i) => state.confirmDelete === "person:" + i
       ? `<li><span class="confirm">Remove ${esc(p.name)}? <button class="btn danger" data-person-yes="${i}">Remove</button><button class="btn" data-del-no>Keep</button></span></li>`
       : `<li><span>${esc(p.name)}${p.dept ? ` <span class="tag">${esc(p.dept)}</span>` : ""}</span><button class="icon-btn" data-person-del="${i}" aria-label="Remove ${esc(p.name)}">×</button></li>`).join("");
@@ -2115,6 +2115,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     else if (t.id==="listsCancel") { state.showLists = false; render(); }
     else if (t.id==="addDeptBtn") addDept();
     else if (t.id==="addPersonBtn") addPerson();
+    else if (t.dataset.deptRen) { renameDept(state.editUnit, t.dataset.deptRen).then(ok => { if (ok) render(); }); }
     else if (t.dataset.deptDel) { state.confirmDelete = "dept:" + t.dataset.deptDel; render(); }
     else if (t.dataset.deptYes) removeDept(t.dataset.deptYes);
     else if (t.dataset.personDel) { state.confirmDelete = "person:" + t.dataset.personDel; render(); }
@@ -2809,12 +2810,12 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   // ---------- more downloads ----------
   const Y = { band:[245,197,24], ink:[42,34,8], muted:[107,95,58], soft:[253,240,194], line:[236,227,196], zebra:[253,249,236], brown:[122,62,0] };
   const tableStyle = () => ({ styles: { fontSize: 8.5, cellPadding: 4, textColor: Y.ink, lineColor: Y.line, lineWidth: 0.5, overflow: "linebreak" }, headStyles: { fillColor: Y.band, textColor: Y.ink, fontStyle: "bold" }, alternateRowStyles: { fillColor: Y.zebra } });
-  function newPdf(title, sub){
+  function newPdf(title, sub, kicker){
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
     const W = doc.internal.pageSize.getWidth();
     doc.setFillColor(...Y.band); doc.rect(0,0,W,74,"F");
-    doc.setTextColor(...Y.brown); doc.setFont("helvetica","bold"); doc.setFontSize(9); doc.text("WBG STRATEGY OFFICE  ·  WEEKLY ACTIVITY TRACKING", 36, 24);
+    doc.setTextColor(...Y.brown); doc.setFont("helvetica","bold"); doc.setFontSize(9); doc.text("WBG STRATEGY OFFICE  ·  " + (kicker || "WEEKLY ACTIVITY TRACKING"), 36, 24);
     doc.setTextColor(...Y.ink); doc.setFontSize(19); doc.text(title, 36, 48);
     doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(92,74,16); doc.text(sub, 36, 64);
     return doc;
@@ -3282,6 +3283,18 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     try { const r = await api.saveUnit(auth(), "lists", { id: unit, departments: list }, text); if (r.error) { toast(errText(r)); return false; } } catch (e) { toast(errText(e)); return false; }
     const u = state.units.find(x => x.id === unit); if (u) u.departments = list; state.ddBusy = Date.now(); return true;
   }
+  // Rename a department everywhere it is stored (people, tasks of every week, requests). Plans keep their old version in history.
+  async function renameDept(unit, oldName){
+    if (state.dirty) { toast("Save or discard your open plan changes first"); return false; }
+    const raw = prompt(`Rename the department "${oldName}" to:\n\nEvery person and every weekly task in this unit that uses it will show the new name.`, oldName);
+    if (raw === null) return false;
+    const name = raw.trim().replace(/\s+/g, " "); if (!name || name === oldName) return false;
+    let r; try { r = await api.renameDepartment(unit, oldName, name); } catch (e) { toast(errText(e)); return false; }
+    if (r && r.error) { toast(r.error === "already_exists" ? "That department name already exists" : errText(r)); return false; }
+    const u = state.units.find(x => x.id === unit); if (u) u.departments = (u.departments || []).map(x => x === oldName ? name : x);
+    state.ddBusy = Date.now(); toast(`Renamed to "${name}"${r && r.plans ? " · " + r.plans + " weekly plan" + (r.plans === 1 ? "" : "s") + " updated" : ""}. Reload other open pages to see it.`);
+    return true;
+  }
   async function ddAddDept(dd){
     const unit = dd.dataset.unit, inp = dd.querySelector("[data-dd-new]"), name = (inp.value || "").trim().replace(/\s+/g, " ");
     if (!name) { toast("Type a department name first"); return; }
@@ -3487,7 +3500,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     const cur = state.pp.deptUnit && us.some(u => u.id === state.pp.deptUnit) ? state.pp.deptUnit : us[0].id, ds = unitOf(cur).departments || [];
     return `<div class="panel pp-depts"><div class="panel-head"><div><h2>Departments</h2><div class="small muted">Add or remove the departments of a unit. Tasks, people and role requests pick from this list.</div></div>
       <select id="ppDeptUnit" aria-label="Unit">${us.map(u => `<option value="${esc(u.id)}" ${u.id === cur ? "selected" : ""}>${esc(u.name)}</option>`).join("")}</select></div>
-      <div class="asks"><div class="chipset" style="margin-bottom:10px">${ds.map(d => `<span class="chip">${esc(d)}<button type="button" data-pe="dept-del" data-id="${esc(d)}" aria-label="Remove ${esc(d)}">×</button></span>`).join("") || '<span class="muted small">No departments yet. Add the first one below.</span>'}</div>
+      <div class="asks"><div class="chipset" style="margin-bottom:10px">${ds.map(d => `<span class="chip">${esc(d)}<button type="button" data-pe="dept-ren" data-id="${esc(d)}" aria-label="Rename ${esc(d)}" title="Rename">✎</button><button type="button" data-pe="dept-del" data-id="${esc(d)}" aria-label="Remove ${esc(d)}">×</button></span>`).join("") || '<span class="muted small">No departments yet. Add the first one below.</span>'}</div>
       <div class="toolbar"><input type="text" id="ppDeptNew" placeholder="New department name" maxlength="60" style="flex:1;min-width:180px"><button class="btn primary" type="button" data-pe="dept-add">Add department</button></div></div></div>`;
   }
   function ppCode(){
@@ -3538,6 +3551,10 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
         if (!name) { toast("Type a department name first"); return; }
         if (list.some(x => x.toLowerCase() === name.toLowerCase())) { toast("That department already exists"); return; }
         if (await saveDepts(unit, [...list, name], `Added department "${name}"`)) { state.pp.deptUnit = unit; toast("Department added"); render(); setTimeout(() => { const n = $("#ppDeptNew"); n && n.focus(); }); }
+        return;
+      }
+      if (a === "dept-ren") {
+        const unit = state.pp.deptUnit || (sortedUnits()[0] || {}).id; if (await renameDept(unit, id)) { state.pp.deptUnit = unit; render(); }
         return;
       }
       if (a === "dept-del") {

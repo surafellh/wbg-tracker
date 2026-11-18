@@ -62,13 +62,18 @@ export function progressSource(p) {
 }
 
 const dayMs = 864e5;
+// Contract days exclude Sundays (as the contracts do). dn = whole days since 1970-01-01 (a Thursday, so a Sunday has (dn + 4) % 7 === 0).
+const dn = (ms) => Math.round(ms / dayMs);
+const sundaysIn = (a, b) => Math.floor((b + 3) / 7) - Math.floor((a + 3) / 7);   // Sundays in [a, b)
+const workDays = (aMs, bMs) => { const a = dn(aMs), b = dn(bMs); return b >= a ? (b - a) - sundaysIn(a, b) : -((a - b) - sundaysIn(b, a)); };
 const d0 = (s) => (s ? Date.parse(String(s).slice(0, 10) + "T00:00:00Z") : NaN);
-// Share of the planned period that has passed (can go above 100 when the end date is missed).
+// Share of the planned period (working days, Sundays excluded) that has passed (can go above 100 when the end date is missed).
 export function timeElapsed(p, today) {
   const a = d0(p.start), b = d0(p.end), t = d0(today);
   if (Number.isNaN(a) || Number.isNaN(b) || Number.isNaN(t) || b <= a) { const lu = latestUpdate(p); return lu && num(lu.timePct) !== null ? Math.round(num(lu.timePct)) : null; }
   if (t <= a) return 0;
-  return Math.round(((t - a) / (b - a)) * 100);
+  const tot = workDays(a, b); if (tot <= 0) return null;
+  return Math.round((workDays(a, t) / tot) * 100);
 }
 
 // A suggestion only; the person reporting chooses the status colour.
@@ -108,18 +113,18 @@ export function latestTasks(planDocs) {
   return out;
 }
 
-// Days left to the contract end (negative = overdue). Null when there is no contract end date or the project is finished.
+// Working days (Sundays excluded) left to the contract end (negative = overdue). Null when there is no contract end date or the project is finished.
 export function daysToEnd(p, today) {
   if (["Completed", "Cancelled"].includes(p.status)) return null;
   const b = d0(p.end), t = d0(today);
-  return Number.isNaN(b) || Number.isNaN(t) ? null : Math.round((b - t) / dayMs);
+  return Number.isNaN(b) || Number.isNaN(t) ? null : workDays(t, b);
 }
 
-// Days of the contract used: { used, total }. Both are whole days; used can pass total when the end date is missed.
+// Days of the contract used: { used, total }. Both are working days (Sundays excluded); used can pass total when the end date is missed.
 // Null when the project has no start and end date. A finished project stops counting at its actual end.
 export function daysUsed(p, today) {
   const a = d0(p.start), b = d0(p.end); let t = d0(today);
   if (Number.isNaN(a) || Number.isNaN(b) || Number.isNaN(t) || b <= a) return null;
   const fin = d0(p.actualEnd); if (p.status === "Completed" && !Number.isNaN(fin)) t = fin;
-  return { used: Math.max(0, Math.round((t - a) / dayMs)), total: Math.round((b - a) / dayMs) };
+  return { used: Math.max(0, workDays(a, t)), total: workDays(a, b) };
 }
