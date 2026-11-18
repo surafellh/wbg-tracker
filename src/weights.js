@@ -9,6 +9,14 @@ export const setWeightConfig = (scale, watchMin) => {
   const w = Math.round(Number(watchMin)); if (w >= 1) WATCH = Math.min(w, SCALE);
   WATCH = Math.min(WATCH, SCALE);
 };
+// Who sets and who sees weights. Setting is for Group Strategy, planning and chiefs only. Seeing is those, the CEO / DCEOs and the lead executive assistant,
+// plus (by the admin setting) directors and GMs, or also department heads.
+let SEE = "planning";
+export const setWeightSee = (v) => { SEE = ["planning", "directors", "heads"].includes(v) ? v : "planning"; };
+export const weightSee = () => SEE;
+export const canSetWeight = (role) => ["super_admin", "planning", "chief"].includes(role);
+export const canSeeWeight = (role) => canSetWeight(role) || ["executive", "lea"].includes(role)
+  || (SEE !== "planning" && ["director", "gm"].includes(role)) || (SEE === "heads" && ["manager", "divhead", "leader"].includes(role));
 export const weightScale = () => SCALE;
 export const watchMin = () => WATCH;
 

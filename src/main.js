@@ -4,7 +4,7 @@ import { jsPDF } from "jspdf";
 import { applyPlugin } from "jspdf-autotable";
 import { createData, configError, planFromRow, EVIDENCE, fileType, IS_TEST_ENV, VIEWAS_KEY } from "./data.js";
 import { startGate } from "./gate.js";
-import { wavg, ptsOf, hasPts, weightsOf, weightScale, watchMin } from "./weights.js";
+import { wavg, ptsOf, hasPts, weightsOf, weightScale, watchMin, canSetWeight, canSeeWeight, weightSee } from "./weights.js";
 import { groupTasks, rollupOf, rolledPlan, leafPlan, leafTasks, parentChoices, weightOf } from "./rollup.js";
 import { ROLES, ROLE_LABEL, ROLE_HELP, baseRole, isAdmin, unitMember, unitLead, deptOk, canUndo, canFeedback, canReplyFeedback, canEditDepartments, roleText, canDecide, STAGE_LABEL, matrixOn, fullEdit, canSave, canDiscuss, decidesAny, isSuper, canAdminAny, canAdminPeople, canAdminSettings, canAdminBackups } from "./access.js";
 import { assess, actions as ceoActions, letter as ceoLetter, INTERNAL, fmtD, addDaysIso } from "./ceoaction.js";
@@ -558,7 +558,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
           <select id="fPri" aria-label="Filter by priority"><option value="">All priorities</option>${PRIORITIES.map(p => `<option ${f.priority === p ? "selected" : ""}>${p}</option>`).join("")}</select>
           <select id="fKind" aria-label="Filter by type"><option value="">Tasks and KPI lines</option>${KINDS.map(k => `<option ${f.kind === k ? "selected" : ""}>${k}</option>`).join("")}</select>
           <select id="fCat" aria-label="Filter by category"><option value="">All categories</option>${CATEGORIES.map(k => `<option ${f.category === k ? "selected" : ""}>${k}</option>`).join("")}</select>
-          ${month ? "" : `<select id="fLevel" aria-label="Show"><option value="deliverables" ${state.level === "deliverables" ? "selected" : ""}>Deliverables</option><option value="tasks" ${state.level === "tasks" ? "selected" : ""}>All tasks</option></select>`}
+          ${true ? "" : `<select id="fLevel" aria-label="Show"><option value="deliverables" ${state.level === "deliverables" ? "selected" : ""}>Deliverables</option><option value="tasks" ${state.level === "tasks" ? "selected" : ""}>All tasks</option></select>`}
           <input type="text" id="fQ" placeholder="Search by reference, task, department or owner" value="${esc(f.q)}" aria-label="Search">
           <label class="small"><input type="checkbox" id="fGroup" ${f.group ? "checked" : ""}> Group by department</label>
         </div>
@@ -869,7 +869,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     $("#thisWeek").textContent = mo ? "This month" : "This week";
     $("#prevWeek").setAttribute("aria-label", mo ? "Previous month" : "Previous week"); $("#nextWeek").setAttribute("aria-label", mo ? "Next month" : "Next week");
     document.querySelectorAll("nav.tabs button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab===state.tab)));
-    { const lb = $("#leaTabBtn"); if (lb) lb.hidden = !(me && (me.role === "lea" || isSuper(me))); } $("#unitsTabBtn").hidden = !isSuper(me); $("#peopleTabBtn").hidden = !canAdminAny(me); { const ab = $("#accessTabBtn"); if (ab) ab.hidden = !isSuper(me); }
+    { const lb = $("#leaTabBtn"); if (lb) lb.hidden = !(me && (["lea", "planning"].includes(me.role) || isSuper(me))); } $("#unitsTabBtn").hidden = !isSuper(me); $("#peopleTabBtn").hidden = !canAdminAny(me); { const ab = $("#accessTabBtn"); if (ab) ab.hidden = !isSuper(me); }
     renderNav();
     const nb = X.badgeCount(), fbb = $("#fbCount"); if (fbb) { fbb.textContent = nb; fbb.hidden = !nb; }
     const np = canDecideAny() ? toDecide().length : pendingMine().length, ab = $("#apprCount"); const nm = (state.mentions || []).length, nr = (state.rr ? state.rr.count + state.rr.access : 0) + unreadMsgs().length, bb = $("#bellBtn"); if (ab) { ab.textContent = np + nm + nr > 9 ? "9+" : np + nm + nr; ab.hidden = !(np + nm + nr); } if (bb) { bb.classList.toggle("has", !!(np + nm + nr)); bb.title = np + nm + nr ? [nm ? nm + " mention" + (nm === 1 ? "" : "s") : "", np ? np + (canDecideAny() ? " waiting for your approval" : " waiting for approval") : "", nr ? nr + " other update" + (nr === 1 ? "" : "s") : ""].filter(Boolean).join(" · ") : "Notifications"; bb.setAttribute("aria-label", "Notifications: " + bb.title); }
@@ -972,8 +972,8 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   const priPill = p => p ? `<span class="pill ${p === "High" ? "s-bad" : p === "Medium" ? "s-not" : "s-none"}">${esc(p)}</span>` : '<span class="muted">–</span>';
   // Weight chip: points given to the task and the share of 100 it carries in this unit's plan. Full-edit roles pick the points; others see the result once any are set.
   function wChip(u, t){
-    const pl = (planFor(u) || {}).tasks || [], list = pl.filter(x => x.kind !== "KPI / OKR" && !x.parent), can = !!me && fullEdit(me, u) && !isAll() && rowEd(u, t);
-    if (t.kind === "KPI / OKR" || t.parent) return "";
+    const pl = (planFor(u) || {}).tasks || [], list = pl.filter(x => x.kind !== "KPI / OKR" && !x.parent), can = !!me && canSetWeight(me.role) && fullEdit(me, u) && !isAll() && rowEd(u, t);
+    if (t.kind === "KPI / OKR" || t.parent || !me || !canSeeWeight(me.role)) return "";
     if (!can && !hasPts(list)) return "";
     const w = weightsOf(list)[list.indexOf(t)], pts = ptsOf(t), pc = w === undefined ? "" : (Math.round(w * 10) / 10) + "%", n = weightScale();
     const key = t.pts !== undefined && t.pts !== null && t.pts !== "" ? "" : " (default 1)";
@@ -1042,7 +1042,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     const act = `<button class="icon-btn ib" type="button" data-open-task="${esc(u)}|${esc(t.id)}" aria-label="Open details" title="Open details">${ico(IC.open)}</button>` + (ed ? (state.confirmDelete === t.id ? `<span class="confirm">Remove? <button class="btn danger small" data-del-yes="${esc(key)}">Yes</button><button class="btn small" data-del-no>No</button></span>` : `<button class="icon-btn ib bad" type="button" data-del="${t.id}" aria-label="Remove task" title="Remove">${ico(IC.trash)}</button>`) : "");
     return `<tr class="task-row" data-u="${esc(u)}" data-i="${i}" data-id="${esc(t.id)}">
       <td class="c-task"><div class="task-main">${main}<div class="sub">${sub}</div></div></td>
-      <td class="c-cat" data-l="Category"><select id="t-cat-${t.id}" data-f="category" aria-label="Category" ${dis}><option value="Operational" ${sel(!fin)}>Operational</option><option value="Revenue" ${sel(fin)}>Financial</option></select></td>
+      <td class="c-cat" data-l="Category"><select id="t-cat-${t.id}" data-f="category" aria-label="Category" ${dis}><option value="Operational" ${sel(!fin && t.category !== "Marketing")}>Operational</option><option value="Revenue" ${sel(fin)}>Financial</option>${unitOf(u).type === "Business unit" || t.category === "Marketing" ? `<option value="Marketing" ${sel(t.category === "Marketing")}>Marketing</option>` : ""}</select></td>
       <td class="c-due" data-l="Due"><input type="date" id="t-due-${t.id}" data-f="due" value="${esc(t.due)}" aria-label="Due date" ${dis} ${dueAttr()}></td>
       <td class="c-dept" data-l="Department"><select id="t-dept-${t.id}" data-f="dept" aria-label="Department" ${dis}>${deptOptions(u, t)}</select></td>
       <td class="c-pri" data-l="Priority"><select id="t-pri-${t.id}" data-f="priority" aria-label="Priority" ${dis}><option value="" ${sel(!t.priority)}>Not set</option>${PRIORITIES.map(p => `<option ${sel(p === t.priority)}>${p}</option>`).join("")}</select></td>
@@ -1399,7 +1399,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   const pf = () => state.pf || (state.pf = { q: "", pri: "", st: "", dep: "", lvl: "tasks", kind: "ops" });
   function visibleRows(tasks){
     const f = pf(), q = f.q.trim().toLowerCase();
-    const ok = t => (!q || [t.title, t.ref, t.owner, t.dept, t.outcome].some(x => (x || "").toLowerCase().includes(q))) && (!f.pri || t.priority === f.pri) && (!f.st || (f.st === "none" ? !t.status : t.status === f.st)) && (!f.dep || t.dept === f.dep) && (state.tab === "plan" || (f.kind === "fin") === (t.category === "Revenue"));
+    const ok = t => (!q || [t.title, t.ref, t.owner, t.dept, t.outcome].some(x => (x || "").toLowerCase().includes(q))) && (!f.pri || t.priority === f.pri) && (!f.st || (f.st === "none" ? !t.status : t.status === f.st)) && (!f.dep || t.dept === f.dep) && (state.tab === "plan" || (f.kind || "ops") === (t.category === "Revenue" ? "fin" : t.category === "Marketing" ? "mkt" : "ops"));
     const base = sortOrder(tasks, "edit");
     if (f.lvl !== "deliv") return base.filter(i => ok(tasks[i])).map(i => ({ i, ind: 0 }));
     const refs = new Set(tasks.map(t => t.ref).filter(Boolean)), out = [];
@@ -1447,8 +1447,8 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     const topRow = `<div class="plan-top"><div class="plan-wk">${weekBan()}</div>${acts}</div>`;
     const lvlSeg = `<div class="seg" role="tablist" aria-label="List level"><button type="button" role="tab" data-lvl="tasks" aria-selected="${pf().lvl !== "deliv"}">All tasks</button><button type="button" role="tab" data-lvl="deliv" aria-selected="${pf().lvl === "deliv"}">By deliverable</button></div>`;
     const planMode = state.tab === "plan", fin = !planMode && pf().kind === "fin";
-    const kindSeg = `<div class="seg" role="tablist" aria-label="Kind of work"><button type="button" role="tab" data-kind="ops" aria-selected="${!fin}">Operational</button><button type="button" role="tab" data-kind="fin" aria-selected="${fin}">Financial</button></div>`;
-    const bar1 = `<div class="plan-bar">${pick}<div class="toolbar">${planMode ? "" : kindSeg}${planMode || fin ? "" : lvlSeg}</div></div>`;
+    const kindSeg = `<div class="seg" role="tablist" aria-label="Kind of work"><button type="button" role="tab" data-kind="ops" aria-selected="${!fin && pf().kind !== "mkt"}">Operational</button><button type="button" role="tab" data-kind="fin" aria-selected="${fin}">Financial</button>${unitOf(state.editUnit).type === "Business unit" ? `<button type="button" role="tab" data-kind="mkt" aria-selected="${!planMode && pf().kind === "mkt"}">Marketing</button>` : ""}</div>`;
+    const bar1 = `<div class="plan-bar">${pick}<div class="toolbar">${planMode ? "" : kindSeg}${/* deliverables are hidden for now */ ""}</div></div>`;
     if (!state.editUnit || !hasDraft()) return `${topRow}<div class="panel">${bar1}<div class="empty"><b>Choose your unit to start</b>Pick your function or business unit. Anyone can view; to update, sign in with your name and your unit's PIN (the name button at the top). Then update status, % complete, notes and evidence as the week goes on.</div></div>`;
     const warn = state.remoteChanged ? `<div class="banner warn" style="margin:12px 16px 0">Someone else saved ${isAll() ? "one of these plans" : "this plan"} while you were editing. Saving adds your changes on top of theirs. <button class="btn" id="reloadRemote" style="margin-left:6px">Drop mine and load theirs</button></div>` : "";
     const submitLbl = past && !isAppr() ? "Request update" : isAll() ? "Save all changes" : "Save plan";
@@ -1627,7 +1627,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     else if (state.tab==="cashflow") html += CF.renderCash();
     else if (state.tab==="activity") html += renderActivity();
     else if (state.tab==="approvals") html += renderApprovals();
-    else if (state.tab==="lea" && me && (me.role === "lea" || isSuper(me))) html += renderLea();
+    else if (state.tab==="lea" && me && (["lea", "planning"].includes(me.role) || isSuper(me))) html += renderLea();
     else if (state.tab==="units" && isSuper(me)) html += renderUnits();
     else if (state.tab==="people" && canAdminAny(me)) html += renderPeople();
     else if (state.tab==="access" && isSuper(me)) html += AXP.render();
@@ -1691,7 +1691,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
       : alerts.filter(a => (!state.dash.type || unitOf(a.unit).type === state.dash.type) && (!state.dash.units.length || state.dash.units.includes(a.unit)));
     const w = ($("#main").clientWidth || 1000);
     return renderDashboard({ monthWeeks: monthWeeks(state.eth, state.monthBasis), monthLabel: ethName(state.eth), weeks: state.dashData.weeks, byWeek: by, byWeekAll: byAll, units: sortedUnits(), week: state.week, today: todayIso, filter: { ...state.dash, level: state.level },
-      alerts: attList, attScope: attScope ? unitName(attScope) : "", attUnit: attScope, pending: pendingFor().length, downloads, canUpdate: !!(me && !["executive"].includes(me.role)),
+      alerts: attList, attScope: attScope ? unitName(attScope) : "", attUnit: attScope, showKey: !!me && canSeeWeight(me.role), pending: pendingFor().length, downloads, canUpdate: !!(me && !["executive"].includes(me.role)),
       width: w > 900 ? Math.floor((w - 16) * 2 / 3) - 34 : w - 34, unitName, h: { esc, fmt, weekLabel, toEth, ethMonth: w => ethName(toEth(w)), ethWeek: w => ethWeekLabel(w) } });
   }
 
@@ -2135,7 +2135,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     if (t.dataset.openTask) { openPanel(t.dataset.openTask); return; }
     if (t.dataset.kids) { const k = "kid:" + t.dataset.kids; state.expanded.has(k) ? state.expanded.delete(k) : state.expanded.add(k); render(); return; }
     if (t.id==="addUnplanned") { const nt = makeTask(state.editUnit, { unplanned: true }); render(); const el = document.getElementById("t-title-"+nt.id); el && el.focus(); return; }
-    if (t.id==="addTask" || t.dataset.addUnit) { const u = t.dataset.addUnit || state.editUnit, nt = makeTask(u);
+    if (t.id==="addTask" || t.dataset.addUnit) { const u = t.dataset.addUnit || state.editUnit, nt = makeTask(u, state.tab === "update" && pf().kind === "mkt" ? { category: "Marketing" } : undefined);
       // a leftover filter (status, priority, department, search) would hide the blank new row: clear it so the row shows
       if (!isAll()) { const dd = planFor(u).tasks; if (!visibleRows(dd).some(r => dd[r.i] === nt)) { const f = pf(); f.q = f.pri = f.st = f.dep = ""; toast("Filters cleared so the new task shows"); } }
       render(); const el = document.getElementById("t-title-"+nt.id); el && el.focus(); }
@@ -3557,6 +3557,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
       <div class="toolbar" style="flex-wrap:wrap;gap:10px;margin-top:10px"><label for="setExt" class="small"><b>Keep last week open until</b></label><input type="datetime-local" id="setExt" value="${esc(c.extendUntil)}"><button class="btn" type="button" data-pe="set-ext">Save date</button><button class="btn ghost" type="button" data-pe="set-ext-clear">Clear</button><span class="small muted">${c.extendUntil ? "Open until " + esc(c.extendUntil.replace("T", " ")) : "Off"}</span></div>
       <div class="toolbar" style="flex-wrap:wrap;gap:10px;margin-top:14px;padding-top:12px;border-top:1px solid var(--line,#ddd)"><label for="setWScale" class="small"><b>Weight scale</b></label><select id="setWScale">${[5, 10, 15, 20].map(n => `<option ${c.weightScale === n ? "selected" : ""}>${n}</option>`).join("")}</select><span class="small muted">Each task gets points from 1 to this number (1 when not set). The app converts them to a share of 100 for the plan.</span></div>
       <div class="toolbar" style="flex-wrap:wrap;gap:10px;margin-top:10px"><label for="setWWatch" class="small"><b>DCEO watch list from</b></label><input type="number" id="setWWatch" min="1" max="${c.weightScale}" value="${c.weightWatchMin}" style="width:70px"><span class="small muted">points or more (for example 7 of 10). Overdue, soon-due and blocked tasks at or above this weight are flagged for the DCEOs. Every task still counts in performance.</span><button class="btn" type="button" data-pe="set-weights">Save weights</button></div>
+      <div class="toolbar" style="flex-wrap:wrap;gap:10px;margin-top:10px"><label for="setWSee" class="small"><b>Who sees weights</b></label><select id="setWSee">${[["planning", "Planning, Group Strategy and chiefs only"], ["directors", "Also directors and GMs"], ["heads", "Also department heads"]].map(([v, l]) => `<option value="${v}" ${c.weightSee === v ? "selected" : ""}>${l}</option>`).join("")}</select><span class="small muted">Only Group Strategy, planning and chiefs can set weights. The CEO and DCEOs always see them.</span></div>
       <label class="small" style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" id="setRename" ${c.allowRename ? "checked" : ""}> <span><b>Allow renaming saved tasks</b> <span class="muted">(off by default; turn on for a short time when needed)</span></span></label></div></div>`;
   }
   // Lead executive assistant: add an action straight into a unit's current-week plan, and see the blockers across all units.
@@ -3648,6 +3649,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
         if (!(sc >= 2 && sc <= 20) || !(wm >= 1 && wm <= sc)) { toast("The watch level must be between 1 and the scale"); return; }
         let r = await api.adminSetSetting("weight_scale", sc); if (r.error) { toast(errText(r)); return; }
         r = await api.adminSetSetting("weight_watch_min", wm); if (r.error) { toast(errText(r)); return; }
+        r = await api.adminSetSetting("weight_see", $("#setWSee").value); if (r.error) { toast(errText(r)); return; }
         setSettings(r.settings); help.redraw(); toast("Weight settings saved"); render(); return;
       }
       if (a === "set-grace" || a === "set-ext" || a === "set-ext-clear") {
@@ -3767,7 +3769,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     else if (viewAs) { viewAs = null; try { sessionStorage.removeItem(VIEWAS_KEY); } catch (e) {} }
     me = profile; myId = profile.name; api.setProfile && api.setProfile(profile);
     api.onSignedOut(() => location.reload());
-    state.level = store.get("wp-level") || ((isAppr() || me.role === "executive") ? "deliverables" : "tasks");
+    state.level = "tasks";   // deliverables are hidden for now
     if (!state.editUnit || state.editUnit === ALL) { const mu = myUnit(); if (mu) { state.editUnit = mu; store.set("wp-unit", mu); } }
     if (!isAppr() && state.editUnit && !myUnit() && me.role !== "executive" && me.role !== "leader") state.editUnit = null;
     subscribeRequests(); X.subscribe(); DM.subscribe(); PJ.subscribe(); CF.subscribe(); refreshMentions(); refreshRR(); if (["planning", "leader", "super_admin", "executive"].includes(me.role)) subscribeActivity();

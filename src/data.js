@@ -891,6 +891,7 @@ function createLocalData() {
       if (key === "grace_time") { if (!/^([01]?\d|2[0-3]):[0-5]\d$/.test(String(value))) return err("bad_request"); cur.graceTime = String(value).padStart(5, "0"); }
       else if (key === "extend_until") cur.extendUntil = String(value || "").slice(0, 16);
       else if (key === "allow_rename") cur.allowRename = !!value;
+      else if (key === "weight_see") { if (!["planning", "directors", "heads"].includes(value)) return err("bad_request"); cur.weightSee = value; }
       else if (key === "weight_scale") { const n = Math.round(Number(value)); if (!(n >= 2 && n <= 20)) return err("bad_request"); cur.weightScale = n; cur.weightWatchMin = Math.min(cur.weightWatchMin || 7, n); }
       else if (key === "weight_watch_min") { const n = Math.round(Number(value)); if (!(n >= 1)) return err("bad_request"); cur.weightWatchMin = Math.min(n, cur.weightScale || 10); }
       else return err("bad_request");

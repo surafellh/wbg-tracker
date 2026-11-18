@@ -102,7 +102,7 @@ export function renderDashboard(c) {
   const filters = `<div class="dash-bar" role="group" aria-label="Dashboard filters">
     <div class="dpop-wrap"><button class="btn" id="dPopBtn" aria-expanded="${!!c.filter.pop}">${selLbl} <span aria-hidden="true">▾</span></button>
       ${c.filter.pop ? `<div class="dpop" id="dPop"><div class="dpop-top"><button class="lnk" data-dgrp="all">All</button><button class="lnk" data-dgrp="Business unit">All business units</button><button class="lnk" data-dgrp="Corporate function">All functions</button></div>${types.map((t) => grp(t, esc(t || "Other"))).join("")}
-        <div class="dpop-g">Show</div><div class="dpop-sel"><select id="dCat" aria-label="Category"><option value="">All categories</option>${["Operational", "Revenue"].map((k) => `<option ${c.filter.category === k ? "selected" : ""}>${k}</option>`).join("")}</select>
+        <div class="dpop-g">Show</div><div class="dpop-sel"><select id="dCat" aria-label="Category"><option value="">All categories</option>${["Operational", "Revenue", "Marketing"].map((k) => `<option ${c.filter.category === k ? "selected" : ""}>${k}</option>`).join("")}</select>
         <select id="dLevel" aria-label="Count"><option value="deliverables" ${c.filter.level === "deliverables" ? "selected" : ""}>Count deliverables</option><option value="tasks" ${c.filter.level === "tasks" ? "selected" : ""}>Count all tasks</option></select></div></div>` : ""}</div>
     <div class="seg" role="tablist">${[["week", "Weekly"], ["month", "Monthly"], ["quarter", "Quarterly"]].map(([k, l]) => `<button role="tab" data-dper="${k}" aria-selected="${per0 === k}">${l}</button>`).join("")}</div>
     ${c.downloads ? `<button class="btn" id="pdfBtn" title="Open the print dialog, then choose Save as PDF">PDF</button>` : ""}${c.canUpdate ? `<button class="btn primary" id="goUpdate" title="Open Plans, Progress update">Update progress</button>` : ""}</div>`;
@@ -174,7 +174,7 @@ export function renderDashboard(c) {
   const title = !nSel ? "Wagwago Business Group" : pActive ? esc(pActive.label) : nSel === 1 ? esc(c.unitName(sel[0])) : nSel + " units selected";
   const sub = per0 === "week" ? `Week of ${esc(weekLabel(c.week))} · ${esc(c.h.ethWeek(c.week))}` : per0 === "month" ? esc(c.h.ethMonth(c.week)) : `13 weeks to ${esc(fmt(c.week))}`;
   return `<div class="dh"><div>${single ? `<button class="lnk back" data-dgrp="all">← Whole group</button>` : ""}<h1>${title}</h1><p>${sub}</p></div>${filters}</div>
-    ${pTabs}${summary}${criticalStrip(c, criticalWatch(c, c.attUnit ? c.units.filter((u) => u.id === c.attUnit) : units), esc, fmt)}${kpis}
+    ${pTabs}${summary}${c.showKey === false ? "" : criticalStrip(c, criticalWatch(c, c.attUnit ? c.units.filter((u) => u.id === c.attUnit) : units), esc, fmt)}${kpis}
     <div class="dgrid dgrid3"><div class="panel"><div class="panel-head"><h2>${single ? "Completion by department" : "Completion by unit"}</h2><span class="small muted">${single ? "Average % complete" : "Click a unit to drill in"}</span></div>${single ? deptBars : bullets}</div>
       <div class="panel"><div class="panel-head"><h2>Task status</h2><span class="small muted">${perLabel}</span></div><div class="pad">${donut}</div></div>
       <div class="panel"><div class="panel-head"><h2>Tasks done against planned</h2><span class="small muted">Last 8 weeks</span></div><div class="pad">${planned}</div></div></div>

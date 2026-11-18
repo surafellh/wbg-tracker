@@ -10,8 +10,8 @@ export const LOCKED = ["title", "kind", "dept", "outcome", "priority"];   // the
 //   graceTime   - time on Saturday (Addis Ababa) until which the week that just ended can still be updated directly
 //   extendUntil - optional "YYYY-MM-DDTHH:MM" (Addis Ababa): the week that just ended stays open until then
 //   allowRename - false: a saved task keeps its name once the week has started; true: the name can be changed
-const cfg = { graceTime: "14:00", extendUntil: "", allowRename: false, lockedFields: null, routeChief: true, routePlanning: true, permMode: "legacy", weightScale: 10, weightWatchMin: 7 };
-import { setWeightConfig } from "./weights.js";
+const cfg = { graceTime: "14:00", extendUntil: "", allowRename: false, lockedFields: null, routeChief: true, routePlanning: true, permMode: "legacy", weightScale: 10, weightWatchMin: 7, weightSee: "planning" };
+import { setWeightConfig, setWeightSee } from "./weights.js";
 export function setSettings(s) {
   if (!s || typeof s !== "object") return;
   if (/^\d{1,2}:\d{2}$/.test(String(s.graceTime || ""))) cfg.graceTime = s.graceTime;
@@ -21,6 +21,7 @@ export function setSettings(s) {
   if (s.routeChief !== undefined) cfg.routeChief = !!s.routeChief;
   if (s.routePlanning !== undefined) cfg.routePlanning = !!s.routePlanning;
   if (s.permMode) cfg.permMode = String(s.permMode);
+  if (s.weightSee) { cfg.weightSee = String(s.weightSee); setWeightSee(cfg.weightSee); }
   if (s.weightScale !== undefined) { cfg.weightScale = Number(s.weightScale) || cfg.weightScale; cfg.weightWatchMin = Number(s.weightWatchMin) || cfg.weightWatchMin; setWeightConfig(cfg.weightScale, cfg.weightWatchMin); }
 }
 export const getSettings = () => ({ ...cfg });
@@ -99,7 +100,7 @@ export function calcPct(t) {
   if (tg <= 0) return null;
   return Math.max(0, Math.min(100, Math.round((ac / tg) * 100)));
 }
-export const CATEGORIES = ["Operational", "Revenue"];
+export const CATEGORIES = ["Operational", "Revenue", "Marketing"];
 
 const same = (f, a, b) => {
   if (f === "kind") return (a || "Task") === (b || "Task");
