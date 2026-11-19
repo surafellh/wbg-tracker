@@ -869,7 +869,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     $("#thisWeek").textContent = mo ? "This month" : "This week";
     $("#prevWeek").setAttribute("aria-label", mo ? "Previous month" : "Previous week"); $("#nextWeek").setAttribute("aria-label", mo ? "Next month" : "Next week");
     document.querySelectorAll("nav.tabs button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab===state.tab)));
-    { const lb = $("#leaTabBtn"); if (lb) lb.hidden = !(me && (["lea", "planning"].includes(me.role) || isSuper(me))); } $("#unitsTabBtn").hidden = !isSuper(me); $("#peopleTabBtn").hidden = !canAdminAny(me); { const ab = $("#accessTabBtn"); if (ab) ab.hidden = !isSuper(me); }
+$("#unitsTabBtn").hidden = !isSuper(me); $("#peopleTabBtn").hidden = !canAdminAny(me); { const ab = $("#accessTabBtn"); if (ab) ab.hidden = !isSuper(me); }
     renderNav();
     const nb = X.badgeCount(), fbb = $("#fbCount"); if (fbb) { fbb.textContent = nb; fbb.hidden = !nb; }
     const np = canDecideAny() ? toDecide().length : pendingMine().length, ab = $("#apprCount"); const nm = (state.mentions || []).length, nr = (state.rr ? state.rr.count + state.rr.access : 0) + unreadMsgs().length, bb = $("#bellBtn"); if (ab) { ab.textContent = np + nm + nr > 9 ? "9+" : np + nm + nr; ab.hidden = !(np + nm + nr); } if (bb) { bb.classList.toggle("has", !!(np + nm + nr)); bb.title = np + nm + nr ? [nm ? nm + " mention" + (nm === 1 ? "" : "s") : "", np ? np + (canDecideAny() ? " waiting for your approval" : " waiting for approval") : "", nr ? nr + " other update" + (nr === 1 ? "" : "s") : ""].filter(Boolean).join(" · ") : "Notifications"; bb.setAttribute("aria-label", "Notifications: " + bb.title); }
@@ -1399,7 +1399,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   const pf = () => state.pf || (state.pf = { q: "", pri: "", st: "", dep: "", lvl: "tasks", kind: "ops" });
   function visibleRows(tasks){
     const f = pf(), q = f.q.trim().toLowerCase();
-    const ok = t => (!q || [t.title, t.ref, t.owner, t.dept, t.outcome].some(x => (x || "").toLowerCase().includes(q))) && (!f.pri || t.priority === f.pri) && (!f.st || (f.st === "none" ? !t.status : t.status === f.st)) && (!f.dep || t.dept === f.dep) && (state.tab === "plan" || (f.kind || "ops") === (t.category === "Revenue" ? "fin" : t.category === "Marketing" ? "mkt" : "ops"));
+    const ok = t => (!q || [t.title, t.ref, t.owner, t.dept, t.outcome].some(x => (x || "").toLowerCase().includes(q))) && (!f.pri || t.priority === f.pri) && (!f.st || (f.st === "none" ? !t.status : t.status === f.st)) && (!f.dep || t.dept === f.dep) && (state.tab === "plan" || (f.kind === "all" || (f.kind || "ops") === (t.category === "Revenue" ? "fin" : t.category === "Marketing" ? "mkt" : "ops")));
     const base = sortOrder(tasks, "edit");
     if (f.lvl !== "deliv") return base.filter(i => ok(tasks[i])).map(i => ({ i, ind: 0 }));
     const refs = new Set(tasks.map(t => t.ref).filter(Boolean)), out = [];
@@ -1447,7 +1447,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     const topRow = `<div class="plan-top"><div class="plan-wk">${weekBan()}</div>${acts}</div>`;
     const lvlSeg = `<div class="seg" role="tablist" aria-label="List level"><button type="button" role="tab" data-lvl="tasks" aria-selected="${pf().lvl !== "deliv"}">All tasks</button><button type="button" role="tab" data-lvl="deliv" aria-selected="${pf().lvl === "deliv"}">By deliverable</button></div>`;
     const planMode = state.tab === "plan", fin = !planMode && pf().kind === "fin";
-    const kindSeg = `<div class="seg" role="tablist" aria-label="Kind of work"><button type="button" role="tab" data-kind="ops" aria-selected="${!fin && pf().kind !== "mkt"}">Operational</button><button type="button" role="tab" data-kind="fin" aria-selected="${fin}">Financial</button>${unitOf(state.editUnit).type === "Business unit" ? `<button type="button" role="tab" data-kind="mkt" aria-selected="${!planMode && pf().kind === "mkt"}">Marketing</button>` : ""}</div>`;
+    const kindSeg = `<div class="seg" role="tablist" aria-label="Kind of work"><button type="button" role="tab" data-kind="all" aria-selected="${!planMode && pf().kind === "all"}">All</button><button type="button" role="tab" data-kind="ops" aria-selected="${!fin && pf().kind !== "mkt" && pf().kind !== "all"}">Operational</button><button type="button" role="tab" data-kind="fin" aria-selected="${fin}">Financial</button>${unitOf(state.editUnit).type === "Business unit" ? `<button type="button" role="tab" data-kind="mkt" aria-selected="${!planMode && pf().kind === "mkt"}">Marketing</button>` : ""}</div>`;
     const bar1 = `<div class="plan-bar">${pick}<div class="toolbar">${planMode ? "" : kindSeg}${/* deliverables are hidden for now */ ""}</div></div>`;
     if (!state.editUnit || !hasDraft()) return `${topRow}<div class="panel">${bar1}<div class="empty"><b>Choose your unit to start</b>Pick your function or business unit. Anyone can view; to update, sign in with your name and your unit's PIN (the name button at the top). Then update status, % complete, notes and evidence as the week goes on.</div></div>`;
     const warn = state.remoteChanged ? `<div class="banner warn" style="margin:12px 16px 0">Someone else saved ${isAll() ? "one of these plans" : "this plan"} while you were editing. Saving adds your changes on top of theirs. <button class="btn" id="reloadRemote" style="margin-left:6px">Drop mine and load theirs</button></div>` : "";
@@ -1613,7 +1613,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     let html = bannerMsg ? `<div class="banner warn">${esc(bannerMsg)}</div>` : "";
     if (!db) html += `<div class="banner warn">Not connected to the database, so plans cannot be loaded or saved.</div>`;
     if (!state.unitsLoaded || !state.plansLoaded) html += `<div class="panel"><div class="empty"><b>Loading weekly plans…</b>Fetching plans for ${esc(weekLabel(state.week))}.</div></div>`;
-    else if (state.tab==="dashboard") html += renderDash();
+    else if (state.tab==="dashboard") html += (leaOn() ? renderLea() : "") + renderDash();
         else if (state.tab==="update") html += renderUpdate();
     else if (state.tab==="plan") html += renderUpdate() + `<details class="panel imp-det" id="impDet" ${(state.impOpen || state.imp) ? "open" : ""}><summary><b>Import or export with Excel</b> <span class="small muted">download the template, fill it in, upload it</span></summary>${renderImport()}</details>`;
     else if (state.tab==="mplan") html += renderMplan();
@@ -1627,7 +1627,6 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     else if (state.tab==="cashflow") html += CF.renderCash();
     else if (state.tab==="activity") html += renderActivity();
     else if (state.tab==="approvals") html += renderApprovals();
-    else if (state.tab==="lea" && me && (["lea", "planning"].includes(me.role) || isSuper(me))) html += renderLea();
     else if (state.tab==="units" && isSuper(me)) html += renderUnits();
     else if (state.tab==="people" && canAdminAny(me)) html += renderPeople();
     else if (state.tab==="access" && isSuper(me)) html += AXP.render();
@@ -3571,6 +3570,13 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   function leaText(list){
     return `Blockers needing the CEO · ${weekLabel(state.week)}\n\n` + (list.map((b, i) => `${i + 1}. ${b.unit}: ${b.text || b.title + (b.ref ? " (" + b.ref + ")" : "") + (b.owner ? ", owner " + b.owner : "") + (b.due ? ", due " + fmt(b.due) : "") + (b.note ? ". " + b.note : "")}`).join("\n") || "No blockers reported.");
   }
+  const leaOn = () => !!me && (me.role === "lea" || isSuper(me));
+  // Every action the lead executive assistant has assigned, newest first, with where it stands now (latest state across the weeks loaded).
+  function leaAssigned(){
+    const weeks = { ...((state.dashData || {}).by || {}), [state.week]: state.plans }, latest = new Map();
+    Object.keys(weeks).sort().forEach(w => Object.entries(weeks[w] || {}).forEach(([uid_, p]) => ((p && p.tasks) || []).forEach(t => { if (t.source === "lea") latest.set((t.ref || t.id) + "|" + uid_, { u: uid_, t, w }); })));
+    return [...latest.values()].sort((a, b) => String(b.t.assignedAt || b.w).localeCompare(String(a.t.assignedAt || a.w)));
+  }
   function renderLea(){
     const L = state.lea = state.lea || { unit: "" }, u = unitOf(L.unit), deps = u.departments || [], bl = leaBlockers();
     const uopts = `<option value="">Choose unit</option>` + sortedUnits().map(x => `<option value="${esc(x.id)}" ${x.id === L.unit ? "selected" : ""}>${esc(x.name)}</option>`).join("");
@@ -3586,6 +3592,8 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
         <label class="small">From the meeting<input type="text" id="lea-meet" maxlength="120" placeholder="Optional"></label>
         <label class="small">Note<input type="text" id="lea-note" maxlength="500" placeholder="Optional"></label></div>
       <div style="margin-top:12px"><button class="btn primary" type="button" data-lea="assign">Add to this week's plan</button></div></div></div>
+    <div class="panel"><div class="panel-head"><div><h2>Actions assigned</h2><div class="small muted">Everything assigned from here, with where it stands now.</div></div></div>
+      <div class="scroll"><table class="dtbl"><thead><tr><th>Ref</th><th>Action</th><th>Unit</th><th>Department</th><th>Owner</th><th>Due</th><th>Weight</th><th>Status</th><th>Assigned</th></tr></thead><tbody>${(() => { const l = leaAssigned(); return l.length ? l.map(({ u: ui, t, w }) => `<tr><td class="small">${esc(t.ref || "")}</td><td><b>${esc(t.title || "")}</b></td><td class="small">${esc(unitName(ui))}</td><td class="small">${esc(t.dept || "–")}</td><td class="small">${esc(t.owner || "–")}</td><td class="small">${t.due ? esc(fmt(t.due)) : "–"}</td><td class="small num">${ptsOf(t)}/${weightScale()}</td><td class="small">${esc(t.status || "Not started")}${typeof t.pct === "number" ? " · " + t.pct + "%" : ""}</td><td class="small muted">${esc(t.assignedBy || "")}${t.assignedAt ? " · " + esc(String(t.assignedAt).slice(0, 10)) : ""}</td></tr>`).join("") : `<tr><td colspan="9" class="small muted">Nothing assigned yet.</td></tr>`; })()}</tbody></table></div></div>
     <div class="panel"><div class="panel-head"><div><h2>Blockers across units</h2><div class="small muted">Blocked tasks and the blockers written in each unit's plan for ${esc(weekLabel(state.week))}.</div></div><button class="btn" type="button" data-lea="copy">Copy for the CEO</button></div>
       <div class="asks">${bl.length ? bl.map(b => `<div class="ask"><div class="who">${esc(b.unit)}${b.dept ? " · " + esc(b.dept) : ""}</div><p>${b.text ? esc(b.text) : `<b>${esc(b.title)}</b>${b.ref ? ` <span class="small muted">${esc(b.ref)}</span>` : ""}${b.owner ? ` · ${esc(b.owner)}` : ""}${b.due ? ` · due ${esc(fmt(b.due))}` : ""}${b.note ? `<br><span class="small muted">${esc(b.note)}</span>` : ""}`}</p></div>`).join("") : `<div class="empty">No blockers reported this week.</div>`}</div></div>`;
   }
