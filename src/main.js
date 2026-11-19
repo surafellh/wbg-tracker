@@ -59,6 +59,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   state.level = "tasks"; state.history = null; state.lastSave = null; state.base = {}; state.unlock = new Set(); state.reqNotes = {}; state.people = null; state.pu = {};
   const auth = () => me ? { id: me.id || "", raw: me.roleRaw || me.role, name: me.name || "", role: me.role, title: me.title || "", unit: me.unit || "", departments: me.departments || [], caps: me.caps, permMode: me.permMode } : {};
   const isAppr = () => isAdmin(me);
+  const leaOn = () => !!me && (me.role === "lea" || isSuper(me));
   const isLenient = () => matrixOn(me) ? fullEdit(me, me.unit) : !!me && (me.role === "leader" || me.role === "planning");
   const canEdit = u => matrixOn(me) ? canSave(me, u) : (isAppr() || (unitMember(me, u) && me.role !== "staff"));   // employees and division heads are view-only
   const canLead = u => !!u && (isAppr() || unitLead(me, u));
@@ -1613,7 +1614,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     let html = bannerMsg ? `<div class="banner warn">${esc(bannerMsg)}</div>` : "";
     if (!db) html += `<div class="banner warn">Not connected to the database, so plans cannot be loaded or saved.</div>`;
     if (!state.unitsLoaded || !state.plansLoaded) html += `<div class="panel"><div class="empty"><b>Loading weekly plans…</b>Fetching plans for ${esc(weekLabel(state.week))}.</div></div>`;
-    else if (state.tab==="dashboard") html += renderDash();
+    else if (state.tab==="dashboard") html += (leaOn() ? `<div class="banner info" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span>Assign an action to a unit, and see what you have assigned.</span><button class="btn primary" type="button" data-gotab="lea">Assign actions</button></div>` : "") + renderDash();
         else if (state.tab==="update") html += renderUpdate();
     else if (state.tab==="plan") html += renderUpdate() + `<details class="panel imp-det" id="impDet" ${(state.impOpen || state.imp) ? "open" : ""}><summary><b>Import or export with Excel</b> <span class="small muted">download the template, fill it in, upload it</span></summary>${renderImport()}</details>`;
     else if (state.tab==="mplan") html += renderMplan();
@@ -2221,6 +2222,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     if (r && r.error) { toast(errText(r)); return; }
     toast(`Added as ${r.ref} in this week's plan. ${r.notified} ${r.notified === 1 ? "person" : "people"} told.`); state.lea = { unit }; render();
   });
+  main.addEventListener("click", e => { const b = e.target.closest("[data-gotab]"); if (b) goTab(b.dataset.gotab); });
   main.addEventListener("keydown", e => { if (e.key === "Enter" && e.target.matches("textarea.title-in, textarea.out-in")) e.preventDefault(); });
   main.addEventListener("toggle", e => { if (e.target.id === "remPanel") state.remOpen = e.target.open; if (e.target.id === "impDet") state.impOpen = e.target.open; }, true);
   // chart tooltips: any element with data-tip
@@ -3571,7 +3573,6 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   function leaText(list){
     return `Blockers needing the CEO · ${weekLabel(state.week)}\n\n` + (list.map((b, i) => `${i + 1}. ${b.unit}: ${b.text || b.title + (b.ref ? " (" + b.ref + ")" : "") + (b.owner ? ", owner " + b.owner : "") + (b.due ? ", due " + fmt(b.due) : "") + (b.note ? ". " + b.note : "")}`).join("\n") || "No blockers reported.");
   }
-  const leaOn = () => !!me && (me.role === "lea" || isSuper(me));
   // Every action the lead executive assistant has assigned, newest first, with where it stands now (latest state across the weeks loaded).
   function leaAssigned(){
     const weeks = { ...((state.dashData || {}).by || {}), [state.week]: state.plans }, latest = new Map();
