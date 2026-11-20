@@ -1398,9 +1398,12 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   }
   // ---------- Plans: week banner, filters, list ----------
   const pf = () => state.pf || (state.pf = { q: "", pri: "", st: "", dep: "", lvl: "tasks", kind: "ops" });
+  // Weight filter. The Deputy CEOs start on the key activities (weight at or above the level set in Settings); anyone who may see weights can change it.
+  const canWF = () => !!me && canSeeWeight(me.role);
+  function wMin(){ if (!canWF()) return 0; const v = pf().w === undefined ? (me.role === "executive" ? String(watchMin()) : "") : pf().w; return v ? Number(v) : 0; }
   function visibleRows(tasks){
-    const f = pf(), q = f.q.trim().toLowerCase();
-    const ok = t => (!q || [t.title, t.ref, t.owner, t.dept, t.outcome].some(x => (x || "").toLowerCase().includes(q))) && (!f.pri || t.priority === f.pri) && (!f.st || (f.st === "none" ? !t.status : t.status === f.st)) && (!f.dep || t.dept === f.dep) && (state.tab === "plan" || (f.kind === "all" || (f.kind || "ops") === (t.category === "Revenue" ? "fin" : t.category === "Marketing" ? "mkt" : "ops")));
+    const f = pf(), q = f.q.trim().toLowerCase(), wm = wMin();
+    const ok = t => (!q || [t.title, t.ref, t.owner, t.dept, t.outcome].some(x => (x || "").toLowerCase().includes(q))) && (!f.pri || t.priority === f.pri) && (!f.st || (f.st === "none" ? !t.status : t.status === f.st)) && (!f.dep || t.dept === f.dep) && (!wm || t.kind === "KPI / OKR" || ptsOf(t) >= wm) && (state.tab === "plan" || (f.kind === "all" || (f.kind || "ops") === (t.category === "Revenue" ? "fin" : t.category === "Marketing" ? "mkt" : "ops")));
     const base = sortOrder(tasks, "edit");
     if (f.lvl !== "deliv") return base.filter(i => ok(tasks[i])).map(i => ({ i, ind: 0 }));
     const refs = new Set(tasks.map(t => t.ref).filter(Boolean)), out = [];
@@ -1411,11 +1414,11 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     return out;
   }
   function planFilterBar(deptList, shown, total, extra){
-    const f = pf(), on = f.q || f.pri || f.st || f.dep;
+    const f = pf(), on = f.q || f.pri || f.st || f.dep, wm = wMin(), n = weightScale();
     const o = (k, label, arr) => `<select class="in sm${f[k] ? " on" : ""}" data-pfl="${k}" aria-label="${label}"><option value="">${label}: any</option>${arr.map(x => `<option value="${esc(x[0])}" ${f[k] === x[0] ? "selected" : ""}>${esc(x[1])}</option>`).join("")}</select>`;
     return `<div class="plan-bar2"><div class="fbar"><div class="fsearch">${ico(IC.search)}<input type="text" id="pfQ" placeholder="Search tasks" value="${esc(f.q)}" aria-label="Search tasks"></div>
-      ${o("pri", "Priority", PRIORITIES.map(p => [p, p]))}${o("st", "Status", [...STATUSES.map(x => [x, x]), ["none", "No status"]])}${deptList.length ? o("dep", "Department", deptList.map(d => [d, d])) : ""}${on ? '<button class="lnk" type="button" id="pfClear">Clear</button>' : ""}</div>
-      <span class="small muted">${on ? `${shown} of ${total} tasks` : `${total} task${total === 1 ? "" : "s"}`}${extra || ""}</span></div>`;
+      ${o("pri", "Priority", PRIORITIES.map(p => [p, p]))}${o("st", "Status", [...STATUSES.map(x => [x, x]), ["none", "No status"]])}${deptList.length ? o("dep", "Department", deptList.map(d => [d, d])) : ""}${canWF() ? `<select class="in sm${wm ? " on" : ""}" data-pfl="w" aria-label="Weight"><option value="" ${wm ? "" : "selected"}>Weight: all</option>${Array.from({ length: n - 1 }, (_, k) => k + 2).map(v => `<option value="${v}" ${wm === v ? "selected" : ""}>Weight ${v}+ of ${n}${v === watchMin() ? " (key)" : ""}</option>`).join("")}</select>` : ""}${on ? '<button class="lnk" type="button" id="pfClear">Clear</button>' : ""}</div>
+      <span class="small muted">${on || wm ? `${shown} of ${total} tasks` : `${total} task${total === 1 ? "" : "s"}`}${extra || ""}</span></div>`;
   }
   function weekBan(){
     const w = state.week, planTab = state.tab === "plan", next = w === nextMonday(), tm = thisMonday();
@@ -2073,7 +2076,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     if (row && !e.target.closest("input, select, textarea, button, label, a, summary") && (state.tab === "update" || state.tab === "plan") && row.dataset.id) { openPanel(row.dataset.u + "|" + row.dataset.id); return; }
     const t = e.target.closest("button, tr[data-open-unit], tr[data-tgl], tr[data-ceotgl], .hbar-row[data-open-unit]");
     if (!t) return;
-    if (t.id === "pfClear") { state.pf = { q: "", pri: "", st: "", dep: "", lvl: pf().lvl, kind: pf().kind }; render(); return; }
+    if (t.id === "pfClear") { state.pf = { q: "", pri: "", st: "", dep: "", lvl: pf().lvl, kind: pf().kind, w: pf().w }; render(); return; }
     if (t.dataset.ceotype !== undefined && t.closest(".seg")) { state.ceoType = t.dataset.ceotype; render(); return; }
     { const tr = t.closest("[data-ceotgl]"); if (tr && t.tagName === "TR") { const k = tr.dataset.ceotgl; state.ceoOpen.has(k) ? state.ceoOpen.delete(k) : state.ceoOpen.add(k); render(); return; } }
     if (t.dataset.ceoprep) { ceoPrep(t.dataset.u, Number(t.dataset.ceoprep)); return; }
