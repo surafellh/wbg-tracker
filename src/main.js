@@ -1680,9 +1680,10 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   }
   function renderDash(){
     if (!state.units.length) return `<div class="panel"><div class="empty"><b>No units set up yet</b></div></div>`;
-    if (!state.dashData) return `<div class="panel"><div class="empty"><b>Collecting the last ${state.dash.range} weeks…</b></div></div>`;
+    // show this week straight away; the earlier weeks fill in when they arrive
+    const partial = !state.dashData, dd = state.dashData || { weeks: dashWeeks(), by: {} };
     const lvl = ps => Object.fromEntries(Object.entries(ps || {}).map(([k, p]) => [k, levelPlan(p)]));
-    const byAll = Object.fromEntries(Object.entries({ ...state.dashData.by, [state.week]: state.plans }).map(([w, ps]) => [w, lvl(ps)])), cat = state.dash.category || "";
+    const byAll = Object.fromEntries(Object.entries({ ...dd.by, [state.week]: state.plans }).map(([w, ps]) => [w, lvl(ps)])), cat = state.dash.category || "";
     const by = !cat ? byAll : Object.fromEntries(Object.entries(byAll).map(([w, ps]) => [w, Object.fromEntries(Object.entries(ps || {}).map(([k, p]) => [k, p ? { ...p, tasks: (p.tasks || []).filter(t => (t.category || "") === cat) } : p]))]));
     const alerts = sortedUnits().flatMap(u => unitAlerts({ unit: u, plan: state.plans[u.id], weekPlans: state.plans, week: state.week, thisMonday: thisMonday(), today: todayIso, requests: [] })).sort((a, b) => levelRank[a.level] - levelRank[b.level]);
     // Needs attention is for the people who can act on it: the CEO, DCEO and Group Strategy see every unit,
@@ -1691,7 +1692,8 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     const attList = attScope ? alerts.filter(a => a.unit === attScope)
       : alerts.filter(a => (!state.dash.type || unitOf(a.unit).type === state.dash.type) && (!state.dash.units.length || state.dash.units.includes(a.unit)));
     const w = ($("#main").clientWidth || 1000);
-    return renderDashboard({ monthWeeks: monthWeeks(state.eth, state.monthBasis), monthLabel: ethName(state.eth), weeks: state.dashData.weeks, byWeek: by, byWeekAll: byAll, units: sortedUnits(), week: state.week, today: todayIso, filter: { ...state.dash, level: state.level },
+    const note = partial ? `<div class="slimnote">Loading the earlier weeks for the trends…</div>` : "";
+    return note + renderDashboard({ monthWeeks: monthWeeks(state.eth, state.monthBasis), monthLabel: ethName(state.eth), weeks: dd.weeks, byWeek: by, byWeekAll: byAll, units: sortedUnits(), week: state.week, today: todayIso, filter: { ...state.dash, level: state.level },
       alerts: attList, attScope: attScope ? unitName(attScope) : "", attUnit: attScope, showKey: !!me && canSeeWeight(me.role), pending: pendingFor().length, downloads, canUpdate: !!(me && !["executive"].includes(me.role)),
       width: w > 900 ? Math.floor((w - 16) * 2 / 3) - 34 : w - 34, unitName, h: { esc, fmt, weekLabel, toEth, ethMonth: w => ethName(toEth(w)), ethWeek: w => ethWeekLabel(w) } });
   }
