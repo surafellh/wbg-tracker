@@ -1628,7 +1628,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     else if (state.tab==="cashflow") html += CF.renderCash();
     else if (state.tab==="activity") html += renderActivity();
     else if (state.tab==="approvals") html += renderApprovals();
-    else if (state.tab==="lea" && leaOn()) html += renderLea();
+    else if (state.tab==="lea" && leaOn()) { html += renderLea(); setTimeout(ensureDash, 0); }
     else if (state.tab==="units" && isSuper(me)) html += renderUnits();
     else if (state.tab==="people" && canAdminAny(me)) html += renderPeople();
     else if (state.tab==="access" && isSuper(me)) html += AXP.render();
@@ -1675,7 +1675,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     try {
       const snap = await db.collection("plans").where("week", ">=", weeks[0]).where("week", "<=", state.week).get();
       const by = {}; snap.docs.forEach(d => { const v = d.data(); if (v && v.unit) (by[v.week] = by[v.week] || {})[v.unit] = v; });
-      if (state.dashKey === key) { state.dashData = { weeks, by }; if (state.tab === "dashboard") render(); }
+      if (state.dashKey === key) { state.dashData = { weeks, by }; if (state.tab === "dashboard" || state.tab === "lea") render(); }
     } catch (e) { state.dashKey = ""; banner("Could not load the earlier weeks for the dashboard."); }
   }
   function renderDash(){
@@ -3597,7 +3597,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     <div class="panel"><div class="panel-head"><div><h2>Blockers across units</h2><div class="small muted">Blocked tasks and the blockers written in each unit's plan for ${esc(weekLabel(state.week))}.</div></div><button class="btn" type="button" data-lea="copy">Copy for the CEO</button></div>
       <div class="asks">${bl.length ? bl.map(b => `<div class="ask"><div class="who">${esc(b.unit)}${b.dept ? " · " + esc(b.dept) : ""}</div><p>${b.text ? esc(b.text) : `<b>${esc(b.title)}</b>${b.ref ? ` <span class="small muted">${esc(b.ref)}</span>` : ""}${b.owner ? ` · ${esc(b.owner)}` : ""}${b.due ? ` · due ${esc(fmt(b.due))}` : ""}${b.note ? `<br><span class="small muted">${esc(b.note)}</span>` : ""}`}</p></div>`).join("") : `<div class="empty">No blockers reported this week.</div>`}</div></div>
     <div class="panel"><div class="panel-head"><div><h2>Actions assigned</h2><div class="small muted">Everything assigned from here, with where it stands now.</div></div></div>
-      <div class="scroll"><table class="dtbl"><thead><tr><th>Ref</th><th>Action</th><th>Unit</th><th>Department</th><th>Owner</th><th>Due</th><th>Weight</th><th>Status</th><th>Assigned</th></tr></thead><tbody>${(() => { const l = leaAssigned(); return l.length ? l.map(({ u: ui, t, w }) => `<tr><td class="small">${esc(t.ref || "")}</td><td><b>${esc(t.title || "")}</b></td><td class="small">${esc(unitName(ui))}</td><td class="small">${esc(t.dept || "–")}</td><td class="small">${esc(t.owner || "–")}</td><td class="small">${t.due ? esc(fmt(t.due)) : "–"}</td><td class="small num">${ptsOf(t)}/${weightScale()}</td><td class="small">${esc(t.status || "Not started")}${typeof t.pct === "number" ? " · " + t.pct + "%" : ""}</td><td class="small muted">${esc(t.assignedBy || "")}${t.assignedAt ? " · " + esc(String(t.assignedAt).slice(0, 10)) : ""}</td></tr>`).join("") : `<tr><td colspan="9" class="small muted">Nothing assigned yet.</td></tr>`; })()}</tbody></table></div></div>`;
+      <div class="scroll"><table class="dtbl"><thead><tr><th>Ref</th><th>Action</th><th>Unit</th><th>Department</th><th>Owner</th><th>Due</th><th>Weight</th><th>Status</th><th>Assigned</th></tr></thead><tbody>${(() => { const l = leaAssigned(); return l.length ? l.map(({ u: ui, t, w }) => `<tr><td class="small">${esc(t.ref || "")}</td><td><b>${esc(t.title || "")}</b></td><td class="small">${esc(unitName(ui))}</td><td class="small">${esc(t.dept || "–")}</td><td class="small">${esc(t.owner || "–")}</td><td class="small">${t.due ? esc(fmt(t.due)) : "–"}</td><td class="small num">${ptsOf(t)}/${weightScale()}</td><td class="small">${esc(t.status || "Not started")}${typeof t.pct === "number" ? " · " + t.pct + "%" : ""}</td><td class="small muted">${esc(t.assignedBy || "")}${t.assignedAt ? " · " + esc(String(t.assignedAt).slice(0, 10)) : ""}</td></tr>`).join("") : `<tr><td colspan="9" class="small muted">${state.dashData ? "Nothing assigned from this tab yet. Tasks typed into a unit\u2019s plan by hand are not listed here." : "Loading\u2026"}</td></tr>`; })()}</tbody></table></div></div>`;
   }
   function renderPeople(){
     const p = state.people;
