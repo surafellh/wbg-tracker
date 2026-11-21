@@ -447,7 +447,9 @@ main{padding-block:16px 48px}
 .dash-note{margin-left:auto}
 
 /* ---------- Dashboard as in the mockup ---------- */
-body[data-tab="dashboard"] .pagehead{display:none}
+body[data-tab="dashboard"] .pagehead-row{display:none}
+body[data-tab="dashboard"] .wrap.pagehead:has(#subNav[hidden]){display:none}
+body[data-tab="dashboard"] .wrap.pagehead{padding-top:8px;padding-bottom:0}
 body[data-tab="dashboard"] main{padding-top:20px}
 .topbar .brand .hero-chip{background:var(--hero-tint);border-color:var(--hero-edge);color:var(--hero-muted);font-size:10.5px;padding:2px 8px}
 #thisWeek{display:none}
