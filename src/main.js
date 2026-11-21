@@ -59,6 +59,41 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   state.level = "tasks"; state.history = null; state.lastSave = null; state.base = {}; state.unlock = new Set(); state.reqNotes = {}; state.people = null; state.pu = {};
   const auth = () => me ? { id: me.id || "", raw: me.roleRaw || me.role, name: me.name || "", role: me.role, title: me.title || "", unit: me.unit || "", departments: me.departments || [], caps: me.caps, permMode: me.permMode } : {};
   const isAppr = () => isAdmin(me);
+  // ---------- Plan view: one screen per reporting line, grouped by unit, only the activities at or above a weight ----------
+  const pvOn = () => !!me && ["executive", "super_admin", "planning"].includes(me.role) && canSeeWeight(me.role);
+  function renderPview(){
+    const V = state.pv = state.pv || {}, n = weightScale();
+    if (V.line === undefined) V.line = /strateg|transform/i.test(me.title || "") ? "dceo-st" : /business|operation/i.test(me.title || "") ? "dceo-bu" : "";
+    const wm = V.w === undefined ? watchMin() : Number(V.w) || 0, show = V.show || "all";
+    const lineUnits = sortedUnits().filter(u => !V.line || portfolioOf(u) === V.line), today = todayIso;
+    const isOpen = t => t.status !== "Done" && t.status !== "Closed" && !(typeof t.pct === "number" && t.pct >= 100);
+    const late = t => isOpen(t) && t.due && t.due < today;
+    let total = 0, nLate = 0, nBlocked = 0, units = 0;
+    const blocks = lineUnits.map(u => {
+      const p = state.plans[u.id], all = ((p && p.tasks) || []).filter(t => t.kind !== "KPI / OKR" && !t.parent), w = weightsOf(all);
+      let rows = all.map((t, i) => ({ t, w: w[i] })).filter(({ t }) => ptsOf(t) >= wm && t.status !== "Closed");
+      const base = rows.length;
+      if (show === "open") rows = rows.filter(({ t }) => isOpen(t));
+      if (show === "risk") rows = rows.filter(({ t }) => late(t) || t.status === "Blocked");
+      rows.sort((a, b) => ptsOf(b.t) - ptsOf(a.t) || String(a.t.due || "9999").localeCompare(String(b.t.due || "9999")));
+      return { u, rows, base, hasPlan: !!p, nTasks: all.length };
+    });
+    const body = blocks.map(({ u, rows, base, hasPlan, nTasks }) => {
+      if (!rows.length) return `<div class="panel" style="margin-bottom:10px"><div class="panel-head"><div><h2 style="font-size:15px">${esc(u.name)}</h2><div class="small muted">${!hasPlan ? "No plan this week" : base ? "Nothing left to follow with the filters chosen" : `No activity at weight ${wm}+ (${nTasks} in the plan)`}</div></div></div></div>`;
+      units++; total += rows.length;
+      const done = rows.filter(({ t }) => !isOpen(t)).length, lt = rows.filter(({ t }) => late(t)).length, bk = rows.filter(({ t }) => t.status === "Blocked").length; nLate += lt; nBlocked += bk;
+      const avg = Math.round(rows.reduce((a, { t }) => a + (t.status === "Done" ? 100 : (typeof t.pct === "number" ? t.pct : 0)), 0) / rows.length);
+      return `<div class="panel" style="margin-bottom:12px"><div class="panel-head"><div><h2 style="font-size:15px">${esc(u.name)}</h2><div class="small muted">${rows.length} to follow · ${done} done · average ${avg}%${lt ? ` · <b style="color:var(--bad)">${lt} overdue</b>` : ""}${bk ? ` · ${bk} blocked` : ""}</div></div></div>
+        <div class="scroll"><table class="dtbl"><thead><tr><th>Ref</th><th>Activity</th><th>Department</th><th>Owner</th><th>Due</th><th>Weight</th><th>Status</th><th>Progress</th></tr></thead><tbody>${rows.map(({ t, w }) => `<tr><td class="small">${esc(t.ref || "")}</td><td><b>${esc(t.title || "")}</b>${t.notes ? `<div class="small muted">${esc(String(t.notes).slice(0, 140))}</div>` : ""}</td><td class="small">${esc(t.dept || "–")}</td><td class="small">${esc(t.owner || "–")}</td><td class="small" style="white-space:nowrap">${t.due ? esc(fmt(t.due)) : "–"}${late(t) ? ` <span class="pill s-bad">late</span>` : ""}</td><td class="small num" style="white-space:nowrap"><b>${ptsOf(t)}</b>/${n} · ${Math.round(w)}%</td><td><span class="pill ${statusClass(t.status)}">${esc(t.status || "No status")}</span></td><td class="small num">${t.status === "Done" ? 100 : (typeof t.pct === "number" ? t.pct : 0)}%</td></tr>`).join("")}</tbody></table></div></div>`;
+    }).join("");
+    const seg = (key, label, on) => `<button type="button" role="tab" data-pvline="${key}" aria-selected="${on}">${esc(label)}</button>`;
+    return `<div class="panel" style="margin-bottom:12px"><div class="panel-head"><div><h2>Plan view</h2><div class="small muted">${esc(weekLabel(state.week))} · the activities to follow, grouped by unit.</div></div></div>
+      <div class="asks" style="display:flex;flex-wrap:wrap;gap:12px;align-items:center">
+        <div class="seg" role="tablist" aria-label="Reporting line">${seg("", "All", !V.line)}${PORTFOLIOS.map(p => seg(p.key, p.short, V.line === p.key)).join("")}</div>
+        <label class="small">Weight <select id="pv-w">${[0, ...Array.from({ length: n - 1 }, (_, k) => k + 2)].map(v => `<option value="${v}" ${wm === v ? "selected" : ""}>${v ? v + " and above" + (v === watchMin() ? " (key)" : "") : "All"}</option>`).join("")}</select></label>
+        <label class="small">Show <select id="pv-show"><option value="all" ${show === "all" ? "selected" : ""}>All</option><option value="open" ${show === "open" ? "selected" : ""}>Not done</option><option value="risk" ${show === "risk" ? "selected" : ""}>Overdue or blocked</option></select></label>
+        <span class="small muted"><b>${total}</b> ${total === 1 ? "activity" : "activities"} in ${units} ${units === 1 ? "unit" : "units"}${nLate ? ` · <b style="color:var(--bad)">${nLate} overdue</b>` : ""}${nBlocked ? ` · ${nBlocked} blocked` : ""}</span></div></div>${body || `<div class="panel"><div class="empty">No units in this reporting line.</div></div>`}`;
+  }
   const leaOn = () => !!me && (me.role === "lea" || isSuper(me));
   const isLenient = () => matrixOn(me) ? fullEdit(me, me.unit) : !!me && (me.role === "leader" || me.role === "planning");
   const canEdit = u => matrixOn(me) ? canSave(me, u) : (isAppr() || (unitMember(me, u) && me.role !== "staff"));   // employees and division heads are view-only
@@ -845,7 +880,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
 
   const GROUPS = { dashboard: ["dashboard"], plans: ["update", "plan", "mplan", "approvals"], delivery: ["support", "fb"], reports: ["tasks", "monthly", "ceo"], projects: ["projects"], cashflow: ["cashflow"] };
   const SUB_LABEL = { update: "Progress update", plan: "Next plan", mplan: "Monthly plan", approvals: "Approvals", support: "Business support", fb: "Feedback", tasks: "Weekly report", monthly: "Monthly report", ceo: "Actions for the CEO", projects: "Projects", cashflow: "Cash flow" };
-  const PAGE_TITLE = { cashflow: ["Cash flow", "Bank balances, collections, payments and the financing needed."], projects: ["Projects", "Status and progress of business and capital projects."], dashboard: ["Dashboards", "How every unit and function is doing this week."], update: ["Plans", "Update progress on this week's tasks."], plan: ["Plans", "Plan the tasks for next week."], mplan: ["Plans", "Plan the month once and split it across its weeks."], approvals: ["Plans", "Changes waiting for approval."], support: ["Delivery", "Support requested from group functions."], fb: ["Delivery", "Feedback and corrective actions."], tasks: ["Reports", "Every task, filtered and downloadable."], monthly: ["Reports", "Consolidated by Ethiopian calendar month."], ceo: ["Reports", "What the CEO should do about each unit."], follow: ["Follow-up", ""], activity: ["Activity log", "Who changed what, and when."], units: ["Settings · Units", "Group Strategy only."], people: ["Settings · People", "Group Strategy only."], access: ["Settings · Access rules", "Decide who can see and do what. Group Strategy only."] };
+  const PAGE_TITLE = { pview: ["Plan view", "The activities each Deputy CEO follows, grouped by unit."], lea: ["Assign actions", "Add an action to a unit\u2019s plan for this week and see what has been assigned."], cashflow: ["Cash flow", "Bank balances, collections, payments and the financing needed."], projects: ["Projects", "Status and progress of business and capital projects."], dashboard: ["Dashboards", "How every unit and function is doing this week."], update: ["Plans", "Update progress on this week's tasks."], plan: ["Plans", "Plan the tasks for next week."], mplan: ["Plans", "Plan the month once and split it across its weeks."], approvals: ["Plans", "Changes waiting for approval."], support: ["Delivery", "Support requested from group functions."], fb: ["Delivery", "Feedback and corrective actions."], tasks: ["Reports", "Every task, filtered and downloadable."], monthly: ["Reports", "Consolidated by Ethiopian calendar month."], ceo: ["Reports", "What the CEO should do about each unit."], follow: ["Follow-up", ""], activity: ["Activity log", "Who changed what, and when."], units: ["Settings · Units", "Group Strategy only."], people: ["Settings · People", "Group Strategy only."], access: ["Settings · Access rules", "Decide who can see and do what. Group Strategy only."] };
   const groupOf = t => Object.keys(GROUPS).find(g => GROUPS[g].includes(t)) || "";
   const SM = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   const weekShort = w => { const a = parse(w), b = parse(weekEndOf(w)); return a.getMonth() === b.getMonth() ? `${SM[a.getMonth()]} ${a.getDate()} – ${b.getDate()}` : `${SM[a.getMonth()]} ${a.getDate()} – ${SM[b.getMonth()]} ${b.getDate()}`; };
@@ -870,7 +905,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     $("#thisWeek").textContent = mo ? "This month" : "This week";
     $("#prevWeek").setAttribute("aria-label", mo ? "Previous month" : "Previous week"); $("#nextWeek").setAttribute("aria-label", mo ? "Next month" : "Next week");
     document.querySelectorAll("nav.tabs button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab===state.tab)));
-{ const lb = $("#leaTabBtn"); if (lb) lb.hidden = !leaOn(); } $("#unitsTabBtn").hidden = !isSuper(me); $("#peopleTabBtn").hidden = !canAdminAny(me); { const ab = $("#accessTabBtn"); if (ab) ab.hidden = !isSuper(me); }
+{ const pb = $("#pviewTabBtn"); if (pb) pb.hidden = !pvOn(); } { const lb = $("#leaTabBtn"); if (lb) lb.hidden = !leaOn(); } $("#unitsTabBtn").hidden = !isSuper(me); $("#peopleTabBtn").hidden = !canAdminAny(me); { const ab = $("#accessTabBtn"); if (ab) ab.hidden = !isSuper(me); }
     renderNav();
     const nb = X.badgeCount(), fbb = $("#fbCount"); if (fbb) { fbb.textContent = nb; fbb.hidden = !nb; }
     const np = canDecideAny() ? toDecide().length : pendingMine().length, ab = $("#apprCount"); const nm = (state.mentions || []).length, nr = (state.rr ? state.rr.count + state.rr.access : 0) + unreadMsgs().length, bb = $("#bellBtn"); if (ab) { ab.textContent = np + nm + nr > 9 ? "9+" : np + nm + nr; ab.hidden = !(np + nm + nr); } if (bb) { bb.classList.toggle("has", !!(np + nm + nr)); bb.title = np + nm + nr ? [nm ? nm + " mention" + (nm === 1 ? "" : "s") : "", np ? np + (canDecideAny() ? " waiting for your approval" : " waiting for approval") : "", nr ? nr + " other update" + (nr === 1 ? "" : "s") : ""].filter(Boolean).join(" · ") : "Notifications"; bb.setAttribute("aria-label", "Notifications: " + bb.title); }
@@ -1631,6 +1666,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     else if (state.tab==="cashflow") html += CF.renderCash();
     else if (state.tab==="activity") html += renderActivity();
     else if (state.tab==="approvals") html += renderApprovals();
+    else if (state.tab==="pview" && pvOn()) html += renderPview();
     else if (state.tab==="lea" && leaOn()) { html += renderLea(); setTimeout(ensureDash, 0); }
     else if (state.tab==="units" && isSuper(me)) html += renderUnits();
     else if (state.tab==="people" && canAdminAny(me)) html += renderPeople();
@@ -2215,6 +2251,8 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     else if (el.id==="ovQ") { state.ov.q = el.value; render(); }
     else if (el.dataset.reqNote) { state.reqNotes[el.dataset.reqNote] = el.value; }
   });
+  main.addEventListener("change", e => { if (e.target.id === "pv-w") { (state.pv = state.pv || {}).w = e.target.value; render(); } else if (e.target.id === "pv-show") { (state.pv = state.pv || {}).show = e.target.value; render(); } });
+  main.addEventListener("click", e => { const b = e.target.closest("[data-pvline]"); if (b) { (state.pv = state.pv || {}).line = b.dataset.pvline; render(); } });
   main.addEventListener("change", e => { if (e.target.id === "lea-unit") { state.lea = { unit: e.target.value }; render(); } });
   main.addEventListener("click", async e => {
     const b = e.target.closest("[data-lea]"); if (!b) return;
