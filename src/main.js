@@ -60,7 +60,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   const auth = () => me ? { id: me.id || "", raw: me.roleRaw || me.role, name: me.name || "", role: me.role, title: me.title || "", unit: me.unit || "", departments: me.departments || [], caps: me.caps, permMode: me.permMode } : {};
   const isAppr = () => isAdmin(me);
   // ---------- Plan view: one screen per reporting line, grouped by unit, only the activities at or above a weight ----------
-  const pvOn = () => !!me && ["executive", "super_admin", "planning"].includes(me.role) && canSeeWeight(me.role);
+  const pvOn = () => !!me && ["executive", "super_admin"].includes(me.role);   // Deputy CEOs and Group Strategy only
   function renderPview(){
     const V = state.pv = state.pv || {}, n = weightScale();
     if (!V.line) V.line = /strateg|transform/i.test(me.unit || "") || /strateg|transform/i.test(me.title || "") ? "dceo-st" : "dceo-bu";   // each Deputy CEO opens on their own line
