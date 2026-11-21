@@ -94,7 +94,9 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
         <label class="small">Show <select id="pv-show"><option value="all" ${show === "all" ? "selected" : ""}>All</option><option value="open" ${show === "open" ? "selected" : ""}>Not done</option><option value="risk" ${show === "risk" ? "selected" : ""}>Overdue or blocked</option></select></label>
         <span class="small muted"><b>${total}</b> ${total === 1 ? "activity" : "activities"} in ${units} ${units === 1 ? "unit" : "units"}${nLate ? ` · <b style="color:var(--bad)">${nLate} overdue</b>` : ""}${nBlocked ? ` · ${nBlocked} blocked` : ""}</span></div></div>${body || `<div class="panel"><div class="empty">No units in this reporting line.</div></div>`}`;
   }
-  const leaOn = () => !!me && (me.role === "lea" || isSuper(me));
+  // the role as assigned (chief, GM, director, lea...). me.role is the working role: chiefs, GMs, directors and the lead executive assistant act as "leader".
+  const rawRole = () => (me && (me.roleRaw || me.role)) || "";
+  const leaOn = () => !!me && (rawRole() === "lea" || isSuper(me));
   const isLenient = () => matrixOn(me) ? fullEdit(me, me.unit) : !!me && (me.role === "leader" || me.role === "planning");
   const canEdit = u => matrixOn(me) ? canSave(me, u) : (isAppr() || (unitMember(me, u) && me.role !== "staff"));   // employees and division heads are view-only
   const canLead = u => !!u && (isAppr() || unitLead(me, u));
@@ -1008,8 +1010,8 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   const priPill = p => p ? `<span class="pill ${p === "High" ? "s-bad" : p === "Medium" ? "s-not" : "s-none"}">${esc(p)}</span>` : '<span class="muted">–</span>';
   // Weight chip: points given to the task and the share of 100 it carries in this unit's plan. Full-edit roles pick the points; others see the result once any are set.
   function wChip(u, t){
-    const pl = (planFor(u) || {}).tasks || [], list = pl.filter(x => x.kind !== "KPI / OKR" && !x.parent), can = !!me && canSetWeight(me.role) && fullEdit(me, u) && !isAll() && canEdit(u);   // not tied to the row's department: a chief weights every activity in the unit
-    if (t.kind === "KPI / OKR" || t.parent || !me || !canSeeWeight(me.role)) return "";
+    const pl = (planFor(u) || {}).tasks || [], list = pl.filter(x => x.kind !== "KPI / OKR" && !x.parent), can = !!me && canSetWeight(rawRole()) && fullEdit(me, u) && !isAll() && canEdit(u);   // not tied to the row's department: a chief weights every activity in the unit
+    if (t.kind === "KPI / OKR" || t.parent || !me || !canSeeWeight(rawRole())) return "";
     if (!can && !hasPts(list)) return "";
     const w = weightsOf(list)[list.indexOf(t)], pts = ptsOf(t), pc = w === undefined ? "" : (Math.round(w * 10) / 10) + "%", n = weightScale();
     const key = t.pts !== undefined && t.pts !== null && t.pts !== "" ? "" : " (default 1)";
@@ -1434,7 +1436,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   // ---------- Plans: week banner, filters, list ----------
   const pf = () => state.pf || (state.pf = { q: "", pri: "", st: "", dep: "", lvl: "tasks", kind: "ops" });
   // Weight filter. The Deputy CEOs start on the key activities (weight at or above the level set in Settings); anyone who may see weights can change it.
-  const canWF = () => !!me && canSeeWeight(me.role);
+  const canWF = () => !!me && canSeeWeight(rawRole());
   function wMin(){ if (!canWF()) return 0; const v = pf().w === undefined ? (me.role === "executive" ? String(watchMin()) : "") : pf().w; return v ? Number(v) : 0; }
   function visibleRows(tasks){
     const f = pf(), q = f.q.trim().toLowerCase(), wm = wMin();
@@ -1733,7 +1735,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     const w = ($("#main").clientWidth || 1000);
     const note = partial ? `<div class="slimnote">Loading the earlier weeks for the trends…</div>` : "";
     return note + renderDashboard({ monthWeeks: monthWeeks(state.eth, state.monthBasis), monthLabel: ethName(state.eth), weeks: dd.weeks, byWeek: by, byWeekAll: byAll, units: sortedUnits(), week: state.week, today: todayIso, filter: { ...state.dash, level: state.level },
-      alerts: attList, attScope: attScope ? unitName(attScope) : "", attUnit: attScope, showKey: !!me && canSeeWeight(me.role), pending: pendingFor().length, downloads, canUpdate: !!(me && !["executive"].includes(me.role)),
+      alerts: attList, attScope: attScope ? unitName(attScope) : "", attUnit: attScope, showKey: !!me && canSeeWeight(rawRole()), pending: pendingFor().length, downloads, canUpdate: !!(me && !["executive"].includes(me.role)),
       width: w > 900 ? Math.floor((w - 16) * 2 / 3) - 34 : w - 34, unitName, h: { esc, fmt, weekLabel, toEth, ethMonth: w => ethName(toEth(w)), ethWeek: w => ethWeekLabel(w) } });
   }
 
