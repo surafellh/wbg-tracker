@@ -63,9 +63,9 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   const pvOn = () => !!me && ["executive", "super_admin", "planning"].includes(me.role) && canSeeWeight(me.role);
   function renderPview(){
     const V = state.pv = state.pv || {}, n = weightScale();
-    if (V.line === undefined) V.line = /strateg|transform/i.test(me.title || "") ? "dceo-st" : /business|operation/i.test(me.title || "") ? "dceo-bu" : "";
+    if (!V.line) V.line = /strateg|transform/i.test(me.unit || "") || /strateg|transform/i.test(me.title || "") ? "dceo-st" : "dceo-bu";   // each Deputy CEO opens on their own line
     const wm = V.w === undefined ? watchMin() : Number(V.w) || 0, show = V.show || "all";
-    const lineUnits = sortedUnits().filter(u => !V.line || portfolioOf(u) === V.line), today = todayIso;
+    const lineUnits = sortedUnits().filter(u => portfolioOf(u) === V.line), today = todayIso;
     const isOpen = t => t.status !== "Done" && t.status !== "Closed" && !(typeof t.pct === "number" && t.pct >= 100);
     const late = t => isOpen(t) && t.due && t.due < today;
     let total = 0, nLate = 0, nBlocked = 0, units = 0;
@@ -89,7 +89,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     const seg = (key, label, on) => `<button type="button" role="tab" data-pvline="${key}" aria-selected="${on}">${esc(label)}</button>`;
     return `<div class="panel" style="margin-bottom:12px"><div class="panel-head"><div><h2>Plan view</h2><div class="small muted">${esc(weekLabel(state.week))} · the activities to follow, grouped by unit.</div></div></div>
       <div class="asks" style="display:flex;flex-wrap:wrap;gap:12px;align-items:center">
-        <div class="seg" role="tablist" aria-label="Reporting line">${seg("", "All", !V.line)}${PORTFOLIOS.map(p => seg(p.key, p.short, V.line === p.key)).join("")}</div>
+        <div class="seg" role="tablist" aria-label="Reporting line">${PORTFOLIOS.slice(0, 2).map(p => seg(p.key, p.short, V.line === p.key)).join("")}</div>
         <label class="small">Weight <select id="pv-w">${[0, ...Array.from({ length: n - 1 }, (_, k) => k + 2)].map(v => `<option value="${v}" ${wm === v ? "selected" : ""}>${v ? v + " and above" + (v === watchMin() ? " (key)" : "") : "All"}</option>`).join("")}</select></label>
         <label class="small">Show <select id="pv-show"><option value="all" ${show === "all" ? "selected" : ""}>All</option><option value="open" ${show === "open" ? "selected" : ""}>Not done</option><option value="risk" ${show === "risk" ? "selected" : ""}>Overdue or blocked</option></select></label>
         <span class="small muted"><b>${total}</b> ${total === 1 ? "activity" : "activities"} in ${units} ${units === 1 ? "unit" : "units"}${nLate ? ` · <b style="color:var(--bad)">${nLate} overdue</b>` : ""}${nBlocked ? ` · ${nBlocked} blocked` : ""}</span></div></div>${body || `<div class="panel"><div class="empty">No units in this reporting line.</div></div>`}`;
@@ -879,7 +879,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   function sortedUnits(){ return [...state.units].sort((a,b) => (a.type||"").localeCompare(b.type||"") || (a.order??99)-(b.order??99) || a.name.localeCompare(b.name)); }
 
   const GROUPS = { dashboard: ["dashboard", "pview", "lea"], plans: ["update", "plan", "mplan", "approvals"], delivery: ["support", "fb"], reports: ["tasks", "monthly", "ceo"], projects: ["projects"], cashflow: ["cashflow"] };
-  const SUB_LABEL = { pview: "Plan view", lea: "Assign actions", update: "Progress update", plan: "Next plan", mplan: "Monthly plan", approvals: "Approvals", support: "Business support", fb: "Feedback", tasks: "Weekly report", monthly: "Monthly report", ceo: "Actions for the CEO", projects: "Projects", cashflow: "Cash flow" };
+  const SUB_LABEL = { dashboard: "Dashboard", pview: "Plan view", lea: "Assign actions", update: "Progress update", plan: "Next plan", mplan: "Monthly plan", approvals: "Approvals", support: "Business support", fb: "Feedback", tasks: "Weekly report", monthly: "Monthly report", ceo: "Actions for the CEO", projects: "Projects", cashflow: "Cash flow" };
   const PAGE_TITLE = { pview: ["Plan view", "The activities each Deputy CEO follows, grouped by unit."], lea: ["Assign actions", "Add an action to a unit\u2019s plan for this week and see what has been assigned."], cashflow: ["Cash flow", "Bank balances, collections, payments and the financing needed."], projects: ["Projects", "Status and progress of business and capital projects."], dashboard: ["Dashboards", "How every unit and function is doing this week."], update: ["Plans", "Update progress on this week's tasks."], plan: ["Plans", "Plan the tasks for next week."], mplan: ["Plans", "Plan the month once and split it across its weeks."], approvals: ["Plans", "Changes waiting for approval."], support: ["Delivery", "Support requested from group functions."], fb: ["Delivery", "Feedback and corrective actions."], tasks: ["Reports", "Every task, filtered and downloadable."], monthly: ["Reports", "Consolidated by Ethiopian calendar month."], ceo: ["Reports", "What the CEO should do about each unit."], follow: ["Follow-up", ""], activity: ["Activity log", "Who changed what, and when."], units: ["Settings · Units", "Group Strategy only."], people: ["Settings · People", "Group Strategy only."], access: ["Settings · Access rules", "Decide who can see and do what. Group Strategy only."] };
   const groupOf = t => Object.keys(GROUPS).find(g => GROUPS[g].includes(t)) || "";
   const SM = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -1652,7 +1652,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     let html = bannerMsg ? `<div class="banner warn">${esc(bannerMsg)}</div>` : "";
     if (!db) html += `<div class="banner warn">Not connected to the database, so plans cannot be loaded or saved.</div>`;
     if (!state.unitsLoaded || !state.plansLoaded) html += `<div class="panel"><div class="empty"><b>Loading weekly plans…</b>Fetching plans for ${esc(weekLabel(state.week))}.</div></div>`;
-    else if (state.tab==="dashboard") html += (leaOn() ? `<div class="banner info" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span>Assign an action to a unit, and see what you have assigned.</span><button class="btn primary" type="button" data-gotab="lea">Assign actions</button></div>` : "") + renderDash();
+    else if (state.tab==="dashboard") html += renderDash();
         else if (state.tab==="update") html += renderUpdate();
     else if (state.tab==="plan") html += renderUpdate() + `<details class="panel imp-det" id="impDet" ${(state.impOpen || state.imp) ? "open" : ""}><summary><b>Import or export with Excel</b> <span class="small muted">download the template, fill it in, upload it</span></summary>${renderImport()}</details>`;
     else if (state.tab==="mplan") html += renderMplan();
