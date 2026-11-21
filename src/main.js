@@ -1008,7 +1008,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   const priPill = p => p ? `<span class="pill ${p === "High" ? "s-bad" : p === "Medium" ? "s-not" : "s-none"}">${esc(p)}</span>` : '<span class="muted">–</span>';
   // Weight chip: points given to the task and the share of 100 it carries in this unit's plan. Full-edit roles pick the points; others see the result once any are set.
   function wChip(u, t){
-    const pl = (planFor(u) || {}).tasks || [], list = pl.filter(x => x.kind !== "KPI / OKR" && !x.parent), can = !!me && canSetWeight(me.role) && fullEdit(me, u) && !isAll() && rowEd(u, t);
+    const pl = (planFor(u) || {}).tasks || [], list = pl.filter(x => x.kind !== "KPI / OKR" && !x.parent), can = !!me && canSetWeight(me.role) && fullEdit(me, u) && !isAll() && canEdit(u);   // not tied to the row's department: a chief weights every activity in the unit
     if (t.kind === "KPI / OKR" || t.parent || !me || !canSeeWeight(me.role)) return "";
     if (!can && !hasPts(list)) return "";
     const w = weightsOf(list)[list.indexOf(t)], pts = ptsOf(t), pc = w === undefined ? "" : (Math.round(w * 10) / 10) + "%", n = weightScale();
