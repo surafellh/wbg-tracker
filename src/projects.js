@@ -1,7 +1,7 @@
 // Projects: status and progress follow-up for business and capital (physical) projects.
 // Progress comes either from phases and activities (an activity can be linked to a weekly task) or from a cumulative physical % reported each month.
 import { projectsCanSee, projectsCanEdit, projectsCanCreate } from "./access.js";
-import { TYPES, STATUSES, RAGS, ACT_STATUSES, isCapital, latestUpdate, sortedUpdates, activityState, phasePct, projectProgress, progressSource, timeElapsed, daysUsed, daysToEnd, suggestRag, currentPeriod, monthChange, monthsSinceUpdate, needsUpdate, pendingDecisions, openRisks, latestTasks } from "./projectcalc.js";
+import { TYPES, STATUSES, RAGS, ACT_STATUSES, isCapital, latestUpdate, sortedUpdates, activityState, phasePct, projectProgress, progressSource, timeElapsed, daysUsed, daysToEnd, contractEnd, suggestRag, currentPeriod, monthChange, monthsSinceUpdate, needsUpdate, pendingDecisions, openRisks, latestTasks } from "./projectcalc.js";
 
 const RISK_TYPES = ["Risk", "Issue"];
 const RISK_CATS = ["Schedule", "Budget / cost", "Scope", "Quality", "Procurement / supply", "Contractor / vendor", "Land / permits", "Resources / people", "Technical", "Other"];
@@ -53,7 +53,7 @@ export function createProjects(c) {
   const refreshCaches = (p) => { for (const ph of p.phases || []) for (const a of ph.activities || []) if (a.link && a.link.ref) { const t = resolve(a.link); if (t) a.cache = { pct: t.pct, status: t.status, week: t.week, title: t.title }; } };
   const cacheStale = (p) => (p.phases || []).some((ph) => (ph.activities || []).some((a) => { if (!(a.link && a.link.ref)) return false; const t = resolve(a.link); return t && (!a.cache || a.cache.pct !== t.pct || a.cache.status !== t.status); }));
 
-  const toRow = (p) => ({ id: p.id, code: p.code || "", name: p.name, type: p.type, unit: p.unit, directorate: p.directorate || "", sponsor: p.sponsor || "", manager: p.manager || "", budget: num(p.budget), start: p.start || "", end: p.end || "", revisedEnd: p.revisedEnd || "", actualEnd: p.actualEnd || "", strategicLink: p.strategicLink || "", status: p.status, rag: p.rag, mode: p.mode, involved: p.involved || [], phases: p.phases || [], updates: p.updates || [], risks: p.risks || [], decisions: p.decisions || [], notes: p.notes || "", updatedAt: p.updatedAt });
+  const toRow = (p) => ({ id: p.id, code: p.code || "", name: p.name, type: p.type, unit: p.unit, directorate: p.directorate || "", sponsor: p.sponsor || "", manager: p.manager || "", budget: num(p.budget), start: p.start || "", end: p.end || "", revisedEnd: p.revisedEnd || "", actualEnd: p.actualEnd || "", days: num(p.days), strategicLink: p.strategicLink || "", status: p.status, rag: p.rag, mode: p.mode, involved: p.involved || [], phases: p.phases || [], updates: p.updates || [], risks: p.risks || [], decisions: p.decisions || [], notes: p.notes || "", updatedAt: p.updatedAt });
   // change a copy of the project, save it, and let the live subscription bring the saved version back
   async function commit(p, mutate, msg) {
     if (S.busy) return false;
@@ -111,7 +111,7 @@ export function createProjects(c) {
       const pr = progressOf(p), du = daysUsed(p, c.todayIso), lu = latestUpdate(p), late = needsUpdate(p, c.todayIso), dc = pendingDecisions(p).length;
       return `<tr class="clickable" data-pj="open" data-id="${esc(p.id)}" tabindex="0"><td><b>${esc(p.name)}</b><div class="small muted">${[p.code, p.directorate].filter(Boolean).map(esc).join(" · ")}</div></td>
         <td class="small">${esc(p.type)}</td><td class="small">${esc(c.unitName(p.unit))}</td><td><span class="pill ${stCls(p.status)}">${esc(p.status)}</span></td><td>${ragPill(p.status === "Completed" ? "Green" : p.rag)}</td>
-        <td style="min-width:150px">${progressCell(p, pr)}</td><td class="small">${p.start ? esc(fd(p.start)) : '<span class="muted">–</span>'}</td><td class="small">${p.end ? esc(fd(p.end)) : '<span class="muted">–</span>'}${p.revisedEnd ? `<div class="muted">revised ${esc(fd(p.revisedEnd))}</div>` : ""}${dueTag(p)}</td><td class="num small ${du && du.used > du.total && p.status !== "Completed" ? "late" : ""}">${du ? `${du.used.toLocaleString("en-US")} of ${du.total.toLocaleString("en-US")} days` : '<span class="muted">–</span>'}</td>
+        <td style="min-width:150px">${progressCell(p, pr)}</td><td class="small">${p.start ? esc(fd(p.start)) : '<span class="muted">–</span>'}</td><td class="small">${contractEnd(p) ? esc(fd(contractEnd(p))) : '<span class="muted">–</span>'}${p.revisedEnd ? `<div class="muted">revised ${esc(fd(p.revisedEnd))}</div>` : ""}${dueTag(p)}</td><td class="num small ${du && du.used > du.total && p.status !== "Completed" ? "late" : ""}">${du ? `${du.used.toLocaleString("en-US")} of ${du.total.toLocaleString("en-US")} days` : '<span class="muted">–</span>'}</td>
         <td class="small">${lu ? esc(monthName(lu.period)) : '<span class="muted">none</span>'}${late ? ' <span class="tag warn">update due</span>' : ""}${dc ? ` <span class="tag">${dc} decision${dc > 1 ? "s" : ""}</span>` : ""}</td></tr>`;
     }).join("");
     return `<div class="panel"><div class="panel-head"><div><h2>Projects</h2><div class="small muted">Status and progress of business and capital projects. Update monthly; physical projects move slowly.</div></div>
@@ -143,7 +143,7 @@ export function createProjects(c) {
         <div class="pj-big"><div class="small muted">Overall progress</div>${bar(pr, "")}<div class="small muted">${esc(progressSource(p))}</div></div>
         <div class="pj-grid">
           ${kv("Status", sel("status", STATUSES, p.status))}${kv("Colour", ed ? `<select data-pjset="rag" aria-label="Colour">${opt(RAGS, p.rag)}</select> ${sug && sug !== p.rag ? `<span class="small muted">suggested: ${ragPill(sug)}</span>` : ""}` : ragPill(p.rag))}
-          ${kv("Contract period", p.start || p.end ? `${p.start ? esc(fd(p.start)) : "?"} – ${p.end ? esc(fd(p.end)) : "?"}` : "")}${kv("Time used", (du ? `${du.used.toLocaleString("en-US")} of ${du.total.toLocaleString("en-US")} days${te !== null ? " · " + te + "%" : ""}` : pctTxt(te)) + dueTag(p))}${kv("Revised end", p.revisedEnd ? esc(fd(p.revisedEnd)) : "")}${kv("Actual end", p.actualEnd ? esc(fd(p.actualEnd)) : "")}${kv("Budget / contract value", money(p.budget))}
+          ${kv("Contract period", p.start || p.end ? `${p.start ? esc(fd(p.start)) : "?"} – ${contractEnd(p) ? esc(fd(contractEnd(p))) : "?"}${!p.end && p.days ? " (" + p.days + " working days)" : ""}` : "")}${kv("Time used", (du ? `${du.used.toLocaleString("en-US")} of ${du.total.toLocaleString("en-US")} days${te !== null ? " · " + te + "%" : ""}` : pctTxt(te)) + dueTag(p))}${kv("Revised end", p.revisedEnd ? esc(fd(p.revisedEnd)) : "")}${kv("Actual end", p.actualEnd ? esc(fd(p.actualEnd)) : "")}${kv("Budget / contract value", money(p.budget))}
           ${kv("Sponsor", esc(p.sponsor))}${kv("Project manager", esc(p.manager))}${kv("Strategic link", esc(p.strategicLink))}${kv("Also involved", (p.involved || []).map((u) => `<span class="tag">${esc(c.unitName(u))}</span>`).join(" "))}
           ${isCapital(p) && lu ? kv("Financial spent", pctTxt(num(lu.financial))) : ""}
         </div>
@@ -224,6 +224,8 @@ export function createProjects(c) {
       ${field("pf-bud", "Approved budget / contract amount (ETB)", `<input type="number" id="pf-bud" min="0" step="any" value="${r.budget ?? ""}">`)}
       ${field("pf-start", "Contract start date", `<input type="date" id="pf-start" value="${esc(r.start)}">`)}
       ${field("pf-end", "Contract end date", `<input type="date" id="pf-end" value="${esc(r.end)}">`)}
+      ${field("pf-days", "Contract duration (working days, Sundays excluded)", `<input type="number" id="pf-days" min="1" step="1" value="${r.days ?? ""}" placeholder="e.g. 365">`)}
+      <div class="small muted" style="grid-column:1/-1;margin:-4px 0 4px">Give the duration alone and it counts as working days, so 365 is 365 working days; the end date is worked out from the start. If you give both dates, the days between them are counted without Sundays.</div>
       ${field("pf-rev", "Revised end date (new plan, if the contract end moved)", `<input type="date" id="pf-rev" value="${esc(r.revisedEnd || "")}">`)}
       ${field("pf-act", "Actual end date (when finished)", `<input type="date" id="pf-act" value="${esc(r.actualEnd || "")}">`)}
       ${field("pf-link", "Strategic link (optional)", `<input type="text" id="pf-link" value="${esc(r.strategicLink)}">`, true)}
@@ -323,7 +325,7 @@ export function createProjects(c) {
     else if (x === "pdf") pdfList();
     else if (x === "pdf-one") pdfOne(p || find(id));
     else if (x === "proj-save") {
-      const r = m.row, row = { ...r, name: v("pf-name").trim(), code: v("pf-code").trim(), type: v("pf-type"), unit: v("pf-unit") || r.unit, directorate: v("pf-dir").trim(), sponsor: v("pf-spon").trim(), manager: v("pf-mgr").trim(), budget: num(v("pf-bud")), start: v("pf-start"), end: v("pf-end"), revisedEnd: v("pf-rev"), actualEnd: v("pf-act"), strategicLink: v("pf-link").trim(), mode: v("pf-mode"), status: v("pf-st"), notes: v("pf-notes").trim(),
+      const r = m.row, row = { ...r, name: v("pf-name").trim(), code: v("pf-code").trim(), type: v("pf-type"), unit: v("pf-unit") || r.unit, directorate: v("pf-dir").trim(), sponsor: v("pf-spon").trim(), manager: v("pf-mgr").trim(), budget: num(v("pf-bud")), start: v("pf-start"), end: v("pf-end"), days: num(v("pf-days")), revisedEnd: v("pf-rev"), actualEnd: v("pf-act"), strategicLink: v("pf-link").trim(), mode: v("pf-mode"), status: v("pf-st"), notes: v("pf-notes").trim(),
         involved: [...document.querySelectorAll("#pjModalRoot [data-inv]:checked")].map((e) => e.dataset.inv).filter((u) => u !== (v("pf-unit") || r.unit)) };
       if (!row.name) { c.toast("Give the project a name"); return; }
       if (row.start && row.end && row.end < row.start) { c.toast("The contract end is before the contract start"); return; }
@@ -455,7 +457,7 @@ export function createProjects(c) {
     const table = (head, body, cols, extra) => { doc.autoTable({ startY: y, margin: { left: 36, right: 36 }, head: head ? [head] : undefined, body, columnStyles: cols || {}, ...pdfSt(), ...(extra || {}) }); y = doc.lastAutoTable.finalY + 18; };
     section("At a glance");
     const kv = [["Status", p.status], ["Colour", p.status === "Completed" ? "Green" : p.rag], ["Progress", pr === null ? "Not reported yet" : pr + "%  (" + progressSource(p).toLowerCase() + ")"],
-      ["Contract", `${p.start ? fd(p.start) : "?"} to ${p.end ? fd(p.end) : "?"}${p.revisedEnd ? "  ·  revised end " + fd(p.revisedEnd) : ""}${p.actualEnd ? "  ·  finished " + fd(p.actualEnd) : ""}`],
+      ["Contract", `${p.start ? fd(p.start) : "?"} to ${contractEnd(p) ? fd(contractEnd(p)) : "?"}${p.revisedEnd ? "  ·  revised end " + fd(p.revisedEnd) : ""}${p.actualEnd ? "  ·  finished " + fd(p.actualEnd) : ""}`],
       ["Time used", du ? `${du.used.toLocaleString("en-US")} of ${du.total.toLocaleString("en-US")} days${te !== null ? " (" + te + "%)" : ""}${dl !== null ? (dl < 0 ? "  ·  " + -dl + " days past the contract end" : "  ·  " + dl + " days left") : ""}` : (te !== null ? te + "%" : "–")],
       ["Budget / contract value", money(p.budget)], ["Sponsor", p.sponsor || "–"], ["Project manager", p.manager || "–"], ["Strategic link", p.strategicLink || "–"],
       ["Also involved", (p.involved || []).map((u) => c.unitName(u)).join(", ") || "–"]];
