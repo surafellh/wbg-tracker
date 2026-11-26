@@ -1094,10 +1094,10 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   const remNote = t => { const b = baseOf(t); if (!b) return ""; const o = overallOf(t); return `<div class="rem-note" id="t-rem-${t.id}" title="Progress on a brought-forward task is counted on the part that was still left. Overall = done earlier + this week's share of the rest."><span class="rem-bar"><i style="width:${o}%"></i></span><span>Overall <b>${o}%</b> · ${b}% done earlier · ${100 - b}% was left</span></div>`; };
   const finPct = t => { const c = calcPct(t); return c === null ? 0 : c; };
   function finRowHtml(u, t, i){
-    const ed = rowEd(u, t), pct = finPct(t);
+    const ed = rowEd(u, t), pct = finPct(t), fresh = ed && !savedTask(u, t);   // a new line is filled in here; a saved one has its title and target set in the plan
     return `<tr class="task-row" data-u="${esc(u)}" data-i="${i}" data-id="${esc(t.id)}" data-fin="1">
-      <td class="c-task"><div class="tt">${esc(t.title) || '<span class="muted">(no title)</span>'}</div><div class="sub">${t.ref ? `<span class="ref">${esc(t.ref)}</span>` : ""}${t.dept ? `<span class="who">${esc(t.dept)}</span>` : ""}</div></td>
-      <td class="num fin-n" data-l="Target">${hasTgt(t) ? esc(Number(t.target).toLocaleString()) + (t.measure ? ` <span class="small muted">${esc(t.measure)}</span>` : "") : '<span class="muted">–</span>'}</td>
+      <td class="c-task">${fresh ? `<input type="text" id="t-title-${t.id}" data-f="title" value="${esc(t.title)}" placeholder="Financial line, e.g. Sales revenue" aria-label="Financial line">` : `<div class="tt">${esc(t.title) || '<span class="muted">(no title)</span>'}</div>`}<div class="sub">${t.ref ? `<span class="ref">${esc(t.ref)}</span>` : ""}${t.dept ? `<span class="who">${esc(t.dept)}</span>` : ""}</div></td>
+      <td class="num fin-n" data-l="Target">${fresh ? `<div class="tg2"><input type="number" step="any" id="t-tg-${t.id}" data-f="target" value="${t.target ?? ""}" placeholder="Target" aria-label="Target"><input type="text" id="t-ms-${t.id}" data-f="measure" value="${esc(t.measure || "")}" placeholder="unit" maxlength="20" aria-label="Target unit"></div>` : hasTgt(t) ? esc(Number(t.target).toLocaleString()) + (t.measure ? ` <span class="small muted">${esc(t.measure)}</span>` : "") : '<span class="muted">–</span>'}</td>
       <td data-l="Actual"><input type="number" step="any" class="fin-in" id="t-act-${t.id}" data-f="actual" value="${t.actual ?? ""}" placeholder="0" aria-label="Actual" ${ed ? "" : "disabled"}></td>
       <td data-l="Performance"><div class="pc"><div class="bar"><i class="fin-bar" style="width:${pct}%"></i></div><span class="num small fin-pct">${hasTgt(t) ? pct + "%" : "–"}</span></div></td>
       <td class="c-act"><div class="task-side"><button class="icon-btn ib" type="button" data-open-task="${esc(u)}|${esc(t.id)}" aria-label="Open details" title="Open details">${ico(IC.open)}</button></div></td></tr>`;
@@ -2178,8 +2178,8 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     if (t.id === "restoreGo") { doRestore(); return; }
     if (t.dataset.openTask) { openPanel(t.dataset.openTask); return; }
     if (t.dataset.kids) { const k = "kid:" + t.dataset.kids; state.expanded.has(k) ? state.expanded.delete(k) : state.expanded.add(k); render(); return; }
-    if (t.id==="addUnplanned") { const nt = makeTask(state.editUnit, { unplanned: true }); render(); const el = document.getElementById("t-title-"+nt.id); el && el.focus(); return; }
-    if (t.id==="addTask" || t.dataset.addUnit) { const u = t.dataset.addUnit || state.editUnit, nt = makeTask(u, state.tab === "update" && pf().kind === "mkt" ? { category: "Marketing" } : undefined);
+    if (t.id==="addUnplanned") { const nt = makeTask(state.editUnit, { unplanned: true, ...(kindExtra() || {}) }); render(); const el = document.getElementById("t-title-"+nt.id); el && el.focus(); return; }
+    if (t.id==="addTask" || t.dataset.addUnit) { const u = t.dataset.addUnit || state.editUnit, nt = makeTask(u, kindExtra());
       // a leftover filter (status, priority, department, search) would hide the blank new row: clear it so the row shows
       if (!isAll()) { const dd = planFor(u).tasks; if (!visibleRows(dd).some(r => dd[r.i] === nt)) { const f = pf(); f.q = f.pri = f.st = f.dep = ""; toast("Filters cleared so the new task shows"); } }
       render(); const el = document.getElementById("t-title-"+nt.id); el && el.focus(); }
@@ -2487,6 +2487,8 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
 
   function goTab(to){ const b = document.querySelector(`nav.tabs button[data-tab="${to}"]`); if (b) b.click(); }
   // A new empty task in a unit's draft; its reference number is requested right away.
+  // A task added while the Financial or Marketing view is open belongs to that kind, so its new row shows in the list that is open.
+  const kindExtra = () => { if (isAll()) return undefined; const k = pf().kind; return k === "fin" ? { category: "Revenue" } : k === "mkt" ? { category: "Marketing" } : undefined; };
   function makeTask(u, extra){
     const d = planFor(u);
     const nt = { id: uid(), title:"", outcome:"", dept: (me && ["manager","staff"].includes(me.role) && (me.departments||[]).length === 1) ? me.departments[0] : "", owner:"", due:"", priority:"Medium", status:"Not started", pct:0, notes:"", kind:"Task", depUnit:"", dep:"", ev:[], ...(extra || {}) };
