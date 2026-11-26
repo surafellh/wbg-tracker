@@ -1,3 +1,4 @@
+import { PILLARS, GOALS, goalName, pillarOf, strategyOn } from "./strategy.js";
 import "./style.css";
 import * as XLSX from "xlsx";
 import { jsPDF } from "jspdf";
@@ -768,6 +769,28 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     return `<div class="panel" style="margin-bottom:16px"><div class="scroll"><table><thead><tr><th>Unit</th><th>Weeks counted</th><th>Achieved</th><th>Well performed</th><th>Partially achieved</th><th>Under performed</th><th>Cancelled</th><th>Average performance</th></tr></thead><tbody>${body}${PORTFOLIOS.map(pf => { const rs = avgs.filter(r => portfolioOf(r.u) === pf.key); return rs.length ? `<tr><td><b>${esc(pf.label)}</b> <span class="small muted">(average of units)</span></td><td class="num">${rs.length} units</td>${FINAL_LABELS.map(l => `<td class="num">${rs.reduce((a, r) => a + r.sum[l], 0)}</td>`).join("")}<td>${bar(Math.round(rs.reduce((a, r) => a + r.avg, 0) / rs.length))}</td></tr>` : ""; }).join("")}<tr><td><b>All units</b></td><td class="num">${avgs.length} units</td>${FINAL_LABELS.map(l => `<td class="num">${avgs.reduce((a, r) => a + r.sum[l], 0)}</td>`).join("")}<td>${bar(all)}</td></tr></tbody></table></div>
       <div class="small muted" style="padding:10px 16px">Select a unit to see each week. A week's performance is the average % reached on the tasks planned for that week, judged inside that week: finishing a task later does not change an earlier week. A unit's number is the average of its weekly numbers. Only weeks whose update period has closed are counted, and weeks with no plan are skipped. All units is the average of the unit numbers. Cancelled tasks are left out.</div></div>`;
   }
+  // Strategy review: how the linked activities of the month contribute to each of the 7 pillars (Block 1: Group Strategy Office).
+  const stratOn = () => !!me && (["executive", "super_admin", "planning"].includes(me.role) || strategyOn(me.unit));
+  function renderStrategy(){
+    const e = state.eth, rng = ethMonthRange(e), md = state.monthData;
+    const head = `<div class="panel-head"><div><h2>Strategy review · ${esc(ethName(e))}</h2><div class="small muted">${esc(fmt(rng.start))} \u2013 ${esc(fmt(rng.end))} ${parse(rng.end).getFullYear()} \u00b7 how activities linked to a strategic goal contribute to each pillar. Group Strategy Office first; other units follow.</div></div></div>`;
+    if (!db) return `<div class="panel">${head}<div class="empty"><b>No data</b></div></div>`;
+    if (state.monthLoading || !md) return `<div class="panel">${head}<div class="empty"><b>Collecting the weeks of ${esc(ETH_M[e.m - 1])}\u2026</b></div></div>`;
+    const seen = new Map();
+    md.weeks.forEach(w => sortedUnits().filter(u => strategyOn(u.id)).forEach(u => { const p = md.data[w] && md.data[w][u.id]; if (!p) return; realTasks(p).forEach(t => seen.set(u.id + "|" + norm(t.title) + "|" + norm(t.dept), { ...t, unit: u.id, week: w })); }));
+    const all = [...seen.values()], pct = t => t.status === "Done" ? 100 : (typeof t.pct === "number" ? t.pct : 0), isDone = t => t.status === "Done";
+    const linked = all.filter(t => pillarOf(t.goal)), unl = all.length - linked.length;
+    const rag = (n, avg, blk) => !n ? ["s-bad", "No activity"] : blk || avg < 40 ? ["s-bad", "Red"] : avg < 70 ? ["s-not", "Amber"] : ["s-done", "Green"];
+    const cards = PILLARS.map(p => {
+      const ts = linked.filter(t => pillarOf(t.goal) === p.id), avg = ts.length ? Math.round(ts.reduce((a, t) => a + pct(t), 0) / ts.length) : 0, blk = ts.filter(t => t.status === "Blocked").length, gh = p.goals.filter(([id]) => ts.some(t => t.goal === id)).length, r = rag(ts.length, avg, blk);
+      const goals = p.goals.map(([id, nm]) => { const g = ts.filter(t => t.goal === id); return `<tr><td class="small"><b>${id}</b> ${esc(nm)}</td><td class="num small">${g.length || "\u2013"}</td><td class="num small">${g.length ? g.filter(isDone).length + "/" + g.length : "\u2013"}</td><td class="small">${g.map(t => esc(t.title)).slice(0, 4).join("; ")}${g.length > 4 ? ` +${g.length - 4}` : ""}</td></tr>`; }).join("");
+      return `<div class="panel" style="margin-bottom:12px"><div class="panel-head"><div><h2 style="font-size:15px">${p.no} \u00b7 ${esc(p.name)}</h2><div class="small muted">${ts.length} ${ts.length === 1 ? "activity" : "activities"} \u00b7 ${ts.filter(isDone).length} done \u00b7 average ${avg}% \u00b7 ${gh} of ${p.goals.length} goals touched${blk ? ` \u00b7 <b style="color:var(--bad)">${blk} blocked</b>` : ""}</div></div><span class="pill ${r[0]}">${r[1]}</span></div>
+        <div class="scroll"><table class="dtbl"><thead><tr><th>Goal</th><th>Activities</th><th>Done</th><th>What was done</th></tr></thead><tbody>${goals}</tbody></table></div></div>`;
+    }).join("");
+    const touched = PILLARS.filter(p => linked.some(t => pillarOf(t.goal) === p.id)).length;
+    const stats = `<div class="stats"><div class="stat"><div class="v">${all.length}</div><div class="k">activities this month</div></div><div class="stat"><div class="v">${linked.length}</div><div class="k">linked to a goal</div></div><div class="stat"><div class="v${unl ? "" : " accent"}">${unl}</div><div class="k">not linked yet</div></div><div class="stat"><div class="v accent">${touched} of 7</div><div class="k">pillars contributed to</div></div></div>`;
+    return `<div class="panel" style="margin-bottom:12px">${head}${stats}</div>${cards}`;
+  }
   function renderMonthly(){
     const e = state.eth, rng = ethMonthRange(e);
     const head = `<div class="panel-head"><div class="toolbar"><h2>${esc(ethName(e))}</h2><span class="muted small">${esc(fmt(rng.start))} – ${esc(fmt(rng.end))} ${parse(rng.end).getFullYear()}</span>
@@ -880,9 +903,9 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   const NO_PLAN_UNITS = ["ceo", "d-ceo"];
   function sortedUnits(){ return [...state.units].sort((a,b) => (a.type||"").localeCompare(b.type||"") || (a.order??99)-(b.order??99) || a.name.localeCompare(b.name)); }
 
-  const GROUPS = { dashboard: ["dashboard", "pview", "lea"], plans: ["update", "plan", "mplan", "approvals"], delivery: ["support", "fb"], reports: ["tasks", "monthly", "ceo"], projects: ["projects"], cashflow: ["cashflow"] };
-  const SUB_LABEL = { dashboard: "Dashboard", pview: "Plan view", lea: "Assign actions", update: "Progress update", plan: "Next plan", mplan: "Monthly plan", approvals: "Approvals", support: "Business support", fb: "Feedback", tasks: "Weekly report", monthly: "Monthly report", ceo: "Actions for the CEO", projects: "Projects", cashflow: "Cash flow" };
-  const PAGE_TITLE = { pview: ["Plan view", "The activities each Deputy CEO follows, grouped by unit."], lea: ["Assign actions", "Add an action to a unit\u2019s plan for this week and see what has been assigned."], cashflow: ["Cash flow", "Bank balances, collections, payments and the financing needed."], projects: ["Projects", "Status and progress of business and capital projects."], dashboard: ["Dashboards", "How every unit and function is doing this week."], update: ["Plans", "Update progress on this week's tasks."], plan: ["Plans", "Plan the tasks for next week."], mplan: ["Plans", "Plan the month once and split it across its weeks."], approvals: ["Plans", "Changes waiting for approval."], support: ["Delivery", "Support requested from group functions."], fb: ["Delivery", "Feedback and corrective actions."], tasks: ["Reports", "Every task, filtered and downloadable."], monthly: ["Reports", "Consolidated by Ethiopian calendar month."], ceo: ["Reports", "What the CEO should do about each unit."], follow: ["Follow-up", ""], activity: ["Activity log", "Who changed what, and when."], units: ["Settings · Units", "Group Strategy only."], people: ["Settings · People", "Group Strategy only."], access: ["Settings · Access rules", "Decide who can see and do what. Group Strategy only."] };
+  const GROUPS = { dashboard: ["dashboard", "pview", "lea"], plans: ["update", "plan", "mplan", "approvals"], delivery: ["support", "fb"], reports: ["tasks", "monthly", "strategy", "ceo"], projects: ["projects"], cashflow: ["cashflow"] };
+  const SUB_LABEL = { dashboard: "Dashboard", pview: "Plan view", lea: "Assign actions", update: "Progress update", plan: "Next plan", mplan: "Monthly plan", approvals: "Approvals", support: "Business support", fb: "Feedback", tasks: "Weekly report", monthly: "Monthly report", strategy: "Strategy review", ceo: "Actions for the CEO", projects: "Projects", cashflow: "Cash flow" };
+  const PAGE_TITLE = { pview: ["Plan view", "The activities each Deputy CEO follows, grouped by unit."], lea: ["Assign actions", "Add an action to a unit\u2019s plan for this week and see what has been assigned."], cashflow: ["Cash flow", "Bank balances, collections, payments and the financing needed."], projects: ["Projects", "Status and progress of business and capital projects."], dashboard: ["Dashboards", "How every unit and function is doing this week."], update: ["Plans", "Update progress on this week's tasks."], plan: ["Plans", "Plan the tasks for next week."], mplan: ["Plans", "Plan the month once and split it across its weeks."], approvals: ["Plans", "Changes waiting for approval."], support: ["Delivery", "Support requested from group functions."], fb: ["Delivery", "Feedback and corrective actions."], tasks: ["Reports", "Every task, filtered and downloadable."], monthly: ["Reports", "Consolidated by Ethiopian calendar month."], strategy: ["Reports", "How the month\u2019s activities contribute to the seven strategic pillars."], ceo: ["Reports", "What the CEO should do about each unit."], follow: ["Follow-up", ""], activity: ["Activity log", "Who changed what, and when."], units: ["Settings · Units", "Group Strategy only."], people: ["Settings · People", "Group Strategy only."], access: ["Settings · Access rules", "Decide who can see and do what. Group Strategy only."] };
   const groupOf = t => Object.keys(GROUPS).find(g => GROUPS[g].includes(t)) || "";
   const SM = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   const weekShort = w => { const a = parse(w), b = parse(weekEndOf(w)); return a.getMonth() === b.getMonth() ? `${SM[a.getMonth()]} ${a.getDate()} – ${b.getDate()}` : `${SM[a.getMonth()]} ${a.getDate()} – ${SM[b.getMonth()]} ${b.getDate()}`; };
@@ -899,7 +922,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     const hp = $("#heroProg");
     if (hp) { const pool = Object.values(state.plans).flatMap(p => realTasks(p)); hp.hidden = true;
       if (!hp.hidden) hp.innerHTML = progressBar(`Overall progress of the week's plan`, avgOf(pool), `${done} of ${all.length} tasks done · every task counts, no status or % counts as 0`, true); }
-    const mo = state.tab === "monthly";
+    const mo = state.tab === "monthly" || state.tab === "strategy";
     const pt = PAGE_TITLE[state.tab] || ["Weekly Activity Tracking", ""]; $("#heroTitle").textContent = pt[0]; $("#heroSub").textContent = pt[1];
     document.body.dataset.tab = state.tab;
     if (mo) { const r = ethMonthRange(state.eth); $("#weekLabel").textContent = ethName(state.eth); $("#weekSub").textContent = `${fmt(r.start)} – ${fmt(r.end)} ${parse(r.end).getFullYear()}`; }
@@ -1018,6 +1041,12 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     if (!can) return `<span class="pill s-none wchip" title="Weight ${pts} of ${n}. Counts ${pc} of this plan's score">⚖ ${pts}/${n} · ${pc}</span>`;
     return `<label class="wchip small" title="Weight points, 1 to ${n}. The app converts them to a share of 100 across the plan${key}">⚖ <select id="t-pts-${t.id}" data-f="pts" aria-label="Weight points">${Array.from({ length: n }, (_, k) => `<option value="${k + 1}" ${pts === k + 1 ? "selected" : ""}>${k + 1}</option>`).join("")}</select>/${n} <b>${pc}</b></label>`;
   }
+  function goalChip(u, t){
+    if (!strategyOn(u) || t.kind === "KPI / OKR" || t.parent) return "";
+    const can = !!me && canEdit(u) && !isAll();
+    if (!can) return t.goal ? `<span class="pill s-prog" title="${esc(goalName(t.goal))}">${esc(t.goal)}</span>` : '<span class="pill s-none" title="Not linked to a strategic goal">No goal</span>';
+    return `<label class="wchip small" title="Link this activity to a strategic goal. It then counts toward that pillar">\u25ce <select id="t-goal-${t.id}" data-f="goal" aria-label="Strategic goal"><option value="">Goal\u2026</option>${PILLARS.map(p => `<optgroup label="${p.no} \u00b7 ${esc(p.name)}">${p.goals.map(([id, nm]) => `<option value="${id}" ${t.goal === id ? "selected" : ""}>${id} ${esc(nm)}</option>`).join("")}</optgroup>`).join("")}</select></label>`;
+  }
   function taskRowHtml(u, t, i, ind = 0){
     if (state.tab === "plan") return planRowHtml(u, t, i);
     if (pf().kind === "fin") return finRowHtml(u, t, i);
@@ -1035,7 +1064,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
       t.kind === "KPI / OKR" ? '<span class="pill s-prog">KPI / OKR</span>' : "",
       carriedN ? `<span class="pill s-not" title="Brought forward from an earlier week">Carried${carriedN > 1 ? " ×" + carriedN : ""}</span>` : "",
       pend ? '<span class="pill s-not">Change waiting for approval</span>' : "",
-      wChip(u, t),
+      wChip(u, t), goalChip(u, t),
       t.owner ? `<span class="who" title="Owner">${esc(t.owner)}</span>` : "",
       hasTgt(t) ? `<span class="pill s-none" title="Actual against target">${esc(String(t.actual ?? 0))} / ${esc(String(t.target))} ${esc(t.measure || "")}</span>` : "",
       (t.depUnit || t.dep) ? `<span class="mi" title="Depends on ${esc(depText(t))}">${ico(IC.link)}</span>` : "",
@@ -1075,7 +1104,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   function planRowHtml(u, t, i){
     const ed = rowEd(u, t), lk = isLocked(u, t), free = ed && !lk, key = `${u}|${i}`;
     const dis = free ? "" : "disabled", fin = t.category === "Revenue";
-    const sub = [t.ref ? `<span class="ref">${esc(t.ref)}</span>` : '<span class="pill s-none">New</span>', t.unplanned ? '<span class="pill s-prog">Unplanned</span>' : "", t.carried ? '<span class="pill s-not">Carried</span>' : "", t.parent ? `<span class="pill s-none">↳ ${esc(t.parent)}</span>` : "", wChip(u, t), t.owner ? `<span class="who">${esc(t.owner)}</span>` : "", lk ? `<span class="mi" title="Fixed task">${ico(IC.lock)}</span>` : ""].filter(Boolean).join("");
+    const sub = [t.ref ? `<span class="ref">${esc(t.ref)}</span>` : '<span class="pill s-none">New</span>', t.unplanned ? '<span class="pill s-prog">Unplanned</span>' : "", t.carried ? '<span class="pill s-not">Carried</span>' : "", t.parent ? `<span class="pill s-none">↳ ${esc(t.parent)}</span>` : "", wChip(u, t), goalChip(u, t), t.owner ? `<span class="who">${esc(t.owner)}</span>` : "", lk ? `<span class="mi" title="Fixed task">${ico(IC.lock)}</span>` : ""].filter(Boolean).join("");
     const main = (free || (ed && lk && getSettings().allowRename)) ? `<textarea class="grow title-in" rows="1" id="t-title-${t.id}" data-f="title" placeholder="Task or product" aria-label="Task">${esc(t.title)}</textarea>` : `<div class="tt">${esc(t.title) || '<span class="muted">(no title)</span>'}</div>`;
     const act = `<button class="icon-btn ib" type="button" data-open-task="${esc(u)}|${esc(t.id)}" aria-label="Open details" title="Open details">${ico(IC.open)}</button>` + (ed ? (state.confirmDelete === t.id ? `<span class="confirm">Remove? <button class="btn danger small" data-del-yes="${esc(key)}">Yes</button><button class="btn small" data-del-no>No</button></span>` : `<button class="icon-btn ib bad" type="button" data-del="${t.id}" aria-label="Remove task" title="Remove">${ico(IC.trash)}</button>`) : "");
     return `<tr class="task-row" data-u="${esc(u)}" data-i="${i}" data-id="${esc(t.id)}">
@@ -1662,6 +1691,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     else if (state.tab==="ceo") html += renderCeo();
     else if (state.tab==="follow") html += renderFollow();
     else if (state.tab==="monthly") html += renderMonthly();
+    else if (state.tab==="strategy" && stratOn()) html += renderStrategy();
     else if (state.tab==="support") html += X.renderSupport();
     else if (state.tab==="fb") html += X.renderFb();
     else if (state.tab==="projects") html += PJ.renderProjects();
@@ -2094,7 +2124,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     if (state.dirty) { toast("Save or discard your changes first"); return; }
     state.week = w; state.draft = null; state.allDrafts = null; subscribePlans();
   }
-  const monthTab = () => state.tab === "monthly";
+  const monthTab = () => state.tab === "monthly" || state.tab === "strategy";
   $("#prevWeek").onclick = () => monthTab() ? shiftMonth(-1) : setWeek(prevWeekOf(state.week));
   $("#nextWeek").onclick = () => monthTab() ? shiftMonth(1) : setWeek(nextWeekOf(state.week));
   $("#thisWeek").onclick = () => { if (monthTab()) { state.eth = toEth(todayIso); loadMonth(); } else setWeek(state.tab === "plan" ? nextMonday() : thisMonday()); };
@@ -2104,7 +2134,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     state.tab = to; state.confirmDelete = null;
     if (to === "plan" && state.week < nextMonday() && !state.dirty) { state.week = nextMonday(); state.draft = null; state.allDrafts = null; subscribePlans(); }
     else if (to === "update" && state.week > thisMonday() && !state.dirty) { state.week = thisMonday(); state.draft = null; state.allDrafts = null; subscribePlans(); }
-    if ((state.tab==="update"||state.tab==="plan") && !hasDraft()) loadDraft(); if (state.tab==="activity") subscribeActivity(); if (state.tab==="people") loadPeople(); if (state.tab==="access" && !state.people) loadPeople(); if (state.tab==="monthly" && db && !state.monthLoading && (!state.monthData || state.monthKey !== `${state.eth.y}-${state.eth.m}${state.monthBasis}`)) { render(); loadMonth(); return; } render(); });
+    if ((state.tab==="update"||state.tab==="plan") && !hasDraft()) loadDraft(); if (state.tab==="activity") subscribeActivity(); if (state.tab==="people") loadPeople(); if (state.tab==="access" && !state.people) loadPeople(); if ((state.tab==="monthly" || state.tab==="strategy") && db && !state.monthLoading && (!state.monthData || state.monthKey !== `${state.eth.y}-${state.eth.m}${state.monthBasis}`)) { render(); loadMonth(); return; } render(); });
 
   document.addEventListener("click", e => { const rp = document.querySelector("details.reminders[open]"); if (rp && !e.target.closest("details.reminders")) rp.open = false; });
   const main = $("#main");
@@ -2374,7 +2404,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   function renderNav(){
     const g = groupOf(state.tab);
     document.querySelectorAll("#mainNav button").forEach(b => { b.setAttribute("aria-current", String(b.dataset.group === g)); if (b.dataset.group === "projects") b.hidden = !PJ.canSee(); if (b.dataset.group === "cashflow") b.hidden = !CF.canSee(); });
-    const subs = (GROUPS[g] || []).filter(t => (t !== "approvals" || isAppr() || pendingMine().length || toDecide().length) && (t !== "ceo" || canFeedback(me)) && (t !== "pview" || pvOn()) && (t !== "lea" || leaOn()));
+    const subs = (GROUPS[g] || []).filter(t => (t !== "approvals" || isAppr() || pendingMine().length || toDecide().length) && (t !== "ceo" || canFeedback(me)) && (t !== "pview" || pvOn()) && (t !== "strategy" || stratOn()) && (t !== "lea" || leaOn()));
     const nb = X.badgeCount();
     $("#subNav").innerHTML = subs.length > 1 ? subs.map(t => `<button role="tab" data-sub="${t}" aria-selected="${t === state.tab}">${SUB_LABEL[t]}${t === "fb" && nb ? ` <span class="badge">${nb}</span>` : ""}${t === "approvals" && pendingFor().length ? ` <span class="badge">${pendingFor().length}</span>` : ""}</button>`).join("") : "";
     $("#subNav").hidden = !subs.length || subs.length < 2;
