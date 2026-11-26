@@ -1280,3 +1280,4 @@ tr.dim td{opacity:.55}.fut td{opacity:.9}
 .st-act{margin:6px 0 8px 6px}.st-list{margin:3px 0 0 18px;padding:0;list-style:none;font-size:13px}.st-list li{margin:2px 0}
 .st-ok{color:var(--good);font-weight:700}.st-open{color:var(--warn)}
 .st-kr{margin:0 0 6px 6px;padding:0 0 0 14px;font-size:12px;color:var(--muted)}.st-kr li{margin:1px 0}
+.wchip input[type=text]{width:130px;padding:3px 6px;font-size:12px}.st-sum input[type=text]{width:220px}

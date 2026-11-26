@@ -16,7 +16,7 @@ export function buildReview(entries, opts = {}) {
   const items = [...byKey.values()].map(g => {
     const ms = [...g.members.values()], pct = Math.round(ms.reduce((a, t) => a + pctOf(t), 0) / ms.length);
     const lead = ms.find(t => t.goal) || ms[0], goal = lead.goal || "", w = Math.max(0, ...ms.map(t => Number(t.spts) || 0)) || 1;
-    return { key: g.key, name: g.name, n: ms.length, pct, done: ms.every(isDone), blocked: ms.some(t => t.status === "Blocked" || t.status === "Delayed" && pctOf(t) < 50), carried: ms.filter(t => t.carried).length, goal, pillar: pillarOf(goal), w, depts: [...new Set(ms.map(t => t.dept).filter(Boolean))], list: ms.map(t => ({ title: t.title, pct: pctOf(t), status: t.status, done: isDone(t) })), titles: ms.map(t => t.title), open: ms.filter(t => !isDone(t)).map(t => ({ title: t.title, pct: pctOf(t), stream: g.name })), summary: (opts.summaries || {})[g.key] || "" };
+    return { key: g.key, name: g.name, n: ms.length, pct, done: ms.every(isDone), blocked: ms.some(t => t.status === "Blocked" || t.status === "Delayed" && pctOf(t) < 50), carried: ms.filter(t => t.carried).length, goal, pillar: pillarOf(goal), w, depts: [...new Set(ms.map(t => t.dept).filter(Boolean))], list: ms.map(t => ({ title: t.title, pct: pctOf(t), status: t.status, done: isDone(t) })), titles: ms.map(t => t.title), open: ms.filter(t => !isDone(t)).map(t => ({ title: t.title, pct: pctOf(t), stream: g.name })), summary: (opts.summaries || {})[g.key] || [...new Set(ms.map(t => String(t.sum || "").trim()).filter(Boolean))].join(" ") };
   });
   const linked = items.filter(i => i.pillar), totalW = linked.reduce((a, i) => a + i.w, 0);
   const pillars = PILLARS.map(p => {
