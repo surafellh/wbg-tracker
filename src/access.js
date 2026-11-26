@@ -73,7 +73,7 @@ export const projectsLevel = (p) => matrixOn(p) ? capLevel(p, "projects_read") :
 export const projectsSeeAll = (p) => projectsLevel(p) === "all";
 export const projectsCanSee = (p) => projectsLevel(p) !== "none";
 export const projectsCanEdit = (p, proj) => matrixOn(p) ? cap(p, "projects_write", proj ? proj.unit : undefined) && (!proj || capLevel(p, "projects_write") === "all" || !!proj.unit) : !!p && (p.role === "super_admin" || (p.unit === "pmo" && ["leader", "planning", "manager"].includes(p.role)) || (p.role === "planning" && !!proj && !!p.unit && proj.unit === p.unit));
-export const projectsCanCreate = (p) => matrixOn(p) ? capLevel(p, "projects_write") === "all" : !!p && (p.role === "super_admin" || (p.unit === "pmo" && ["leader", "planning", "manager"].includes(p.role)));
+export const projectsCanCreate = (p) => matrixOn(p) ? (capLevel(p, "projects_write") === "all" || (capLevel(p, "projects_write") === "own" && !!p.unit)) : !!p && (p.role === "super_admin" || (p.unit === "pmo" && ["leader", "planning", "manager"].includes(p.role)));
 // business support: may log a request / see their own unit's requests
 export const supportMember = (p) => matrixOn(p) ? !!p.unit && capLevel(p, "support_log") !== "none" : !!p && ["leader", "planning", "manager", "staff"].includes(p.role) && !!p.unit;
 // does this person decide any kind of request at all? (shows the Approvals counters)

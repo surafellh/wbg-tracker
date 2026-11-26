@@ -26,7 +26,7 @@ export function createProjects(c) {
   const canSee = () => projectsCanSee(AP());
   const canEditP = (p) => projectsCanEdit(AP(), p);
   const canCreate = () => projectsCanCreate(AP());
-  const unitChoices = () => c.sortedUnits();
+  const unitChoices = () => c.sortedUnits().filter((u) => projectsCanEdit(AP(), { unit: u.id }) || (AP() && AP().role === "super_admin"));
   const money = (n) => (num(n) === null ? "–" : "ETB " + Math.round(Number(n)).toLocaleString("en-US"));
   const pctTxt = (n) => (n === null || n === undefined ? "–" : n + "%");
   const ok = (res, msg) => { if (res && res.error) { c.toast(res.error === "conflict" ? "Someone else changed this project. Reload and try again." : c.errText(res)); return false; } if (msg) c.toast(msg); return true; };
