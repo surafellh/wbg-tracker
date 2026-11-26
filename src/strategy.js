@@ -23,8 +23,23 @@ export const PILLARS = [
     ["P7-G3", "Build global impact credentials (ESG, SDG alignment)"], ["P7-G4", "Ensure climate & resource resilience across the growth portfolio"]] },
 ];
 export const GOALS = PILLARS.flatMap(p => p.goals.map(([id, name]) => ({ id, name, pillar: p.id })));
-export const goalName = id => (GOALS.find(g => g.id === id) || {}).name || "";
-export const pillarOf = id => { const g = GOALS.find(x => x.id === id); return g ? g.pillar : ""; };
+export const goalName = id => (anyGoal(id) || {}).name || "";
+export const pillarOf = id => { const g = anyGoal(id); return g ? g.pillar : ""; };
 // Units that link activities to the strategy. Block 1: the Group Strategy Office. Later blocks add all functions, then business units.
 export const STRATEGY_UNITS = ["group-strategy-office"];
 export const strategyOn = u => STRATEGY_UNITS.includes(u);
+
+// Group Strategy Office (CSO) objectives per pillar, from "Strategy Alignment to the Seven Pillars". The CSO links its activities to these.
+export const CSO_OBJ = [
+  ["O1.1", "P1", "Allocate capital to the highest-return strategic priorities"], ["O1.2", "P1", "Build a growth pipeline that lifts portfolio returns"],
+  ["O2.1", "P2", "Build a disciplined innovation and technology pipeline aligned to strategy"], ["O2.2", "P2", "Anticipate disruption and convert it into revenue"],
+  ["O3.1", "P3", "Make strategy executable through OKRs, one cadence and clear reporting"], ["O3.2", "P3", "Standardise and automate core processes with BPM and ERP"],
+  ["O3.3", "P3", "Detect off-track pillars early and recover them through one corrective action system"],
+  ["O4.1", "P4", "Win in priority segments through market insight and clear positioning"], ["O4.2", "P4", "Expand into East African markets while deepening local leadership"],
+  ["O5.1", "P5", "Build a high-calibre CSO team and leadership bench"], ["O5.2", "P5", "Align organisation design and capability with strategic priorities"],
+  ["O6.1", "P6", "Build a managed ecosystem of strategic partners and acquisition targets"], ["O6.2", "P6", "Govern partnerships for measurable value"],
+  ["O7.1", "P7", "Embed sustainability and impact into strategy and investment decisions"], ["O7.2", "P7", "Track and report impact transparently"],
+].map(([id, pillar, name]) => ({ id, pillar, name }));
+// the goals a unit can link to: the CSO's own objectives for the Group Strategy Office, the Group goals for the others
+export const goalsFor = u => u === "group-strategy-office" ? CSO_OBJ : GOALS;
+export const anyGoal = id => CSO_OBJ.find(g => g.id === id) || GOALS.find(g => g.id === id);

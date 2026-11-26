@@ -30,7 +30,7 @@ export const lockedFields = () => (Array.isArray(cfg.lockedFields) ? cfg.lockedF
 export const timeLabel = (t) => { const [h, m] = String(t || "14:00").split(":").map(Number); return `${((h + 11) % 12) + 1}:${String(m || 0).padStart(2, "0")} ${h >= 12 ? "PM" : "AM"}`; };
 export const graceLabel = () => `Saturday ${timeLabel(cfg.graceTime)}`;
 // Fields compared when working out what changed (lu / lb are "last updated" stamps, not content).
-export const TASK_FIELDS = ["title", "kind", "dept", "outcome", "owner", "due", "priority", "prevStatus", "prevPct", "basePct", "status", "pct", "completedAt", "depUnit", "dep", "notes", "ev", "carried", "carriedCount", "blockedSince", "category", "target", "measure", "actual", "lower", "ref", "parent", "weight", "pts", "goal", "unplanned"];
+export const TASK_FIELDS = ["title", "kind", "dept", "outcome", "owner", "due", "priority", "prevStatus", "prevPct", "basePct", "status", "pct", "completedAt", "depUnit", "dep", "notes", "ev", "carried", "carriedCount", "blockedSince", "category", "target", "measure", "actual", "lower", "ref", "parent", "weight", "pts", "goal", "spts", "stream", "unplanned"];
 export const DEFAULT_APPROVERS = ["Surafel", "Surafel Hailu", "Ataklti", "Ataklti Nega"];
 
 const pad = (n) => String(n).padStart(2, "0");

@@ -1,4 +1,5 @@
-import { PILLARS, GOALS, goalName, pillarOf, strategyOn } from "./strategy.js";
+import { PILLARS, GOALS, goalName, pillarOf, strategyOn, goalsFor } from "./strategy.js";
+import { buildReview, RAG_TXT } from "./strategyreport.js";
 import "./style.css";
 import * as XLSX from "xlsx";
 import { jsPDF } from "jspdf";
@@ -771,25 +772,27 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   }
   // Strategy review: how the linked activities of the month contribute to each of the 7 pillars (Block 1: Group Strategy Office).
   const stratOn = () => !!me && (["executive", "super_admin", "planning"].includes(me.role) || strategyOn(me.unit));
+  function stratEntries(){
+    const md = state.monthData, out = [];
+    if (md) md.weeks.forEach(w => sortedUnits().filter(u => strategyOn(u.id)).forEach(u => { const p = md.data[w] && md.data[w][u.id]; if (p) realTasks(p).forEach(t => out.push({ week: w, ref: t.ref, title: t.title, dept: t.dept, status: t.status, pct: t.pct, carried: !!t.carried, goal: t.goal, spts: t.spts, stream: t.stream })); }));
+    return out;
+  }
   function renderStrategy(){
     const e = state.eth, rng = ethMonthRange(e), md = state.monthData;
-    const head = `<div class="panel-head"><div><h2>Strategy review · ${esc(ethName(e))}</h2><div class="small muted">${esc(fmt(rng.start))} \u2013 ${esc(fmt(rng.end))} ${parse(rng.end).getFullYear()} \u00b7 how activities linked to a strategic goal contribute to each pillar. Group Strategy Office first; other units follow.</div></div></div>`;
+    const dl = `<span class="toolbar"><button class="btn" data-strat="pdf">Download 2-page PDF</button><button class="btn" data-strat="ppt">Download slides</button></span>`;
+    const head = `<div class="panel-head"><div><h2>Strategy review \u00b7 ${esc(ethName(e))}</h2><div class="small muted">${esc(fmt(rng.start))} \u2013 ${esc(fmt(rng.end))} ${parse(rng.end).getFullYear()} \u00b7 activities linked to an objective count toward its pillar; a task carried over several weeks counts once.</div></div>${dl}</div>`;
     if (!db) return `<div class="panel">${head}<div class="empty"><b>No data</b></div></div>`;
     if (state.monthLoading || !md) return `<div class="panel">${head}<div class="empty"><b>Collecting the weeks of ${esc(ETH_M[e.m - 1])}\u2026</b></div></div>`;
-    const seen = new Map();
-    md.weeks.forEach(w => sortedUnits().filter(u => strategyOn(u.id)).forEach(u => { const p = md.data[w] && md.data[w][u.id]; if (!p) return; realTasks(p).forEach(t => seen.set(u.id + "|" + norm(t.title) + "|" + norm(t.dept), { ...t, unit: u.id, week: w })); }));
-    const all = [...seen.values()], pct = t => t.status === "Done" ? 100 : (typeof t.pct === "number" ? t.pct : 0), isDone = t => t.status === "Done";
-    const linked = all.filter(t => pillarOf(t.goal)), unl = all.length - linked.length;
-    const rag = (n, avg, blk) => !n ? ["s-bad", "No activity"] : blk || avg < 40 ? ["s-bad", "Red"] : avg < 70 ? ["s-not", "Amber"] : ["s-done", "Green"];
-    const cards = PILLARS.map(p => {
-      const ts = linked.filter(t => pillarOf(t.goal) === p.id), avg = ts.length ? Math.round(ts.reduce((a, t) => a + pct(t), 0) / ts.length) : 0, blk = ts.filter(t => t.status === "Blocked").length, gh = p.goals.filter(([id]) => ts.some(t => t.goal === id)).length, r = rag(ts.length, avg, blk);
-      const goals = p.goals.map(([id, nm]) => { const g = ts.filter(t => t.goal === id); return `<tr><td class="small"><b>${id}</b> ${esc(nm)}</td><td class="num small">${g.length || "\u2013"}</td><td class="num small">${g.length ? g.filter(isDone).length + "/" + g.length : "\u2013"}</td><td class="small">${g.map(t => esc(t.title)).slice(0, 4).join("; ")}${g.length > 4 ? ` +${g.length - 4}` : ""}</td></tr>`; }).join("");
-      return `<div class="panel" style="margin-bottom:12px"><div class="panel-head"><div><h2 style="font-size:15px">${p.no} \u00b7 ${esc(p.name)}</h2><div class="small muted">${ts.length} ${ts.length === 1 ? "activity" : "activities"} \u00b7 ${ts.filter(isDone).length} done \u00b7 average ${avg}% \u00b7 ${gh} of ${p.goals.length} goals touched${blk ? ` \u00b7 <b style="color:var(--bad)">${blk} blocked</b>` : ""}</div></div><span class="pill ${r[0]}">${r[1]}</span></div>
-        <div class="scroll"><table class="dtbl"><thead><tr><th>Goal</th><th>Activities</th><th>Done</th><th>What was done</th></tr></thead><tbody>${goals}</tbody></table></div></div>`;
-    }).join("");
-    const touched = PILLARS.filter(p => linked.some(t => pillarOf(t.goal) === p.id)).length;
-    const stats = `<div class="stats"><div class="stat"><div class="v">${all.length}</div><div class="k">activities this month</div></div><div class="stat"><div class="v">${linked.length}</div><div class="k">linked to a goal</div></div><div class="stat"><div class="v${unl ? "" : " accent"}">${unl}</div><div class="k">not linked yet</div></div><div class="stat"><div class="v accent">${touched} of 7</div><div class="k">pillars contributed to</div></div></div>`;
+    const ent = stratEntries(); if (!ent.length) return `<div class="panel">${head}<div class="empty"><b>No Group Strategy Office activities in this month</b></div></div>`;
+    const r = state.strat = buildReview(ent);
+    const cards = r.pillars.map(p => `<div class="panel" style="margin-bottom:12px"><div class="panel-head"><div><h2 style="font-size:15px">${p.no} \u00b7 ${esc(p.name)}</h2><div class="small muted">${p.items.length ? `${p.items.length} ${p.items.length === 1 ? "activity" : "activities"} \u00b7 ${p.share}% of the weight \u00b7 progress ${p.avg}%` : "No activity linked this month"}</div></div><span class="pill ${p.rag === "green" ? "s-done" : p.rag === "amber" ? "s-not" : "s-bad"}">${RAG_TXT[p.rag]}</span></div>${p.items.length ? `<div class="scroll"><table class="dtbl"><thead><tr><th>Activity</th><th>Objective</th><th>Weight</th><th>Progress</th></tr></thead><tbody>${p.items.map(i => `<tr><td><b>${esc(i.name)}</b><div class="small muted">${esc(i.n)} ${i.n === 1 ? "task" : "tasks"} counted once</div></td><td class="small">${esc(i.goal)}</td><td class="num small">${i.w}</td><td class="num small">${i.pct}%</td></tr>`).join("")}</tbody></table></div>` : ""}</div>`).join("");
+    const stats = `<div class="stats"><div class="stat"><div class="v">${r.tasks}</div><div class="k">tasks tracked</div></div><div class="stat"><div class="v">${r.tasks ? Math.round(r.doneN / r.tasks * 100) : 0}%</div><div class="k">completed</div></div><div class="stat"><div class="v${r.unlinked ? "" : " accent"}">${r.unlinked}</div><div class="k">not linked yet</div></div><div class="stat"><div class="v accent">${r.touched} of 7</div><div class="k">pillars reached</div></div><div class="stat"><div class="v">${r.perf}%</div><div class="k">weighted progress</div></div></div>`;
     return `<div class="panel" style="margin-bottom:12px">${head}${stats}</div>${cards}`;
+  }
+  async function stratDownload(kind){
+    const r = state.strat; if (!r) return; const mod = await import("./strategyreport.js"), o = { unit: "Group Strategy Office", month: ethName(state.eth) + " " + (parse(ethMonthRange(state.eth).end).getFullYear()) };
+    const buf = kind === "pdf" ? await mod.buildPdf(r, o) : await mod.buildPpt(r, o), a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([buf], { type: kind === "pdf" ? "application/pdf" : "application/vnd.openxmlformats-officedocument.presentationml.presentation" })); a.download = `GSO_Strategy_Review_${ethName(state.eth).replace(/\s+/g, "_")}.${kind === "pdf" ? "pdf" : "pptx"}`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   }
   function renderMonthly(){
     const e = state.eth, rng = ethMonthRange(e);
@@ -1043,9 +1046,11 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   }
   function goalChip(u, t){
     if (!strategyOn(u) || t.kind === "KPI / OKR" || t.parent) return "";
-    const can = !!me && canEdit(u) && !isAll();
-    if (!can) return t.goal ? `<span class="pill s-prog" title="${esc(goalName(t.goal))}">${esc(t.goal)}</span>` : '<span class="pill s-none" title="Not linked to a strategic goal">No goal</span>';
-    return `<label class="wchip small" title="Link this activity to a strategic goal. It then counts toward that pillar">\u25ce <select id="t-goal-${t.id}" data-f="goal" aria-label="Strategic goal"><option value="">Goal\u2026</option>${PILLARS.map(p => `<optgroup label="${p.no} \u00b7 ${esc(p.name)}">${p.goals.map(([id, nm]) => `<option value="${id}" ${t.goal === id ? "selected" : ""}>${id} ${esc(nm)}</option>`).join("")}</optgroup>`).join("")}</select></label>`;
+    const can = !!me && canEdit(u) && !isAll(), gl = goalsFor(u), wcan = can && canSetWeight(rawRole()), n = weightScale();
+    if (!can) return (t.goal ? `<span class="pill s-prog" title="${esc(goalName(t.goal))}">${esc(t.goal)}</span>` : '<span class="pill s-none" title="Not linked to a strategic objective">No goal</span>') + (t.spts && wcan === false && canSeeWeight(rawRole()) ? `<span class="pill s-none" title="Strategic weight">\u2696 ${esc(t.spts)}</span>` : "");
+    const opts = PILLARS.map(p => { const g = gl.filter(x => x.pillar === p.id); return g.length ? `<optgroup label="${p.no} \u00b7 ${esc(p.name)}">${g.map(x => `<option value="${x.id}" ${t.goal === x.id ? "selected" : ""}>${x.id} ${esc(x.name)}</option>`).join("")}</optgroup>` : ""; }).join("");
+    const sp = wcan ? `<label class="wchip small" title="Strategic weight of this activity in the strategy review (1 to ${n})">\u2696 <select id="t-spts-${t.id}" data-f="spts" aria-label="Strategic weight"><option value="">\u2013</option>${Array.from({ length: n }, (_, k) => `<option value="${k + 1}" ${Number(t.spts) === k + 1 ? "selected" : ""}>${k + 1}</option>`).join("")}</select></label>` : "";
+    return `<label class="wchip small" title="Link this activity to a strategic objective. It then counts toward that pillar">\u25ce <select id="t-goal-${t.id}" data-f="goal" aria-label="Strategic objective"><option value="">Objective\u2026</option>${opts}</select></label>${sp}`;
   }
   function taskRowHtml(u, t, i, ind = 0){
     if (state.tab === "plan") return planRowHtml(u, t, i);
@@ -2285,6 +2290,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   });
   main.addEventListener("change", e => { if (e.target.id === "pv-w") { (state.pv = state.pv || {}).w = e.target.value; render(); } else if (e.target.id === "pv-show") { (state.pv = state.pv || {}).show = e.target.value; render(); } });
   main.addEventListener("click", e => { const b = e.target.closest("[data-pvline]"); if (b) { (state.pv = state.pv || {}).line = b.dataset.pvline; render(); } });
+  main.addEventListener("click", e => { const b = e.target.closest("[data-strat]"); if (b) stratDownload(b.dataset.strat); });
   main.addEventListener("change", e => { if (e.target.id === "lea-unit") { state.lea = { unit: e.target.value }; render(); } });
   main.addEventListener("click", async e => {
     const b = e.target.closest("[data-lea]"); if (!b) return;
