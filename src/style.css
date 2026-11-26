@@ -1270,3 +1270,12 @@ tr.dim td{opacity:.55}.fut td{opacity:.9}
 .cw-modal>div{background:var(--surface);color:var(--ink);max-width:520px;width:100%;border-radius:12px;padding:18px 20px;border-top:4px solid var(--bad)}
 .cw-modal h3{margin:0 0 8px;color:var(--ink)}.cw-modal ul{margin:8px 0 14px;padding-left:18px}.cw-modal .muted{color:var(--muted)}
 .crit-watch td.num{white-space:nowrap}
+
+/* strategy review, laid out like the CSO alignment document */
+.st-pillar{margin-bottom:14px;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface,transparent)}
+.st-ph{display:flex;align-items:center;gap:14px;background:#0b3c49;color:#fff;padding:10px 14px;border-bottom:3px solid #d9a93a}
+.st-ph .small{color:#cfe0e4}.st-no{font:700 26px Georgia,serif;color:#d9a93a;min-width:44px}.st-pn{flex:1}
+.st-obj{padding:8px 14px;border-top:1px solid var(--line)}.st-objh{display:flex;gap:10px;align-items:baseline;background:rgba(11,60,73,.08);margin:-8px -14px 6px;padding:7px 14px;border-left:4px solid #d9a93a}
+.st-id{font:700 13px Georgia,serif;color:#b8861a}.st-name{flex:1;font-weight:600}.st-none{opacity:.55}
+.st-act{margin:6px 0 8px 6px}.st-list{margin:3px 0 0 18px;padding:0;list-style:none;font-size:13px}.st-list li{margin:2px 0}
+.st-ok{color:#2e7d32;font-weight:700}.st-open{color:#c77d0a}

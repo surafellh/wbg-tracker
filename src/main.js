@@ -772,22 +772,29 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   }
   // Strategy review: how the linked activities of the month contribute to each of the 7 pillars (Block 1: Group Strategy Office).
   const stratOn = () => !!me && (["executive", "super_admin", "planning"].includes(me.role) || strategyOn(me.unit));
-  function stratEntries(){
+  const stratUnit = () => state.stratUnit || (strategyOn(me && me.unit) ? me.unit : "group-strategy-office");
+  function stratEntries(uid){
     const md = state.monthData, out = [];
-    if (md) md.weeks.forEach(w => sortedUnits().filter(u => strategyOn(u.id)).forEach(u => { const p = md.data[w] && md.data[w][u.id]; if (p) realTasks(p).forEach(t => out.push({ week: w, ref: t.ref, title: t.title, dept: t.dept, status: t.status, pct: t.pct, carried: !!t.carried, goal: t.goal, spts: t.spts, stream: t.stream })); }));
+    if (md) md.weeks.forEach(w => { const p = md.data[w] && md.data[w][uid]; if (p) realTasks(p).forEach(t => out.push({ week: w, ref: t.ref, title: t.title, dept: t.dept, status: t.status, pct: t.pct, carried: !!t.carried, goal: t.goal, spts: t.spts, stream: t.stream })); });
     return out;
   }
   function renderStrategy(){
-    const e = state.eth, rng = ethMonthRange(e), md = state.monthData;
-    const dl = `<span class="toolbar"><button class="btn" data-strat="pdf">Download 2-page PDF</button><button class="btn" data-strat="ppt">Download slides</button></span>`;
-    const head = `<div class="panel-head"><div><h2>Strategy review \u00b7 ${esc(ethName(e))}</h2><div class="small muted">${esc(fmt(rng.start))} \u2013 ${esc(fmt(rng.end))} ${parse(rng.end).getFullYear()} \u00b7 activities linked to an objective count toward its pillar; a task carried over several weeks counts once.</div></div>${dl}</div>`;
+    const e = state.eth, rng = ethMonthRange(e), md = state.monthData, uid = stratUnit(), un = sortedUnits().find(u => u.id === uid), on = strategyOn(uid);
+    const sel = `<label class="small muted">Unit <select id="stUnit" aria-label="Unit">${sortedUnits().map(u => `<option value="${esc(u.id)}" ${u.id === uid ? "selected" : ""}>${esc(u.name)}${strategyOn(u.id) ? "" : " (not linked yet)"}</option>`).join("")}</select></label>`;
+    const dl = on ? `<span class="toolbar"><button class="btn" data-strat="pdf">Download 2-page PDF</button><button class="btn" data-strat="ppt">Download slides</button></span>` : "";
+    const head = `<div class="panel-head"><div><h2>Strategy alignment \u00b7 ${esc(un ? un.name : "")}</h2><div class="small muted">${esc(ethName(e))} \u00b7 ${esc(fmt(rng.start))} \u2013 ${esc(fmt(rng.end))} ${parse(rng.end).getFullYear()} \u00b7 what was done under each objective. A task carried over several weeks counts once.</div></div><div class="toolbar">${sel}${dl}</div></div>`;
     if (!db) return `<div class="panel">${head}<div class="empty"><b>No data</b></div></div>`;
     if (state.monthLoading || !md) return `<div class="panel">${head}<div class="empty"><b>Collecting the weeks of ${esc(ETH_M[e.m - 1])}\u2026</b></div></div>`;
-    const ent = stratEntries(); if (!ent.length) return `<div class="panel">${head}<div class="empty"><b>No Group Strategy Office activities in this month</b></div></div>`;
-    const r = state.strat = buildReview(ent);
-    const cards = r.pillars.map(p => `<div class="panel" style="margin-bottom:12px"><div class="panel-head"><div><h2 style="font-size:15px">${p.no} \u00b7 ${esc(p.name)}</h2><div class="small muted">${p.items.length ? `${p.items.length} ${p.items.length === 1 ? "activity" : "activities"} \u00b7 ${p.share}% of the weight \u00b7 progress ${p.avg}%` : "No activity linked this month"}</div></div><span class="pill ${p.rag === "green" ? "s-done" : p.rag === "amber" ? "s-not" : "s-bad"}">${RAG_TXT[p.rag]}</span></div>${p.items.length ? `<div class="scroll"><table class="dtbl"><thead><tr><th>Activity</th><th>Objective</th><th>Weight</th><th>Progress</th></tr></thead><tbody>${p.items.map(i => `<tr><td><b>${esc(i.name)}</b><div class="small muted">${esc(i.n)} ${i.n === 1 ? "task" : "tasks"} counted once</div></td><td class="small">${esc(i.goal)}</td><td class="num small">${i.w}</td><td class="num small">${i.pct}%</td></tr>`).join("")}</tbody></table></div>` : ""}</div>`).join("");
-    const stats = `<div class="stats"><div class="stat"><div class="v">${r.tasks}</div><div class="k">tasks tracked</div></div><div class="stat"><div class="v">${r.tasks ? Math.round(r.doneN / r.tasks * 100) : 0}%</div><div class="k">completed</div></div><div class="stat"><div class="v${r.unlinked ? "" : " accent"}">${r.unlinked}</div><div class="k">not linked yet</div></div><div class="stat"><div class="v accent">${r.touched} of 7</div><div class="k">pillars reached</div></div><div class="stat"><div class="v">${r.perf}%</div><div class="k">weighted progress</div></div></div>`;
-    return `<div class="panel" style="margin-bottom:12px">${head}${stats}</div>${cards}`;
+    const ent = stratEntries(uid); if (!ent.length) return `<div class="panel">${head}<div class="empty"><b>No activities in this month</b></div></div>`;
+    const r = state.strat = buildReview(ent), gl = goalsFor(uid);
+    const stats = `<div class="stats"><div class="stat"><div class="v">${r.tasks}</div><div class="k">tasks tracked</div></div><div class="stat"><div class="v">${r.tasks ? Math.round(r.doneN / r.tasks * 100) : 0}%</div><div class="k">completed</div></div><div class="stat"><div class="v${r.unlinked ? "" : " accent"}">${r.unlinked}</div><div class="k">activities not linked yet</div></div><div class="stat"><div class="v accent">${r.touched} of 7</div><div class="k">pillars reached</div></div><div class="stat"><div class="v">${r.perf}%</div><div class="k">weighted progress</div></div></div>`;
+    const act = i => `<div class="st-act"><div class="st-actt"><b>${esc(i.name)}</b><span class="small muted"> \u00b7 weight ${i.w} \u00b7 ${i.pct}%${i.n > 1 ? ` \u00b7 ${i.n} tasks counted once` : ""}</span></div><ul class="st-list">${i.list.map(x => `<li><span class="${x.done ? "st-ok" : "st-open"}">${x.done ? "\u2713" : "\u25cb"}</span> ${esc(x.title)}${x.done ? "" : ` <span class="muted">(${x.pct}%)</span>`}</li>`).join("")}</ul></div>`;
+    const cards = r.pillars.map(p => { const goals = gl.filter(g => g.pillar === p.id);
+      const rows = goals.map(g => { const its = p.items.filter(i => i.goal === g.id), w = its.reduce((a, i) => a + i.w, 0), avg = w ? Math.round(its.reduce((a, i) => a + i.w * i.pct, 0) / w) : 0;
+        return `<div class="st-obj${its.length ? "" : " st-none"}"><div class="st-objh"><span class="st-id">${esc(g.id)}</span><span class="st-name">${esc(g.name)}</span><span class="small muted">${its.length ? `${its.length} ${its.length === 1 ? "activity" : "activities"} \u00b7 ${avg}%` : "no activity"}</span></div>${its.map(act).join("")}</div>`; }).join("");
+      return `<section class="st-pillar"><div class="st-ph"><span class="st-no">${p.no}</span><div class="st-pn"><b>${esc(p.name)}</b><div class="small">${p.items.length ? `${p.items.length} ${p.items.length === 1 ? "activity" : "activities"} \u00b7 ${p.share}% of the weight \u00b7 progress ${p.avg}%` : "No activity linked this month"}</div></div><span class="pill ${p.rag === "green" ? "s-done" : p.rag === "amber" ? "s-not" : p.rag === "red" ? "s-bad" : "s-none"}">${RAG_TXT[p.rag]}</span></div>${on ? rows : ""}</section>`; }).join("");
+    const unl = !on ? `<div class="panel" style="margin-bottom:12px"><div class="slimnote">This unit\u2019s activities are not linked to objectives yet (next blocks). They are listed below.</div></div><div class="panel"><ul class="st-list">${[...new Map(ent.map(t => [t.ref || t.title, t])).values()].map(t => `<li>${esc(t.title)} <span class="muted">(${t.status === "Done" ? 100 : (Number(t.pct) || 0)}%)</span></li>`).join("")}</ul></div>` : "";
+    return `<div class="panel" style="margin-bottom:12px">${head}${stats}</div>${on ? cards : unl}`;
   }
   async function stratDownload(kind){
     const r = state.strat; if (!r) return; const mod = await import("./strategyreport.js"), o = { unit: "Group Strategy Office", month: ethName(state.eth) + " " + (parse(ethMonthRange(state.eth).end).getFullYear()) };
@@ -2331,6 +2338,7 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
     else if (el.id==="fDept") { state.filter.dept = el.value; render(); }
     else if (el.id==="fStatus") { if (el.value !== "__multi__") { state.filter.status = el.value; state.filter.statuses = []; } render(); }
     else if (el.id==="fGroup") { state.filter.group = el.checked; render(); }
+    else if (el.id==="stUnit") { state.stratUnit = el.value; render(); }
     else if (el.id==="fPeriod") { state.filter.period = el.value; if (el.value==="month" && (!state.monthData || state.monthKey !== `${state.eth.y}-${state.eth.m}${state.monthBasis}`)) loadMonth(); else render(); }
     else if (el.id==="ovPri") { state.ov.priority = el.value; render(); }
     else if (el.id==="ovSt") { state.ov.status = el.value; render(); }
