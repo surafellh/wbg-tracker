@@ -43,3 +43,31 @@ export const CSO_OBJ = [
 // the goals a unit can link to: the CSO's own objectives for the Group Strategy Office, the Group goals for the others
 export const goalsFor = u => u === "group-strategy-office" ? CSO_OBJ : GOALS;
 export const anyGoal = id => CSO_OBJ.find(g => g.id === id) || GOALS.find(g => g.id === id);
+
+// What each CSO objective is about: the key results from the alignment document, and the CSO goal of each pillar.
+export const CSO_GOAL = {
+  P1: "Ensure capital is deployed to the strategic priorities that create the greatest long-term value.",
+  P2: "Build a structured pipeline of innovation and technology bets that renew the core and open new growth.",
+  P3: "Make strategy executable through owned initiatives, clear metrics, standardised processes and a disciplined review rhythm, enabled by BPM and ERP.",
+  P4: "Direct the organisation toward the markets, segments and propositions where it can win and lead.",
+  P5: "Build the leadership, skills and organisational design needed to deliver the strategy, starting inside the CSO.",
+  P6: "Build a managed ecosystem of partners, alliances and acquisition targets that accelerate the strategy.",
+  P7: "Make sustainability and long-term impact a built-in lens for strategy, investment and performance.",
+};
+export const CSO_KR = {
+  "O1.1": ["At least 90% of discretionary capital reviewed through the strategic portfolio process by year-end.", "100% of investments above the threshold have a business case and a 12-month post-investment review."],
+  "O1.2": ["Pipeline of growth opportunities approved and prioritised each half-year.", "Portfolio return (ROIC / IRR) improves against baseline."],
+  "O2.1": ["Innovation and technology thesis approved with 3-5 priority themes within the first quarter.", "At least 3 innovation bets reach pilot, and 1 reaches scale, within 18 months."],
+  "O2.2": ["Share of revenue from products or services launched in the last three years.", "Quarterly horizon-scanning report delivered to the executive team (4 per year)."],
+  "O3.1": ["100% of pillars and business units have approved OKRs by the end of the planning cycle.", "At least 85% of strategic initiatives on time and on budget; red initiatives have recovery plans within 30 days.", "Strategy dashboard live monthly with at least 95% data completeness, and quarterly reviews held for all 7 pillars."],
+  "O3.2": ["100% of core end-to-end processes mapped with a named owner within 6 months, and priority processes redesigned to one standard.", "Priority processes run on ERP with automated workflows, cutting cycle time and cost per transaction."],
+  "O3.3": ["RAG status reported for 100% of pillar KRs every month, using one rule set.", "100% of Amber items have an action plan within 14 days and Red items a recovery plan within 30 days; at least 80% of Reds return to Amber or Green."],
+  "O4.1": ["Annual market and competitor assessment delivered, with priority segments agreed by the executive team.", "Market share in priority segments and NPS up against baseline."],
+  "O4.2": ["Local market revenue growth within 12 months.", "East Africa: entry business case approved for priority countries within 6 months, first market live within 12 months.", "East Africa: revenue target and break-even in the first market within 24 months."],
+  "O5.1": ["CSO critical roles filled and development plans in place for 100% of the team.", "100% of senior leaders complete strategy / OKR training, and at least 80% rate it useful."],
+  "O5.2": ["Capability gaps assessed and a workforce plan agreed with HR for each pillar.", "High-potential leaders rotated into the CSO each year."],
+  "O6.1": ["Partnership strategy and selection criteria approved within the first six months.", "5 priority partnerships signed and 2 delivering measurable value within 18 months; M&A / alliance target list refreshed quarterly."],
+  "O6.2": ["Partnership scorecard in place for 100% of strategic partners, reviewed twice a year."],
+  "O7.1": ["Sustainability and impact framework approved, with 3-5 measurable targets.", "Sustainability criteria included in 100% of major investment and partnership cases."],
+  "O7.2": ["Impact metrics on the strategy dashboard and reported quarterly, with an annual review presented to the board."],
+};

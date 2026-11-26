@@ -1279,3 +1279,4 @@ tr.dim td{opacity:.55}.fut td{opacity:.9}
 .st-id{font:700 13px Georgia,serif;color:#b8861a}.st-name{flex:1;font-weight:600}.st-none{opacity:.55}
 .st-act{margin:6px 0 8px 6px}.st-list{margin:3px 0 0 18px;padding:0;list-style:none;font-size:13px}.st-list li{margin:2px 0}
 .st-ok{color:#2e7d32;font-weight:700}.st-open{color:#c77d0a}
+.st-kr{margin:0 0 6px 6px;padding:0 0 0 14px;font-size:12px;color:var(--muted,#6b7c82)}.st-kr li{margin:1px 0}

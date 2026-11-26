@@ -1,5 +1,6 @@
 // Strategy review model + downloads (2-page PDF, 5-slide deck). Shared by the app and the October build script.
-import { PILLARS, anyGoal, pillarOf } from "./strategy.js";
+import { PILLARS, CSO_OBJ, anyGoal, pillarOf } from "./strategy.js";
+const objRows = r => { const m = new Map(r.objectives.map(x => [x.id, x])); return CSO_OBJ.map(g => ({ ...g, ...(m.get(g.id) || { n: 0, w: 0, avg: null }) })); };
 
 const pctOf = t => t.status === "Done" ? 100 : (typeof t.pct === "number" ? t.pct : Number(t.pct) || 0);
 const isDone = t => t.status === "Done" || pctOf(t) >= 100;
@@ -60,9 +61,9 @@ export async function buildPdf(r, o) {
     columnStyles: { no: { cellWidth: 22, fontStyle: "bold" }, name: { cellWidth: 110 }, share: { cellWidth: 48 }, avg: { cellWidth: 46 }, rag: { cellWidth: 52 } }, didParseCell: colorCell,
     body: r.pillars.map(p => ({ no: p.no, name: p.name, share: p.items.length ? p.share + "%" : "–", avg: p.items.length ? p.avg + "%" : "–", rag: { k: p.rag, t: RAG_TXT[p.rag] }, why: p.items.length ? p.items.map(i => `${i.name} (${i.pct}%)`).join("; ") : "No activity was linked to this pillar in the month." })) });
   y = d.lastAutoTable.finalY + 8; d.setFontSize(7.5); d.setTextColor(110); d.setFont("helvetica", "normal"); d.text("Weight share: share of the office's total strategic weight. Progress: weighted average % complete. Rating: Green 90%+, Amber 70–89%, Red below 70% or blocked.", M, y);
-  y += 22; h2("Objectives reached", y); y += 12;
+  y += 22; h2("All objectives and what was reached", y); y += 12;
   at(d, { startY: y, margin: { left: M, right: M }, theme: "striped", styles: { fontSize: 8, cellPadding: 3 }, headStyles: { fillColor: hex(NAVY), textColor: 255 }, head: [["Objective", "Pillar", "Activities", "Weight", "Progress"]],
-    columnStyles: { 1: { cellWidth: 40 }, 2: { cellWidth: 52 }, 3: { cellWidth: 44 }, 4: { cellWidth: 52 } }, body: r.objectives.map(x => [`${x.id}  ${x.name}`, PILLARS.find(p => p.id === x.pillar).no, x.n, x.w, x.avg + "%"]) });
+    columnStyles: { 1: { cellWidth: 40 }, 2: { cellWidth: 52 }, 3: { cellWidth: 44 }, 4: { cellWidth: 52 } }, body: objRows(r).map(x => [`${x.id}  ${x.name}`, PILLARS.find(p => p.id === x.pillar).no, x.n || "\u2013", x.n ? x.w : "\u2013", x.n ? x.avg + "%" : "no activity"]) });
   foot(1);
   // page 2
   d.addPage(); head(`${o.unit}: strategy review`, `${o.month} · what was done, what is off track, what comes next`);
@@ -104,8 +105,8 @@ export async function buildPpt(r, o) {
   // 4 teams and objectives
   s = p.addSlide(); head(s, "Teams and objectives", "Who delivered, and which objectives they served");
   s.addTable([hdr(["Team", "Tasks", "Done", "Progress"]), ...r.teams.map(t => [cell(t.dept), cell(t.n), cell(t.done), cell(t.avg + "%")])], { x: 0.4, y: 1.25, w: 5.6, colW: [3.0, 0.8, 0.8, 1.0], border: { type: "solid", color: "D5DEE1", pt: 0.5 } });
-  s.addChart(p.charts.BAR, [{ name: "Weight", labels: r.objectives.map(x => x.id), values: r.objectives.map(x => x.w) }], { x: 6.3, y: 1.2, w: 6.6, h: 3.1, barDir: "col", chartColors: [NAVY], showValue: true, catAxisLabelFontSize: 10, valAxisHidden: true, valGridLine: { style: "none" }, showTitle: true, title: "Strategic weight by objective", titleFontSize: 12 });
-  s.addTable([hdr(["Objective", "Weight", "Progress"]), ...r.objectives.map(x => [cell(`${x.id} ${short(x.name, 60)}`, { fontSize: 9.5 }), cell(x.w), cell(x.avg + "%")])], { x: 6.3, y: 4.4, w: 6.6, colW: [4.6, 1.0, 1.0], border: { type: "solid", color: "D5DEE1", pt: 0.5 } });
+  s.addChart(p.charts.BAR, [{ name: "Weight", labels: r.objectives.map(x => x.id), values: r.objectives.map(x => x.w) }], { x: 6.3, y: 1.05, w: 6.6, h: 2.2, barDir: "col", chartColors: [NAVY], showValue: true, catAxisLabelFontSize: 10, valAxisHidden: true, valGridLine: { style: "none" }, showTitle: true, title: "Strategic weight by objective", titleFontSize: 12 });
+  s.addTable([hdr(["Objective", "Weight", "Progress"]), ...objRows(r).map(x => [cell(`${x.id} ${short(x.name, 80)}`, { fontSize: 8.5, color: x.n ? "222222" : "8A979C" }), cell(x.n ? x.w : "\u2013", { fontSize: 8.5 }), cell(x.n ? x.avg + "%" : "none", { fontSize: 8.5 })])], { x: 6.3, y: 3.3, w: 6.6, colW: [4.9, 0.8, 0.9], rowH: 0.2, border: { type: "solid", color: "D5DEE1", pt: 0.5 } });
   // 5 off track + priorities
   s = p.addSlide(); head(s, "Off track and next month", "Corrective action and priorities");
   const { off, open, gaps } = risksAndNext(r);
