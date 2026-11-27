@@ -1,5 +1,5 @@
-import { PILLARS, GOALS, goalName, pillarOf, strategyOn, goalsFor, CSO_GOAL, CSO_KR } from "./strategy.js";
-import { buildReview, RAG_TXT } from "./strategyreport.js";
+import { PILLARS, GOALS, goalName, pillarOf, strategyOn, pillarName } from "./strategy.js";
+import { autoItems, reviewFromItems, RAG_TXT } from "./strategyauto.js";
 import "./style.css";
 import * as XLSX from "xlsx";
 import { jsPDF } from "jspdf";
@@ -771,35 +771,75 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
       <div class="small muted" style="padding:10px 16px">Select a unit to see each week. A week's performance is the average % reached on the tasks planned for that week, judged inside that week: finishing a task later does not change an earlier week. A unit's number is the average of its weekly numbers. Only weeks whose update period has closed are counted, and weeks with no plan are skipped. All units is the average of the unit numbers. Cancelled tasks are left out.</div></div>`;
   }
   // Strategy review: how the linked activities of the month contribute to each of the 7 pillars (Block 1: Group Strategy Office).
-  const stratOn = () => !!me && (["executive", "super_admin", "planning"].includes(me.role) || strategyOn(me.unit));
-  const stratUnit = () => state.stratUnit || (strategyOn(me && me.unit) ? me.unit : "group-strategy-office");
+  // ---------- strategy review: pillar contribution, editable by the unit before it is final ----------
+  const stratOn = () => !!me && (["executive", "super_admin", "planning", "lea"].includes(rawRole()) || strategyOn(me.unit));
+  const sxWide = () => !!me && (["super_admin", "executive", "lea"].includes(rawRole()) || me.unit === "group-strategy-office");
+  const sxUnits = () => sortedUnits().filter(u => strategyOn(u.id) && (sxWide() || u.id === me.unit));
+  const stratUnit = () => { const us = sxUnits(); return us.some(u => u.id === state.stratUnit) ? state.stratUnit : (us[0] ? us[0].id : "group-strategy-office"); };
+  const sxMonth = () => `${state.eth.y}-${state.eth.m}`;
+  const sxMonthLabel = () => { const r = ethMonthRange(state.eth), d = parse(r.start); return d.toLocaleString("en", { month: "long" }) + " " + d.getFullYear(); };
+  const sxCanEdit = uid => !!me && (me.role === "super_admin" || (["planning", "leader", "manager"].includes(me.role) && (me.unit === "group-strategy-office" || me.unit === uid)));
   function stratEntries(uid){
     const md = state.monthData, out = [];
     if (md) md.weeks.forEach(w => { const p = md.data[w] && md.data[w][uid]; if (p) realTasks(p).forEach(t => out.push({ week: w, ref: t.ref, title: t.title, dept: t.dept, status: t.status, pct: t.pct, carried: !!t.carried, goal: t.goal, spts: t.spts, stream: t.stream, sum: t.sum })); });
     return out;
   }
-  function renderStrategy(){
-    const e = state.eth, rng = ethMonthRange(e), md = state.monthData, uid = stratUnit(), un = sortedUnits().find(u => u.id === uid), on = strategyOn(uid);
-    const sel = `<label class="small muted">Unit <select id="stUnit" aria-label="Unit">${sortedUnits().map(u => `<option value="${esc(u.id)}" ${u.id === uid ? "selected" : ""}>${esc(u.name)}${strategyOn(u.id) ? "" : " (not linked yet)"}</option>`).join("")}</select></label>`;
-    const dl = on ? `<span class="toolbar"><button class="btn" data-strat="pdf">Download 2-page PDF</button><button class="btn" data-strat="ppt">Download slides</button></span>` : "";
-    const head = `<div class="panel-head"><div><h2>Strategy alignment \u00b7 ${esc(un ? un.name : "")}</h2><div class="small muted">${esc(ethName(e))} \u00b7 ${esc(fmt(rng.start))} \u2013 ${esc(fmt(rng.end))} ${parse(rng.end).getFullYear()} \u00b7 what was done under each objective. A task carried over several weeks counts once.</div></div><div class="toolbar">${sel}${dl}</div></div>`;
-    if (!db) return `<div class="panel">${head}<div class="empty"><b>No data</b></div></div>`;
-    if (state.monthLoading || !md) return `<div class="panel">${head}<div class="empty"><b>Collecting the weeks of ${esc(ETH_M[e.m - 1])}\u2026</b></div></div>`;
-    const ent = stratEntries(uid); if (!ent.length) return `<div class="panel">${head}<div class="empty"><b>No activities in this month</b></div></div>`;
-    const r = state.strat = buildReview(ent), gl = goalsFor(uid);
-    const stats = `<div class="stats"><div class="stat"><div class="v">${r.tasks}</div><div class="k">tasks tracked</div></div><div class="stat"><div class="v">${r.tasks ? Math.round(r.doneN / r.tasks * 100) : 0}%</div><div class="k">completed</div></div><div class="stat"><div class="v${r.unlinked ? "" : " accent"}">${r.unlinked}</div><div class="k">activities not linked yet</div></div><div class="stat"><div class="v accent">${r.touched} of 7</div><div class="k">pillars reached</div></div><div class="stat"><div class="v">${r.perf}%</div><div class="k">weighted progress</div></div></div>`;
-    const act = i => `<div class="st-act"><div class="st-actt"><b>${esc(i.name)}</b><span class="small muted"> \u00b7 weight ${i.w} \u00b7 ${i.pct}%${i.n > 1 ? ` \u00b7 ${i.n} tasks counted once` : ""}</span></div>${i.summary ? `<div class="small">${esc(i.summary)}</div>` : ""}<ul class="st-list">${i.list.map(x => `<li><span class="${x.done ? "st-ok" : "st-open"}">${x.done ? "\u2713" : "\u25cb"}</span> ${esc(x.title)}${x.done ? "" : ` <span class="muted">(${x.pct}%)</span>`}</li>`).join("")}</ul></div>`;
-    const cards = r.pillars.map(p => { const goals = gl.filter(g => g.pillar === p.id);
-      const rows = goals.map(g => { const its = p.items.filter(i => i.goal === g.id), w = its.reduce((a, i) => a + i.w, 0), avg = w ? Math.round(its.reduce((a, i) => a + i.w * i.pct, 0) / w) : 0;
-        return `<div class="st-obj${its.length ? "" : " st-none"}"><div class="st-objh"><span class="st-id">${esc(g.id)}</span><span class="st-name">${esc(g.name)}</span><span class="small muted">${its.length ? `${its.length} ${its.length === 1 ? "activity" : "activities"} \u00b7 ${avg}%` : "no activity"}</span></div>${(CSO_KR[g.id] || []).length && uid === "group-strategy-office" ? `<ul class="st-kr">${CSO_KR[g.id].map(k => `<li>${esc(k)}</li>`).join("")}</ul>` : ""}${its.map(act).join("")}</div>`; }).join("");
-      return `<section class="st-pillar"><div class="st-ph"><span class="st-no">${p.no}</span><div class="st-pn"><b>${esc(p.name)}</b><div class="small">${uid === "group-strategy-office" ? `<i>${esc(CSO_GOAL[p.id])}</i><br>` : ""}${p.items.length ? `${p.items.length} ${p.items.length === 1 ? "activity" : "activities"} \u00b7 ${p.share}% of the weight \u00b7 progress ${p.avg}%` : "No activity linked this month"}</div></div><span class="pill ${p.rag === "green" ? "s-done" : p.rag === "amber" ? "s-not" : p.rag === "red" ? "s-bad" : "s-none"}">${RAG_TXT[p.rag]}</span></div>${on ? rows : ""}</section>`; }).join("");
-    const unl = !on ? `<div class="panel" style="margin-bottom:12px"><div class="slimnote">This unit\u2019s activities are not linked to objectives yet (next blocks). They are listed below.</div></div><div class="panel"><ul class="st-list">${[...new Map(ent.map(t => [t.ref || t.title, t])).values()].map(t => `<li>${esc(t.title)} <span class="muted">(${t.status === "Done" ? 100 : (Number(t.pct) || 0)}%)</span></li>`).join("")}</ul></div>` : "";
-    return `<div class="panel" style="margin-bottom:12px">${head}${stats}</div>${on ? cards : unl}`;
+  function sxEnsure(uid){
+    const key = uid + "|" + sxMonth(); let sx = state.sx;
+    if (!sx || sx.key !== key) {
+      sx = state.sx = { key, uid, loading: true, edit: false, dirty: false, items: null, weights: {} };
+      api.strategyGet(uid, sxMonth()).then(res => { const c = state.sx; if (!c || c.key !== key) return; c.loading = false; if (res && res.error) c.error = errText(res); c.plan = res && res.plan || null; c.review = res && res.review || null; c.weights = { ...((res && res.plan && res.plan.weights) || {}) }; c.items = c.review ? JSON.parse(JSON.stringify(c.review.items || [])) : null; render(); }).catch(() => { const c = state.sx; if (c && c.key === key) { c.loading = false; c.error = "Could not load the review."; render(); } });
+    }
+    if (!sx.loading && !sx.items && state.monthData && !state.monthLoading) { sx.items = autoItems(stratEntries(uid)); sx.generated = true; }
+    return sx;
   }
+  const sxFinal = sx => !!(sx.review && sx.review.status === "final");
+  function renderStrategy(){
+    const e = state.eth, rng = ethMonthRange(e), uid = stratUnit(), un = sortedUnits().find(u => u.id === uid), sx = sxEnsure(uid), can = sxCanEdit(uid), fin = sxFinal(sx), ed = sx.edit && can && !fin;
+    const sel = `<label class="small muted">Unit <select id="stUnit" aria-label="Unit">${sxUnits().map(u => `<option value="${esc(u.id)}" ${u.id === uid ? "selected" : ""}>${esc(u.name)}</option>`).join("")}</select></label>`;
+    const statusPill = sx.items ? (fin ? `<span class="pill s-done">Final \\u00b7 ${esc(sx.review.finalBy || "")}</span>` : sx.review ? '<span class="pill s-not">Draft \\u00b7 pending unit confirmation</span>' : '<span class="pill s-none">Auto-generated, not saved</span>') : "";
+    const btns = sx.items ? `${ed ? '<button class="btn primary" data-sx="save">Save draft</button><button class="btn" data-sx="final">Mark as final</button><button class="btn" data-sx="regen">Regenerate</button><button class="btn" data-sx="cancel">Cancel</button>' : can && !fin ? '<button class="btn primary" data-sx="edit">Edit</button>' : can && fin ? '<button class="btn" data-sx="reopen">Reopen</button>' : ""}<button class="btn" data-sx="pdf">Download 2-page PDF</button><button class="btn" data-sx="ppt">Download slides</button>` : "";
+    const head = `<div class="panel-head"><div><h2>Strategy review \\u00b7 ${esc(un ? un.name : "")}</h2><div class="small muted">${esc(sxMonthLabel())} \\u00b7 ${esc(ethName(e))} \\u00b7 ${esc(fmt(rng.start))} \\u2013 ${esc(fmt(rng.end))} \\u00b7 how the unit's activities contribute to the seven pillars. A task repeated over several weeks counts once.</div></div><div class="toolbar">${sel}${statusPill}${btns}</div></div>`;
+    if (!db) return `<div class="panel">${head}<div class="empty"><b>No data</b></div></div>`;
+    if (sx.error) return `<div class="panel">${head}<div class="empty"><b>${esc(sx.error)}</b></div></div>`;
+    if (sx.loading || state.monthLoading || !state.monthData || !sx.items) return `<div class="panel">${head}<div class="empty"><b>Collecting ${esc(sxMonthLabel())}\\u2026</b></div></div>`;
+    if (!sx.items.length) return `<div class="panel">${head}<div class="empty"><b>No activities this month</b></div></div>`;
+    const r = state.strat = reviewFromItems(sx.items, ed || sx.weightsDirty ? sx.weights : (sx.weights || {}));
+    const stats = `<div class="stats"><div class="stat"><div class="v">${r.tasks}</div><div class="k">tasks tracked</div></div><div class="stat"><div class="v">${r.tasks ? Math.round(r.doneN / r.tasks * 100) : 0}%</div><div class="k">completed</div></div><div class="stat"><div class="v accent">${r.touched} of 7</div><div class="k">pillars reached${r.plannedCount ? ` (${r.plannedCount} planned)` : ""}</div></div><div class="stat"><div class="v">${r.perf}%</div><div class="k">weighted progress</div></div><div class="stat"><div class="v${r.match == null ? "" : " accent"}">${r.match == null ? "\\u2013" : Math.round(r.match) + "%"}</div><div class="k">plan match</div></div></div>`;
+    const note = sx.generated && !sx.review ? `<div class="slimnote">Generated automatically from the weekly plans: repeated tasks are merged and pillars are suggested from the wording. ${can ? "Press Edit to check it, change anything and save." : "The unit has not confirmed it yet."}</div>` : !fin ? `<div class="slimnote">Draft: the unit should check the pillars, weights and wording and mark it final.</div>` : "";
+    const planBox = `<div class="panel st-plan" style="margin-bottom:12px"><div class="panel-head"><div><h2 style="font-size:15px">Planned pillar allocation</h2><div class="small muted">${esc(sx.plan && sx.plan.source ? sx.plan.source : "No plan recorded yet. Enter the share of effort the unit plans for each pillar (total 100%).")}</div></div><div class="small ${r.planSum && Math.round(r.planSum) !== 100 ? "bad" : "muted"}">Total ${Math.round(Object.values(sx.weights || {}).reduce((a, b) => a + (Number(b) || 0), 0))}%</div></div><div class="st-pw">${r.pillars.map(p => `<label class="st-pwi"><span class="small">${p.no} \\u00b7 ${esc(p.short)}</span>${ed ? `<input type="number" min="0" max="100" step="1" data-sxw="${p.id}" value="${Number((sx.weights || {})[p.id]) || 0}" aria-label="Planned % for ${esc(p.short)}">` : `<b>${p.planned}%</b>`}</label>`).join("")}</div></div>`;
+    const item = (i, idx) => { const tk = (i.tasks || []).map(x => `<li><span class="${x.done ? "st-ok" : "st-open"}">${x.done ? "\\u2713" : "\\u25cb"}</span> ${esc(x.title)}${x.done ? "" : ` <span class="muted">(${x.pct}%)</span>`}</li>`).join("");
+      if (ed) return `<div class="st-act st-edit"><input type="text" data-sxi="${idx}" data-sxf="name" value="${esc(i.name)}" aria-label="Activity name" maxlength="140"><select data-sxi="${idx}" data-sxf="pillar" aria-label="Pillar"><option value="">Pillar\\u2026</option>${PILLARS.map(p => `<option value="${p.id}" ${i.pillar === p.id ? "selected" : ""}>${p.no} \\u00b7 ${esc(p.name)}</option>`).join("")}</select><label class="small muted">Weight <input type="number" min="1" max="${weightScale()}" step="1" data-sxi="${idx}" data-sxf="w" value="${Number(i.w) || 1}" style="width:60px"></label><span class="small muted">${i.pct}%</span><button class="btn" data-sx="del" data-i="${idx}" aria-label="Remove activity">Remove</button><textarea data-sxi="${idx}" data-sxf="summary" rows="2" placeholder="What was done\\u2026" maxlength="500">${esc(i.summary || "")}</textarea><details><summary class="small muted">${(i.tasks || []).length} weekly ${(i.tasks || []).length === 1 ? "task" : "tasks"} behind this</summary><ul class="st-list">${tk}</ul></details></div>`;
+      return `<div class="st-act"><div class="st-actt"><b>${esc(i.name)}</b><span class="small muted"> \\u00b7 weight ${i.w} \\u00b7 ${i.pct}%</span></div>${i.summary ? `<div class="small">${esc(i.summary)}</div>` : ""}<details><summary class="small muted">${(i.tasks || []).length} weekly ${(i.tasks || []).length === 1 ? "task" : "tasks"} behind this</summary><ul class="st-list">${tk}</ul></details></div>`; };
+    const idxOf = i => sx.items.indexOf(i);
+    const cards = r.pillars.map(p => `<section class="st-pillar"><div class="st-ph"><span class="st-no">${p.no}</span><div class="st-pn"><b>${esc(p.name)}</b><div class="small">${esc(p.text)}</div><div class="st-bars" aria-hidden="true"><span title="Planned"><i style="width:${Math.min(100, p.planned * 2)}%" class="pl"></i></span><span title="Actual"><i style="width:${Math.min(100, p.share * 2)}%" class="ac"></i></span></div></div><span class="pill ${p.gap || p.rag === "red" ? "s-bad" : p.rag === "amber" ? "s-not" : p.rag === "green" ? "s-done" : "s-none"}">${p.gap ? "Gap" : RAG_TXT[p.rag]}</span></div>${p.items.length ? p.items.map(i => item(i, idxOf(i))).join("") : '<div class="st-obj st-none small">No activity linked to this pillar this month.</div>'}${ed ? `<div class="st-obj"><button class="btn" data-sx="add" data-p="${p.id}">+ Add an activity to this pillar</button></div>` : ""}</section>`).join("");
+    const un2 = r.unassigned.length ? `<section class="st-pillar st-warn"><div class="st-ph"><div class="st-pn"><b>Needs a pillar</b><div class="small">${r.unassigned.length} ${r.unassigned.length === 1 ? "activity has" : "activities have"} no pillar yet and ${r.unassigned.length === 1 ? "is" : "are"} left out of the contribution.</div></div></div>${r.unassigned.map(i => item(i, idxOf(i))).join("")}</section>` : "";
+    return `<div class="panel" style="margin-bottom:12px">${head}${stats}</div>${note}${planBox}${un2}${cards}`;
+  }
+  const sxData = () => { const sx = state.sx; return { r: reviewFromItems(sx.items, sx.weights), o: { unit: (sortedUnits().find(u => u.id === sx.uid) || {}).name || sx.uid, month: sxMonthLabel() + " (" + ethName(state.eth) + ")", status: sxFinal(sx) ? "final" : "draft" } }; };
   async function stratDownload(kind){
-    const r = state.strat; if (!r) return; const mod = await import("./strategyreport.js"), o = { unit: "Group Strategy Office", month: ethName(state.eth) + " " + (parse(ethMonthRange(state.eth).end).getFullYear()) };
+    const sx = state.sx; if (!sx || !sx.items) return; const mod = await import("./strategyreport.js"), { r, o } = sxData();
     const buf = kind === "pdf" ? await mod.buildPdf(r, o) : await mod.buildPpt(r, o), a = document.createElement("a");
-    a.href = URL.createObjectURL(new Blob([buf], { type: kind === "pdf" ? "application/pdf" : "application/vnd.openxmlformats-officedocument.presentationml.presentation" })); a.download = `GSO_Strategy_Review_${ethName(state.eth).replace(/\s+/g, "_")}.${kind === "pdf" ? "pdf" : "pptx"}`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    a.href = URL.createObjectURL(new Blob([buf], { type: kind === "pdf" ? "application/pdf" : "application/vnd.openxmlformats-officedocument.presentationml.presentation" })); a.download = `${o.unit.replace(/[^A-Za-z0-9]+/g, "_")}_Strategy_Review_${sxMonthLabel().replace(/\\s+/g, "_")}.${kind === "pdf" ? "pdf" : "pptx"}`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  }
+  async function sxSave(status){
+    const sx = state.sx; if (!sx) return;
+    if (status === "final") { const r = reviewFromItems(sx.items, sx.weights); if (r.unassigned.length) { toast("Give every activity a pillar before marking it final"); return; } if (!window.confirm("Mark this review as final? Downloads will no longer say draft.")) return; }
+    const res = await api.strategySaveReview(sx.uid, sxMonth(), sx.items, status, ""); if (res.error) { toast(errText(res)); return; }
+    if (sx.weightsDirty) { const r2 = await api.strategySavePlan(sx.uid, sx.weights, (sx.plan && sx.plan.source) || "Edited in the app"); if (r2.error) { toast(errText(r2)); return; } }
+    toast(status === "final" ? "Marked as final" : "Draft saved"); state.sx = null; render();
+  }
+  function sxClick(b){
+    const a = b.dataset.sx, sx = state.sx; if (!sx) return;
+    if (a === "pdf" || a === "ppt") stratDownload(a);
+    else if (a === "edit") { sx.edit = true; render(); }
+    else if (a === "cancel") { state.sx = null; render(); }
+    else if (a === "save") sxSave("draft");
+    else if (a === "final") sxSave("final");
+    else if (a === "reopen") sxSave("draft");
+    else if (a === "regen") { if (window.confirm("Replace the activities with a fresh version generated from the weekly plans? Your edits will be lost.")) { sx.items = autoItems(stratEntries(sx.uid)); sx.dirty = true; render(); } }
+    else if (a === "del") { sx.items.splice(Number(b.dataset.i), 1); sx.dirty = true; render(); }
+    else if (a === "add") { sx.items.push({ id: "n" + Date.now(), name: "New activity", pillar: b.dataset.p, w: 5, pct: 0, done: false, summary: "", tasks: [] }); sx.dirty = true; render(); }
   }
   function renderMonthly(){
     const e = state.eth, rng = ethMonthRange(e);
@@ -1053,14 +1093,11 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   }
   function goalChip(u, t){
     if (!strategyOn(u) || t.kind === "KPI / OKR" || t.parent) return "";
-    const can = !!me && canEdit(u) && !isAll(), gl = goalsFor(u), wcan = can && canSetWeight(rawRole()), n = weightScale();
-    if (!can) return (t.goal ? `<span class="pill s-prog" title="${esc(goalName(t.goal))}">${esc(t.goal)}</span>` : '<span class="pill s-none" title="Not linked to a strategic objective">No goal</span>') + (t.spts && wcan === false && canSeeWeight(rawRole()) ? `<span class="pill s-none" title="Strategic weight">\u2696 ${esc(t.spts)}</span>` : "");
-    const opts = PILLARS.map(p => { const g = gl.filter(x => x.pillar === p.id); return g.length ? `<optgroup label="${p.no} \u00b7 ${esc(p.name)}">${g.map(x => `<option value="${x.id}" ${t.goal === x.id ? "selected" : ""}>${x.id} ${esc(x.name)}</option>`).join("")}</optgroup>` : ""; }).join("");
+    const can = !!me && canEdit(u) && !isAll(), wcan = can && canSetWeight(rawRole()), n = weightScale(), cur = pillarOf(t.goal);
+    if (!can) return cur ? `<span class="pill s-prog" title="${esc(pillarName(cur))}">Pillar ${esc(PILLARS.find(p => p.id === cur).no)}</span>` : '<span class="pill s-none" title="Not linked to a strategic pillar">No pillar</span>';
+    const opts = PILLARS.map(p => `<option value="${p.id}" ${cur === p.id ? "selected" : ""}>${p.no} \u00b7 ${esc(p.name)}</option>`).join("");
     const sp = wcan ? `<label class="wchip small" title="Strategic weight of this activity in the strategy review (1 to ${n})">\u2696 <select id="t-spts-${t.id}" data-f="spts" aria-label="Strategic weight"><option value="">\u2013</option>${Array.from({ length: n }, (_, k) => `<option value="${k + 1}" ${Number(t.spts) === k + 1 ? "selected" : ""}>${k + 1}</option>`).join("")}</select></label>` : "";
-    const names = [...new Set((((planFor(u) || {}).tasks) || []).map(x => x.stream).filter(Boolean))], dl = `st-dl-${t.id}`;
-    const grp = `<label class="wchip small" title="Rolling or repeated tasks that belong together: give them the same name and the review counts them as one activity">\u29c9 <input type="text" id="t-stream-${t.id}" data-f="stream" list="${dl}" value="${esc(t.stream || "")}" placeholder="Group as\u2026" maxlength="80" aria-label="Group as"><datalist id="${dl}">${names.map(n => `<option value="${esc(n)}">`).join("")}</datalist></label>`;
-    const sm = `<label class="wchip small st-sum" title="One or two lines on what was done. Shown in the strategy review and its downloads">\u270e <input type="text" id="t-sum-${t.id}" data-f="sum" value="${esc(t.sum || "")}" placeholder="What was done\u2026" maxlength="300" aria-label="What was done"></label>`;
-    return `<label class="wchip small" title="Link this activity to a strategic objective. It then counts toward that pillar">\u25ce <select id="t-goal-${t.id}" data-f="goal" aria-label="Strategic objective"><option value="">Objective\u2026</option>${opts}</select></label>${sp}${grp}${sm}`;
+    return `<label class="wchip small" title="The strategic pillar this activity contributes to. It then counts toward that pillar in the strategy review">\u25ce <select id="t-goal-${t.id}" data-f="goal" aria-label="Strategic pillar"><option value="">Pillar\u2026</option>${opts}</select></label>${sp}`;
   }
   function taskRowHtml(u, t, i, ind = 0){
     if (state.tab === "plan") return planRowHtml(u, t, i);
@@ -2300,7 +2337,10 @@ applyPlugin(jsPDF); window.jspdf = { jsPDF }; window.XLSX = XLSX;
   });
   main.addEventListener("change", e => { if (e.target.id === "pv-w") { (state.pv = state.pv || {}).w = e.target.value; render(); } else if (e.target.id === "pv-show") { (state.pv = state.pv || {}).show = e.target.value; render(); } });
   main.addEventListener("click", e => { const b = e.target.closest("[data-pvline]"); if (b) { (state.pv = state.pv || {}).line = b.dataset.pvline; render(); } });
-  main.addEventListener("click", e => { const b = e.target.closest("[data-strat]"); if (b) stratDownload(b.dataset.strat); });
+  main.addEventListener("click", e => { const b = e.target.closest("[data-sx]"); if (b) sxClick(b); });
+  main.addEventListener("change", e => { const el = e.target, sx = state.sx; if (!sx) return;
+    if (el.dataset.sxw) { sx.weights[el.dataset.sxw] = Math.max(0, Number(el.value) || 0); sx.weightsDirty = true; render(); }
+    else if (el.dataset.sxi !== undefined) { const it = sx.items[Number(el.dataset.sxi)]; if (!it) return; const f = el.dataset.sxf; it[f] = f === "w" ? Math.max(1, Math.min(weightScale(), Math.round(Number(el.value)) || 1)) : el.value; sx.dirty = true; render(); } });
   main.addEventListener("change", e => { if (e.target.id === "lea-unit") { state.lea = { unit: e.target.value }; render(); } });
   main.addEventListener("click", async e => {
     const b = e.target.closest("[data-lea]"); if (!b) return;

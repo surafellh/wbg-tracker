@@ -24,9 +24,10 @@ export const PILLARS = [
 ];
 export const GOALS = PILLARS.flatMap(p => p.goals.map(([id, name]) => ({ id, name, pillar: p.id })));
 export const goalName = id => (anyGoal(id) || {}).name || "";
-export const pillarOf = id => { const g = anyGoal(id); return g ? g.pillar : ""; };
+export const pillarName = id => { const p = PILLARS.find(x => x.id === id); return p ? `${p.no} \u00b7 ${p.name}` : ""; };
+export const pillarOf = id => { if (/^P[1-7]$/.test(id || "")) return id; const g = anyGoal(id); return g ? g.pillar : ""; };
 // Units that link activities to the strategy. Block 1: the Group Strategy Office. Later blocks add all functions, then business units.
-export const STRATEGY_UNITS = ["group-strategy-office"];
+export const STRATEGY_UNITS = ["group-strategy-office", "cto", "hrm", "group-ia-ba", "corporate-marketing", "pmo", "csco"];
 export const strategyOn = u => STRATEGY_UNITS.includes(u);
 
 // Group Strategy Office (CSO) objectives per pillar, from "Strategy Alignment to the Seven Pillars". The CSO links its activities to these.
@@ -41,7 +42,7 @@ export const CSO_OBJ = [
   ["O7.1", "P7", "Embed sustainability and impact into strategy and investment decisions"], ["O7.2", "P7", "Track and report impact transparently"],
 ].map(([id, pillar, name]) => ({ id, pillar, name }));
 // the goals a unit can link to: the CSO's own objectives for the Group Strategy Office, the Group goals for the others
-export const goalsFor = u => u === "group-strategy-office" ? CSO_OBJ : GOALS;
+export const goalsFor = u => GOALS;
 export const anyGoal = id => CSO_OBJ.find(g => g.id === id) || GOALS.find(g => g.id === id);
 
 // What each CSO objective is about: the key results from the alignment document, and the CSO goal of each pillar.

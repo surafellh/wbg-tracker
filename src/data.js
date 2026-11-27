@@ -328,6 +328,9 @@ function createSupabaseData() {
     deleteCf: (auth, table, id) => rpc("wbg_cf_delete", { p_auth: auth, p_table: table, p_id: id }),
     restoreCf: (auth, table, id) => rpc("wbg_cf_restore", { p_auth: auth, p_table: table, p_id: id }),
     saveProject: (auth, row) => rpc("wbg_save_project", { p_auth: auth, p_row: row }),
+    strategyGet: (unit, month) => rpcq("wbg_strategy_get", { p_unit: unit, p_month: month }),
+    strategySavePlan: (unit, weights, source) => rpc("wbg_strategy_save_plan", { p_unit: unit, p_weights: weights, p_source: source || "" }),
+    strategySaveReview: (unit, month, items, status, note) => rpc("wbg_strategy_save_review", { p_unit: unit, p_month: month, p_items: items, p_status: status, p_note: note || "" }),
     deleteProject: (auth, id) => rpc("wbg_delete_project", { p_auth: auth, p_id: id }),
     async uploadEvidence(file, path) {
       const { error } = await sb.storage.from("evidence").upload(path, file, { contentType: fileType(file), upsert: false });
@@ -720,6 +723,9 @@ function createLocalData() {
       const col = { cf_items: "cfitems", cf_log: "cflog" }[table]; if (!col) return err("bad_request");
       const o = getStore(col).find((x) => x.id === id); if (!o) return err("bad_request"); if (!cfWrite(auth, o.unit)) return err("not_allowed"); put(col, { ...o, deletedAt: "", deletedBy: "" }); return ok();
     },
+    async strategyGet() { return { ok: true, plan: null, review: null }; },
+    async strategySavePlan() { return { error: "not_allowed" }; },
+    async strategySaveReview() { return { error: "not_allowed" }; },
     saveProject(auth, row) {
       const unit = row.unit || ""; if (!unit || !String(row.name || "").trim()) return err("bad_request");
       const w = (u) => auth.role === "super_admin" || (["leader", "planning", "manager"].includes(auth.role) && auth.unit === "pmo") || (auth.role === "planning" && !!auth.unit && auth.unit === u);
